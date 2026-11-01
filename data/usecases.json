@@ -1,0 +1,2889 @@
+{
+  "schema": "customer-agent-usecases/1",
+  "source": {
+    "repo": "AI-DEMO2",
+    "file": "demo_api_server/config/useCases.js",
+    "commit": "ff8fb98298c1750dff69cf36995a3506d20faf83",
+    "contentSha256": "832970d5f2196307d07cae4c6f2e0595be00c3a3e4d0e60dc829c0adfbbd16c0",
+    "modifiedSinceCommit": false,
+    "note": "read only; loaded once by this generator, never imported by the app"
+  },
+  "meta": {
+    "counts": {
+      "foundations": 15,
+      "learn": 23,
+      "controls": 16,
+      "hitl": 4,
+      "demo": 8,
+      "attacks": 11,
+      "tools": 8,
+      "nhi": 2
+    },
+    "total": 87,
+    "copiedFields": [
+      "id",
+      "track",
+      "title",
+      "buyerStory",
+      "pingOneSolution",
+      "trigger",
+      "expectedOutcome",
+      "evidence",
+      "maturity",
+      "productRoles",
+      "primaryTool"
+    ],
+    "labels": {
+      "needs": "lab-derived: from productRoles, the token chain, the outcome and the maturity flag",
+      "flag": "lab-derived: the feature flag named in maturity, if any",
+      "opens": "lab-invented: which extra panel the use case needs (first match of approval, consent, a2a, group-board, obo, learning-link)",
+      "linkOut": "lab reading: the sibling standalone whose README describes the same thing; null where none was matched (learn track only)"
+    },
+    "redactions": 1,
+    "omitted": "codeRefs, owasp, whatToSay, match, whatLong, businessValue, advanced, useCaseId and every per-vertical override are not copied.  One customer-flavoured vertical name in the source list is left out of the vertical list."
+  },
+  "usecases": [
+    {
+      "id": "UC1",
+      "track": "foundations",
+      "title": "Delegated access (consent only)",
+      "buyerStory": "Every agent action must trace back to a real human's consent — no anonymous agent access.",
+      "pingOneSolution": "After the user consents, RFC 8693 token exchange mints a delegated token carrying act={agent}; the gateway and Authorize verify the chain.",
+      "trigger": {
+        "type": "chip",
+        "text": "show my balance"
+      },
+      "expectedOutcome": "PERMIT",
+      "evidence": {
+        "tokenChain": [
+          "user-token",
+          "token-exchange",
+          "authorize-decision",
+          "tool-dispatched"
+        ],
+        "activity": [
+          "token",
+          "authorize",
+          "mcp"
+        ]
+      },
+      "maturity": "works",
+      "productRoles": {
+        "idp": "Authenticates the user and mints the delegated token via RFC 8693 exchange, embedding the act claim.",
+        "gw": "Validates the token (aud, exp, act) and routes the call only after a PERMIT decision.",
+        "authz": "Evaluates the act claim and delegation chain; returns PERMIT for a valid actor."
+      },
+      "primaryTool": "get_account_balance",
+      "needs": [
+        "idp",
+        "gw",
+        "authz"
+      ],
+      "flag": null,
+      "opens": "consent",
+      "linkOut": null
+    },
+    {
+      "id": "UC2",
+      "track": "foundations",
+      "title": "A2A delegation",
+      "buyerStory": "A generalist agent handing off to a specialist must carry proof of the original user's authorization through the entire chain.",
+      "pingOneSolution": "PingOne mints a nested-act delegated token for the specialist; scope is narrowed at each hop.",
+      "trigger": {
+        "type": "chip",
+        "text": "hand off to a specialist"
+      },
+      "expectedOutcome": "PERMIT",
+      "evidence": {
+        "tokenChain": [
+          "user-token",
+          "a2a-agent1-actor",
+          "a2a-exchange1",
+          "a2a-agent2-actor",
+          "a2a-exchange2",
+          "tool-dispatched"
+        ],
+        "activity": [
+          "token",
+          "delegate",
+          "authorize",
+          "mcp"
+        ]
+      },
+      "maturity": "works",
+      "productRoles": {
+        "idp": "Mints a nested-act delegated token for the specialist, narrowing scope at each exchange hop.",
+        "gw": "Validates the nested act chain on the A2A gateway audience and routes the specialist tool call after PERMIT.",
+        "authz": "Evaluates the full act chain at each hop; denies if any link is unauthorized."
+      },
+      "primaryTool": "get_portfolio_summary",
+      "needs": [
+        "idp",
+        "gw",
+        "authz",
+        "a2a"
+      ],
+      "flag": null,
+      "opens": "a2a",
+      "linkOut": null
+    },
+    {
+      "id": "UC2.5",
+      "track": "foundations",
+      "title": "A2A Orchestrator — Interactive Learning",
+      "buyerStory": "See how a generalist AI agent detects and routes tasks to specialist sub-agents using multi-agent orchestration and RFC 8693 delegation.",
+      "pingOneSolution": "PingOne + multi-agent CrewAI orchestrator analyzes requests, selects specialist agents, and chains delegated tokens with narrowed scopes.",
+      "trigger": {
+        "type": "chip",
+        "text": "delegate this to a specialist"
+      },
+      "expectedOutcome": "DELEGATE_AND_EXECUTE",
+      "evidence": {
+        "tokenChain": [
+          "user-token",
+          "a2a-agent1-actor",
+          "a2a-exchange1",
+          "a2a-agent2-actor",
+          "a2a-exchange2",
+          "tool-dispatched"
+        ],
+        "activity": [
+          "orchestrate",
+          "delegate",
+          "authorize",
+          "mcp"
+        ]
+      },
+      "maturity": "works",
+      "productRoles": {
+        "idp": "Mints nested-act delegated tokens for each hop; generalist token → specialist token with narrowed scopes.",
+        "gw": "Routes each leg of the orchestration; the token chain proves who acted for whom.",
+        "authz": "Evaluates the full act chain at each hop and narrows policy context for the specialist.",
+        "llm": "Orchestrates multi-agent workflows — detects delegation cues, selects specialists, and drives coordinated sub-tasks."
+      },
+      "primaryTool": "get_portfolio_summary",
+      "needs": [
+        "idp",
+        "gw",
+        "authz",
+        "llm",
+        "a2a"
+      ],
+      "flag": null,
+      "opens": "a2a",
+      "linkOut": null
+    },
+    {
+      "id": "UC2.7",
+      "track": "learn",
+      "title": "A2A end to end — protocol + identity",
+      "buyerStory": "Show a buyer what \"agent-to-agent\" actually means on the wire and in the token, with the real artifacts rather than a diagram.",
+      "pingOneSolution": "One page carries both halves: PingOne mints the nested-act RFC 8693 chain, and the Linux Foundation A2A wire protocol discovers the specialist by Agent Card and calls it with its own PingOne bearer.",
+      "trigger": {
+        "type": "link",
+        "path": "/a2a-protocol-learning"
+      },
+      "expectedOutcome": "PERMIT",
+      "evidence": {
+        "tokenChain": [
+          "a2a-agent1-actor",
+          "a2a-exchange1",
+          "a2a-agent2-actor",
+          "a2a-exchange2",
+          "a2a-protocol-bearer",
+          "a2a-agent-card",
+          "a2a-protocol-message"
+        ],
+        "activity": []
+      },
+      "maturity": "works",
+      "productRoles": {
+        "idp": "Mints both the nested-act delegated token and the separate client_credentials bearer the wire hop authenticates with.",
+        "gw": "Serves the public Agent Card and enforces the bearer requirement on the JSON-RPC endpoint.",
+        "authz": "Decides over the full act chain — ActChainDepth 2, specialist acting for generalist acting for the user."
+      },
+      "primaryTool": null,
+      "needs": [
+        "idp",
+        "gw",
+        "authz",
+        "a2a"
+      ],
+      "flag": null,
+      "opens": "a2a",
+      "linkOut": null
+    },
+    {
+      "id": "UC2.6",
+      "track": "foundations",
+      "title": "A2A generalist mismatch",
+      "buyerStory": "A resource server must be able to tell WHICH agent is acting on the user's behalf, not just that some agent is — the same user with a different, unregistered agent must be denied.",
+      "pingOneSolution": "PingOne Authorize evaluates the nested act chain's actor identity, not just the subject — an unregistered generalist is denied even though the user and the delegation shape are otherwise valid.",
+      "trigger": {
+        "type": "chip",
+        "text": "simulate an agent identity mismatch"
+      },
+      "expectedOutcome": "PERMIT_THEN_DENY",
+      "evidence": {
+        "tokenChain": [
+          "user-token",
+          "a2a-agent1-actor",
+          "a2a-exchange1",
+          "a2a-agent2-actor",
+          "a2a-exchange2",
+          "tool-dispatched",
+          "a2a-mismatch-probe"
+        ],
+        "activity": [
+          "token",
+          "delegate",
+          "authorize",
+          "mcp",
+          "authorize"
+        ]
+      },
+      "maturity": "works",
+      "productRoles": {
+        "idp": "Mints the real leg-1 delegated token exactly as UC2; the mismatch probe itself mints no token.",
+        "gw": "Not involved in the probe leg — the probe calls the decision endpoint directly, same contract the gateway uses.",
+        "authz": "Evaluates ActChainDepth and NestedActClientId; DENYs invalid_a2a_generalist when the actor does not match the registered generalist."
+      },
+      "primaryTool": "get_portfolio_summary",
+      "needs": [
+        "idp",
+        "gw",
+        "authz",
+        "a2a"
+      ],
+      "flag": null,
+      "opens": "a2a",
+      "linkOut": null
+    },
+    {
+      "id": "UC3",
+      "track": "foundations",
+      "title": "act gate",
+      "buyerStory": "An agent should only be allowed to act on a user's behalf if that user explicitly authorized it.",
+      "pingOneSolution": "PingOne mints the exchanged token's act claim from the actor token — the agent is identified at exchange time; the authorization server then checks the user's consent (may_act) on EVERY tool call: no matching consent, no permit. Revoking the user's agent authorization takes effect without waiting for the delegated token to expire (the revoke forces a silent re-auth, which refreshes the bridged consent). (Legacy mode seeds act from may_act at mint instead — ff_may_act_seed.)",
+      "trigger": {
+        "type": "chip",
+        "text": "show my balance"
+      },
+      "expectedOutcome": "PERMIT",
+      "evidence": {
+        "tokenChain": [
+          "user-token",
+          "token-exchange",
+          "authorize-decision"
+        ],
+        "activity": [
+          "token",
+          "authorize"
+        ]
+      },
+      "maturity": "works",
+      "productRoles": {
+        "idp": "Mints the act claim from the actor token during exchange (default); may_act seeding behind ff_may_act_seed.",
+        "authz": "Checks the user's bridged consent (may_act) against the acting agent on every tool call — no match, no permit."
+      },
+      "primaryTool": "get_account_balance",
+      "needs": [
+        "idp",
+        "authz"
+      ],
+      "flag": null,
+      "opens": "consent",
+      "linkOut": null
+    },
+    {
+      "id": "UC19",
+      "track": "foundations",
+      "title": "Non-human (agent) identity lifecycle",
+      "buyerStory": "Calls from a retired or orphaned agent identity should fail — agent identities need a full lifecycle just like human ones.",
+      "pingOneSolution": "PingOne manages the agent app as a first-class identity; rotating or retiring the client credential blocks all subsequent calls.",
+      "trigger": {
+        "type": "chip",
+        "text": "show my balance"
+      },
+      "expectedOutcome": "PERMIT",
+      "evidence": {
+        "tokenChain": [
+          "token-exchange"
+        ],
+        "activity": [
+          "token"
+        ]
+      },
+      "maturity": "works",
+      "productRoles": {
+        "idp": "Manages the agent app as a first-class identity; disabling or rotating the credential blocks all subsequent token exchanges."
+      },
+      "primaryTool": "get_account_balance",
+      "needs": [
+        "idp"
+      ],
+      "flag": null,
+      "opens": "none",
+      "linkOut": null
+    },
+    {
+      "id": "UC20",
+      "track": "foundations",
+      "title": "Agent observability and traceability",
+      "buyerStory": "Every agent action must be attributable end-to-end — who the agent was, who it acted for, and what it did.",
+      "pingOneSolution": "Every token event and activity log is stamped with useCaseId and the act chain; both evidence panels reconstruct the full trace.",
+      "trigger": {
+        "type": "chip",
+        "text": "show my balance"
+      },
+      "expectedOutcome": "PERMIT",
+      "evidence": {
+        "tokenChain": [
+          "user-token",
+          "token-exchange",
+          "authorize-decision",
+          "tool-dispatched"
+        ],
+        "activity": [
+          "token",
+          "authorize",
+          "mcp"
+        ]
+      },
+      "maturity": "works",
+      "productRoles": {
+        "idp": "Stamps the act chain on every token event; the exchange history is the attribution record.",
+        "gw": "Logs the tool call, the acting agent, and the Authorize decision outcome.",
+        "authz": "Records the policy decision (PERMIT/DENY/STEP_UP) for every evaluated request."
+      },
+      "primaryTool": "get_account_balance",
+      "needs": [
+        "idp",
+        "gw",
+        "authz"
+      ],
+      "flag": null,
+      "opens": "none",
+      "linkOut": null
+    },
+    {
+      "id": "UC33",
+      "track": "foundations",
+      "title": "My mortgage",
+      "buyerStory": "Delegated-access proof can't be special-cased per tool — every account type the agent touches needs the same chain of custody, not just the everyday balance check.",
+      "pingOneSolution": "The same RFC 8693 delegated token (act={agent}) authorizes every tool call, including less-common products like a mortgage — one token exchange covers the whole tool surface.",
+      "trigger": {
+        "type": "chip",
+        "text": "show my mortgage"
+      },
+      "expectedOutcome": "PERMIT",
+      "evidence": {
+        "tokenChain": [
+          "user-token",
+          "token-exchange",
+          "authorize-decision",
+          "tool-dispatched"
+        ],
+        "activity": [
+          "token",
+          "authorize",
+          "mcp"
+        ]
+      },
+      "maturity": "works",
+      "productRoles": {
+        "idp": "Mints the same delegated token regardless of which tool the agent calls next.",
+        "gw": "Validates the token identically no matter which tool it is routed to.",
+        "authz": "Evaluates the same act-claim policy for every tool in scope."
+      },
+      "primaryTool": "show_mortgage",
+      "needs": [
+        "idp",
+        "gw",
+        "authz"
+      ],
+      "flag": null,
+      "opens": "none",
+      "linkOut": null
+    },
+    {
+      "id": "UC34",
+      "track": "foundations",
+      "title": "Spot unusual patterns",
+      "buyerStory": "A security-aware agent should be able to reason over live activity, not just execute fixed lookups — and that reasoning has to run through the same governed pipeline as everything else.",
+      "pingOneSolution": "The free-form LLM path runs through the identical RFC 8693 → gateway → Authorize legs as a heuristic chip — reasoning is not a shortcut around the policy chain.",
+      "trigger": {
+        "type": "chip",
+        "text": "Check for unusual patterns in my recent activity"
+      },
+      "expectedOutcome": "PERMIT",
+      "evidence": {
+        "tokenChain": [
+          "user-token",
+          "token-exchange",
+          "authorize-decision",
+          "tool-dispatched"
+        ],
+        "activity": [
+          "token",
+          "authorize",
+          "mcp"
+        ]
+      },
+      "maturity": "works",
+      "productRoles": {
+        "llm": "Reasons over the request and issues whichever tool calls it decides are relevant.",
+        "gw": "Validates and routes every tool call the reasoning step issues, same as any other call.",
+        "authz": "Evaluates each resulting tool call independently — freeform intent grants no special access."
+      },
+      "primaryTool": null,
+      "needs": [
+        "gw",
+        "authz",
+        "llm"
+      ],
+      "flag": null,
+      "opens": "none",
+      "linkOut": null
+    },
+    {
+      "id": "UC35",
+      "track": "foundations",
+      "title": "Why was that blocked?",
+      "buyerStory": "When a control fires, the person watching the demo should be able to ask the agent to explain itself in plain language — backed by the real evidence, not a canned line.",
+      "pingOneSolution": "The agent explains its own security posture by reading the live token-chain events, not a scripted explanation — the explanation is only as good as the evidence PingOne actually produced.",
+      "trigger": {
+        "type": "chip",
+        "text": "Explain why my last blocked action was denied and walk me through the token chain"
+      },
+      "expectedOutcome": "PERMIT",
+      "evidence": {
+        "tokenChain": [
+          "user-token",
+          "token-exchange",
+          "authorize-decision"
+        ],
+        "activity": [
+          "token",
+          "authorize"
+        ]
+      },
+      "maturity": "works",
+      "productRoles": {
+        "llm": "Narrates the live token-chain evidence in plain language — it explains PingOne's decision, it doesn't make one.",
+        "authz": "Recorded the original PERMIT/DENY/STEP_UP decision the explanation is built from."
+      },
+      "primaryTool": null,
+      "needs": [
+        "authz",
+        "llm"
+      ],
+      "flag": null,
+      "opens": "none",
+      "linkOut": null
+    },
+    {
+      "id": "UC4",
+      "track": "controls",
+      "title": "Overscoped agent",
+      "buyerStory": "An agent holding more scope than the task needs is a standing privilege-escalation risk.",
+      "pingOneSolution": "The scope topology surfaces the mismatch; least-privilege hygiene narrows the token to only what the tool requires.",
+      "trigger": {
+        "type": "chip",
+        "text": "show my balance"
+      },
+      "expectedOutcome": "PERMIT",
+      "evidence": {
+        "tokenChain": [
+          "user-token",
+          "token-exchange",
+          "authorize-decision"
+        ],
+        "activity": [
+          "token",
+          "authorize"
+        ]
+      },
+      "maturity": "works",
+      "productRoles": {
+        "idp": "Issues the token with the scopes the agent requested; the topology then surfaces any excess.",
+        "authz": "Evaluates scope requirements per tool; a token carrying only the needed scope is the correct posture.",
+        "gw": "Enforces the required scopes at the gateway boundary — excess scope is harmless here but the mismatch is visible."
+      },
+      "primaryTool": "get_account_balance",
+      "needs": [
+        "idp",
+        "gw",
+        "authz"
+      ],
+      "flag": null,
+      "opens": "none",
+      "linkOut": null
+    },
+    {
+      "id": "UC6",
+      "track": "controls",
+      "title": "Authz denied",
+      "buyerStory": "A policy-violating agent action — like an amount over the limit — must be denied before the tool executes.",
+      "pingOneSolution": "PingOne Authorize evaluates the request and returns DENY; the gateway stops the call.",
+      "trigger": {
+        "type": "chip",
+        "text": "transfer $2500 from checking to savings"
+      },
+      "expectedOutcome": "DENY",
+      "evidence": {
+        "tokenChain": [
+          "authorize-decision"
+        ],
+        "activity": [
+          "authorize",
+          "mcp"
+        ]
+      },
+      "maturity": "works",
+      "productRoles": {
+        "idp": "Issues the delegated token the agent presents at the gateway.",
+        "gw": "Forwards the request to Authorize; stops the tool call on DENY.",
+        "authz": "Evaluates the transaction amount against the ceiling rule and returns DENY."
+      },
+      "primaryTool": "create_transfer",
+      "needs": [
+        "idp",
+        "gw",
+        "authz"
+      ],
+      "flag": null,
+      "opens": "none",
+      "linkOut": null
+    },
+    {
+      "id": "UC7",
+      "track": "hitl",
+      "title": "MFA step-up (HITL)",
+      "buyerStory": "A high-value agent action shouldn't go through on the agent's say-so alone; a human must complete MFA.",
+      "pingOneSolution": "PingOne Authorize returns a step-up obligation; the human-in-the-loop completes MFA before PERMIT.",
+      "trigger": {
+        "type": "chip",
+        "text": "transfer $600 from checking to savings"
+      },
+      "expectedOutcome": "STEP_UP",
+      "evidence": {
+        "tokenChain": [
+          "authorize-decision"
+        ],
+        "activity": [
+          "authorize",
+          "mcp"
+        ]
+      },
+      "maturity": "works",
+      "productRoles": {
+        "idp": "Authenticates the user and mints the delegated agent token.",
+        "gw": "Receives the step-up obligation from Authorize; holds the call until the MFA receipt is presented.",
+        "authz": "Returns the STEP_UP obligation for the mid-range amount; re-evaluates to PERMIT after MFA.",
+        "mfa": "Delivers the step-up challenge; the success receipt is presented back to the policy for re-evaluation."
+      },
+      "primaryTool": "create_transfer",
+      "needs": [
+        "idp",
+        "gw",
+        "authz",
+        "mfa"
+      ],
+      "flag": null,
+      "opens": "approval",
+      "linkOut": null
+    },
+    {
+      "id": "UC8",
+      "track": "hitl",
+      "title": "MFA + HITL consent",
+      "buyerStory": "Some agent actions are consequential enough to require human-in-the-loop consent with MFA.",
+      "pingOneSolution": "PingOne Authorize returns a HITL obligation; the agent pauses until the human completes MFA and a verified approval receipt is received.",
+      "trigger": {
+        "type": "chip",
+        "text": "transfer $300 from checking to savings"
+      },
+      "expectedOutcome": "HITL_REQUIRED",
+      "evidence": {
+        "tokenChain": [
+          "authorize-decision"
+        ],
+        "activity": [
+          "authorize",
+          "mcp",
+          "hitl"
+        ]
+      },
+      "maturity": "works",
+      "productRoles": {
+        "idp": "Mints the delegated token the agent uses to call the gateway.",
+        "gw": "Receives the HITL obligation; blocks the tool until the agent presents a HITL receipt.",
+        "authz": "Returns the HITL obligation; re-evaluates to PERMIT only when HitlApproved=true is presented."
+      },
+      "primaryTool": "create_transfer",
+      "needs": [
+        "idp",
+        "gw",
+        "authz",
+        "mfa"
+      ],
+      "flag": null,
+      "opens": "approval",
+      "linkOut": null
+    },
+    {
+      "id": "UC9",
+      "track": "controls",
+      "title": "Group / entitlement check",
+      "buyerStory": "An agent acting for a user who is not in the required group must be denied, regardless of the token's scopes.",
+      "pingOneSolution": "PingOne Authorize evaluates the user group membership claim and returns DENY when the user is not entitled.",
+      "trigger": {
+        "type": "chip",
+        "text": "check my sensitive account details for group entitlement"
+      },
+      "expectedOutcome": "DENY_403",
+      "evidence": {
+        "tokenChain": [
+          "authorize-decision"
+        ],
+        "activity": [
+          "authorize"
+        ]
+      },
+      "maturity": "flag:ff_authorize_group_policy",
+      "productRoles": {
+        "idp": "Includes the user's group membership claim in the token.",
+        "authz": "Evaluates the group claim against the entitlement rule; returns DENY when the user is not a member.",
+        "gw": "Enforces the DENY returned by Authorize before any tool is dispatched."
+      },
+      "primaryTool": "get_sensitive_account_details",
+      "needs": [
+        "idp",
+        "gw",
+        "authz"
+      ],
+      "flag": "ff_authorize_group_policy",
+      "opens": "group-board",
+      "linkOut": null
+    },
+    {
+      "id": "UC9A",
+      "track": "controls",
+      "title": "Group / entitlement check — live board",
+      "buyerStory": "A presenter needs to show the group gate deciding LIVE — flip a membership and watch the decision move — without signing in as a different user between runs.",
+      "pingOneSolution": "The /group-policy page re-reads real PingOne directory membership for every decision: the board shows one live Authorize decision per vertical for the signed-in user, and the check panel runs the same decision for any demo user on demand.",
+      "trigger": {
+        "type": "link",
+        "path": "/group-policy",
+        "label": "Open group policy board"
+      },
+      "expectedOutcome": "GUIDED_PAGE",
+      "evidence": {
+        "tokenChain": [],
+        "activity": [
+          "authorize"
+        ]
+      },
+      "maturity": "works",
+      "productRoles": {
+        "idp": "Holds the group memberships the directory read returns.",
+        "authz": "Answers every decision the board and panel display.",
+        "gw": "Enforces the same decision before dispatching the gated tool."
+      },
+      "primaryTool": null,
+      "needs": [
+        "idp",
+        "gw",
+        "authz"
+      ],
+      "flag": null,
+      "opens": "group-board",
+      "linkOut": null
+    },
+    {
+      "id": "UC21",
+      "track": "controls",
+      "title": "Entitlement-tiered capability",
+      "buyerStory": "A premium-tier user's agent should have access to higher-value tools; a standard user's agent should not even see them.",
+      "pingOneSolution": "PingOne group membership drives a per-tier tool set and amount limits; the user's tier expands what the agent may do.",
+      "trigger": {
+        "type": "chip",
+        "text": "check my sensitive account details for tier access"
+      },
+      "expectedOutcome": "PERMIT",
+      "evidence": {
+        "tokenChain": [
+          "authorize-decision",
+          "tool-dispatched"
+        ],
+        "activity": [
+          "authorize",
+          "mcp"
+        ]
+      },
+      "maturity": "works",
+      "productRoles": {
+        "idp": "Includes the user's tier group membership claim in the token.",
+        "authz": "Evaluates the tier claim against the entitlement rule; adjusts the permitted tool set and limits.",
+        "gw": "Enforces the per-tier decision from Authorize before dispatching tool calls."
+      },
+      "primaryTool": "get_sensitive_account_details",
+      "needs": [
+        "idp",
+        "gw",
+        "authz"
+      ],
+      "flag": null,
+      "opens": "none",
+      "linkOut": null
+    },
+    {
+      "id": "UC22",
+      "track": "hitl",
+      "title": "CIBA out-of-band approval",
+      "buyerStory": "An AI agent has no browser to prompt for step-up. When it performs a sensitive action, approval must be requested out-of-band on the user's own device — driven by the action and the agent context, not by a dollar amount.",
+      "pingOneSolution": "Because an agent is acting (no browser redirect) on a sensitive money movement, PingOne Authorize returns a CIBA obligation. The backend calls bc-authorize and polls for the auth_req_id, proceeding only after the user approves out-of-band on their phone.",
+      "trigger": {
+        "type": "chip",
+        "text": "transfer $150 from checking to savings"
+      },
+      "expectedOutcome": "PERMIT",
+      "evidence": {
+        "tokenChain": [
+          "authorize-decision",
+          "ciba-poll",
+          "tool-dispatched"
+        ],
+        "activity": [
+          "authorize",
+          "mcp",
+          "ciba"
+        ]
+      },
+      "maturity": "flag:ciba_enabled",
+      "productRoles": {
+        "idp": "Receives the CIBA auth_req_id request and delivers the approval challenge to the user's device.",
+        "authz": "Returns the CIBA obligation for the sensitive, agent-initiated action; PERMITs only after the user approves out-of-band.",
+        "gw": "Holds the tool call until the agent presents the CIBA approval receipt.",
+        "mfa": "Delivers the CIBA challenge to the user's enrolled device (push notification / OTP)."
+      },
+      "primaryTool": "create_transfer",
+      "needs": [
+        "idp",
+        "gw",
+        "authz",
+        "mfa"
+      ],
+      "flag": "ciba_enabled",
+      "opens": "approval",
+      "linkOut": null
+    },
+    {
+      "id": "UC23",
+      "track": "demo",
+      "title": "Progressive trust demo — presenter guide",
+      "buyerStory": "Personal agents should move from public access to authenticated access, in-app step-up, out-of-band approval, and hard deny — without collapsing trust into one token.",
+      "pingOneSolution": "PingOne OAuth, Authorize, RFC 8693 token exchange, and CIBA — orchestrated by the BFF and MCP gateway while Helix, llama.cpp, or Google routes tool calls.",
+      "trigger": {
+        "type": "link",
+        "path": "/use-cases",
+        "label": "Run Acts 1–5 below in order"
+      },
+      "expectedOutcome": "GUIDED_DEMO",
+      "evidence": {
+        "tokenChain": [
+          "authorize-decision",
+          "token-exchange",
+          "tool-dispatched",
+          "ciba-poll"
+        ],
+        "activity": [
+          "authorize",
+          "token",
+          "mcp",
+          "hitl",
+          "ciba"
+        ]
+      },
+      "maturity": "works",
+      "productRoles": {
+        "idp": "Authenticates the user and mints delegated tokens when protected tools are invoked.",
+        "gw": "Enforces Authorize on every tool call and performs RFC 8693 re-exchange to the MCP audience.",
+        "authz": "Returns PERMIT, HITL obligation, CIBA requirement, or DENY based on tool and transaction amount.",
+        "llm": "Routes natural-language prompts to tools (Helix, llama.cpp, or Google) — never holds tokens."
+      },
+      "primaryTool": null,
+      "needs": [
+        "idp",
+        "gw",
+        "authz",
+        "llm"
+      ],
+      "flag": null,
+      "opens": "approval",
+      "linkOut": null
+    },
+    {
+      "id": "UC24",
+      "track": "demo",
+      "title": "Act 1 — Public catalog access",
+      "buyerStory": "Users should explore low-risk information before signing in — auth only when value is clear.",
+      "pingOneSolution": "The public catalog path skips PingOne Authorize, the Agent Gateway, and token exchange.",
+      "trigger": {
+        "type": "chip",
+        "text": "What branches are near me?"
+      },
+      "expectedOutcome": "PERMIT",
+      "evidence": {
+        "tokenChain": [
+          "tool-dispatched"
+        ],
+        "activity": [
+          "mcp"
+        ]
+      },
+      "maturity": "works",
+      "productRoles": {
+        "authz": "Not called for this public catalog request.",
+        "gw": "Not in path for this local public catalog request."
+      },
+      "primaryTool": "get_branch_hours",
+      "needs": [
+        "gw",
+        "authz"
+      ],
+      "flag": null,
+      "opens": "none",
+      "linkOut": null
+    },
+    {
+      "id": "UC26",
+      "track": "demo",
+      "title": "Proof of enforcement — live verdict on every use case",
+      "buyerStory": "Buyers shouldn't have to trust the chat reply — every enforcement decision should be visibly, verifiably proven on screen, not just claimed.",
+      "pingOneSolution": "Every tool call is tagged end-to-end with the triggering useCaseId and active vertical (chip, launcher, or attack sim; any agent mode), stamped onto the token chain, the PingOne Authorize decision, and the activity log. A client-side verdict engine compares what actually happened against each use case's declared evidence and expected outcome, then renders the result live.",
+      "trigger": {
+        "type": "link",
+        "path": "/use-cases",
+        "label": "Trigger any use case below and watch the verdict appear"
+      },
+      "expectedOutcome": "GUIDED_DEMO",
+      "evidence": {
+        "tokenChain": [],
+        "activity": []
+      },
+      "maturity": "works",
+      "productRoles": {
+        "idp": "PingOne Authorize's real decision is what the verdict is checked against — nothing is simulated for this capability.",
+        "gw": "Every tool call is tagged with useCaseId + vertical before dispatch, so the authorize decision and activity log carry it end to end."
+      },
+      "primaryTool": null,
+      "needs": [
+        "idp",
+        "gw"
+      ],
+      "flag": null,
+      "opens": "none",
+      "linkOut": null
+    },
+    {
+      "id": "UC5",
+      "track": "attacks",
+      "title": "Wrong / insufficient scope",
+      "buyerStory": "An agent with the wrong scope should never reach the tool — scope enforcement is the last line of defense.",
+      "pingOneSolution": "The MCP server validates required scopes before dispatching; a token missing a required scope yields DENY.",
+      "trigger": {
+        "type": "attack",
+        "sim": "insufficient-scope"
+      },
+      "expectedOutcome": "DENY_403",
+      "evidence": {
+        "tokenChain": [
+          "sim-exchange-ok",
+          "sim-gateway-deny"
+        ],
+        "activity": [
+          "token",
+          "mcp"
+        ]
+      },
+      "maturity": "works",
+      "productRoles": {
+        "idp": "Issues the token with only the scopes the agent was granted.",
+        "gw": "Checks required scopes against the token before routing; returns DENY_403 on mismatch."
+      },
+      "primaryTool": null,
+      "needs": [
+        "idp",
+        "gw"
+      ],
+      "flag": null,
+      "opens": "none",
+      "linkOut": null
+    },
+    {
+      "id": "UC10",
+      "track": "attacks",
+      "title": "Resource-ownership / account takeover",
+      "buyerStory": "An agent must never act on another user's resources — even with a valid token.",
+      "pingOneSolution": "PingOne Authorize binds the resource to the token subject; a cross-owner request is denied.",
+      "trigger": {
+        "type": "attack",
+        "sim": "cross-owner-account"
+      },
+      "expectedOutcome": "DENY",
+      "evidence": {
+        "tokenChain": [
+          "authorize-decision"
+        ],
+        "activity": [
+          "authorize",
+          "mcp"
+        ]
+      },
+      "maturity": "works",
+      "productRoles": {
+        "idp": "Issues the token with the subject (user) claim that Authorize checks against the resource owner.",
+        "authz": "Binds the resource to the token sub; returns DENY on an ownership mismatch.",
+        "gw": "Stops the tool call on DENY before any data is returned."
+      },
+      "primaryTool": null,
+      "needs": [
+        "idp",
+        "gw",
+        "authz"
+      ],
+      "flag": null,
+      "opens": "none",
+      "linkOut": null
+    },
+    {
+      "id": "UC11",
+      "track": "attacks",
+      "title": "Bad client → agent gateway",
+      "buyerStory": "A malformed or stolen token must never reach the tools.",
+      "pingOneSolution": "The gateway validates aud/exp/iss/nbf before any routing; a bad token is rejected with 401.",
+      "trigger": {
+        "type": "attack",
+        "sim": "wrong-aud"
+      },
+      "expectedOutcome": "DENY_401",
+      "evidence": {
+        "tokenChain": [
+          "sim-exchange-ok",
+          "sim-gateway-deny"
+        ],
+        "activity": [
+          "token",
+          "gateway"
+        ]
+      },
+      "maturity": "works",
+      "productRoles": {
+        "gw": "Validates aud/exp/iss/nbf on every inbound token; rejects malformed tokens with 401 before routing."
+      },
+      "primaryTool": null,
+      "needs": [
+        "gw"
+      ],
+      "flag": null,
+      "opens": "none",
+      "linkOut": null
+    },
+    {
+      "id": "UC12",
+      "track": "attacks",
+      "title": "Token theft / replay defense",
+      "buyerStory": "A stolen token must be unusable — audience binding and DPoP key binding ensure it can't be replayed.",
+      "pingOneSolution": "The gateway binds the delegated token to a DPoP key (cnf.jkt) and refuses a reused proof — this step replays one proof and the gateway rejects the second with 401 invalid_dpop_proof. Audience binding (D-05) is enforced unconditionally underneath.",
+      "trigger": {
+        "type": "attack",
+        "sim": "dpop-replay"
+      },
+      "expectedOutcome": "DENY_401",
+      "evidence": {
+        "tokenChain": [
+          "sim-replay-start",
+          "sim-gateway-deny"
+        ],
+        "activity": [
+          "token",
+          "gateway"
+        ]
+      },
+      "maturity": "flag:ff_dpop",
+      "productRoles": {
+        "idp": "Mints the token with a specific aud and binds it to the agent's DPoP key (cnf.jkt) when DPoP is on.",
+        "gw": "Enforces aud binding unconditionally; verifies the DPoP proof and refuses a reused one (jti replay cache) with 401 invalid_dpop_proof."
+      },
+      "primaryTool": null,
+      "needs": [
+        "idp",
+        "gw"
+      ],
+      "flag": "ff_dpop",
+      "opens": "none",
+      "linkOut": null
+    },
+    {
+      "id": "UC13",
+      "track": "attacks",
+      "title": "Confused-deputy actor injection",
+      "buyerStory": "A rogue agent forcing itself into the act claim must be caught — only the authorized actor is allowed.",
+      "pingOneSolution": "PingOne stamps a native, cryptographically-issued act claim on the exchanged token whenever the actor actually performed the RFC 8693 exchange. The gateway and Authorize always prefer that native claim over any header — a header can only fill in on hops where no native claim exists. A rogue actor can't win by spoofing a header; it would have to perform a real token exchange as an unauthorized client, and Authorize's ActClientId check on the resulting native claim then denies it.",
+      "trigger": {
+        "type": "attack",
+        "sim": "rogue-actor"
+      },
+      "expectedOutcome": "DENY",
+      "evidence": {
+        "tokenChain": [
+          "authorize-decision"
+        ],
+        "activity": [
+          "authorize",
+          "gateway"
+        ]
+      },
+      "maturity": "works",
+      "productRoles": {
+        "gw": "Prefers the token's native act claim; falls back to the trusted X-Act-Client-Id header bridge only when no native claim is present, then forwards act.sub to Authorize as ActClientId.",
+        "authz": "Checks ActClientId against the configured authorized actor; returns DENY for any other value."
+      },
+      "primaryTool": null,
+      "needs": [
+        "gw",
+        "authz"
+      ],
+      "flag": null,
+      "opens": "none",
+      "linkOut": null
+    },
+    {
+      "id": "UC14",
+      "track": "attacks",
+      "title": "PAR + RAR intent violation (pushed intent exceeded)",
+      "buyerStory": "An agent that exceeds the amount or payee granted via Pushed Authorization Request (RFC 9126) must be denied.",
+      "pingOneSolution": "PingOne Authorize evaluates the PAR-submitted authorization details; exceeding the granted amount or payee yields DENY.",
+      "trigger": {
+        "type": "attack",
+        "sim": "rar-exceeded"
+      },
+      "expectedOutcome": "DENY",
+      "evidence": {
+        "tokenChain": [
+          "authorize-decision"
+        ],
+        "activity": [
+          "authorize",
+          "mcp"
+        ]
+      },
+      "maturity": "flag:ff_rar",
+      "productRoles": {
+        "idp": "Mints the token with the authorization_details claim encoding the approved intent.",
+        "authz": "Compares the live request parameters against the RAR grant; returns DENY on overage.",
+        "gw": "Forwards the intent context to Authorize and enforces the DENY."
+      },
+      "primaryTool": null,
+      "needs": [
+        "idp",
+        "gw",
+        "authz"
+      ],
+      "flag": "ff_rar",
+      "opens": "none",
+      "linkOut": null
+    },
+    {
+      "id": "UC14b",
+      "track": "learn",
+      "title": "PAR + RAR intent verified (PERMIT)",
+      "buyerStory": "A transfer that stays within its PAR (RFC 9126) request_uri authorization cap is verified and permitted — the legitimate counterpart to the PAR overage attack.",
+      "pingOneSolution": "RFC 9126 PAR authorization details bind the transfer to an amount cap; the MCP gateway and PingOne Authorize verify the requested transfer against it before permitting.",
+      "trigger": {
+        "type": "link",
+        "path": "/intent-binding-learning#rar"
+      },
+      "expectedOutcome": "PERMIT",
+      "evidence": {
+        "tokenChain": [
+          "sim-rar-armed",
+          "sim-rar-grant",
+          "intent-binding-verified"
+        ],
+        "activity": []
+      },
+      "maturity": "flag:ff_rar",
+      "productRoles": {},
+      "primaryTool": "create_transfer",
+      "needs": [],
+      "flag": "ff_rar",
+      "opens": "learning-link",
+      "linkOut": "intent-par-inspector"
+    },
+    {
+      "id": "UC15",
+      "track": "attacks",
+      "title": "Intent-token tampering",
+      "buyerStory": "A tampered or expired intent token must be detected before it can authorize a larger or different action.",
+      "pingOneSolution": "The gateway validates the intent token signature and expiry; a tampered or expired token is rejected.",
+      "trigger": {
+        "type": "attack",
+        "sim": "tampered-intent-token"
+      },
+      "expectedOutcome": "DENY_401",
+      "evidence": {
+        "tokenChain": [
+          "user-token",
+          "authorize-decision"
+        ],
+        "activity": [
+          "token",
+          "gateway"
+        ]
+      },
+      "maturity": "needs-build",
+      "productRoles": {
+        "gw": "Validates the intent token signature and expiry; rejects tampered or expired tokens with 401.",
+        "idp": "Signs the intent token at issuance, providing the cryptographic baseline for gateway validation."
+      },
+      "primaryTool": null,
+      "needs": [
+        "idp",
+        "gw"
+      ],
+      "flag": null,
+      "opens": "none",
+      "linkOut": null
+    },
+    {
+      "id": "UC16",
+      "track": "attacks",
+      "title": "Impersonation blocked (OBO required)",
+      "buyerStory": "An agent presenting a pure impersonation token — with the user as sub but no act claim — must be rejected; only on-behalf-of delegation is allowed.",
+      "pingOneSolution": "The gateway requires an act claim for agent-mediated tool calls; a missing act claim is rejected before any tool runs.",
+      "trigger": {
+        "type": "attack",
+        "sim": "impersonation-no-act"
+      },
+      "expectedOutcome": "DENY_401",
+      "evidence": {
+        "tokenChain": [
+          "user-token",
+          "authorize-decision"
+        ],
+        "activity": [
+          "token",
+          "gateway"
+        ]
+      },
+      "maturity": "works",
+      "productRoles": {
+        "gw": "Requires an act claim on every agent-mediated tool call; rejects tokens without one.",
+        "authz": "Validates the act chain when present; this scenario demonstrates the absence case."
+      },
+      "primaryTool": null,
+      "needs": [
+        "gw",
+        "authz"
+      ],
+      "flag": null,
+      "opens": "obo",
+      "linkOut": null
+    },
+    {
+      "id": "UC16b",
+      "track": "attacks",
+      "title": "Raw user-token forwarding blocked (Zero Trust)",
+      "buyerStory": "The agent must never hold or forward the user's raw access token — only scoped, exchanged agent tokens may leave the BFF.",
+      "pingOneSolution": "The BFF performs RFC 8693 token exchange and enforces ff_skip_token_exchange fail-closed: an attempt to resolve a tool token by raw user-token forwarding is blocked with 403 user_token_forwarding_disabled at the source.",
+      "trigger": {
+        "type": "attack",
+        "sim": "raw-user-token-forwarding"
+      },
+      "expectedOutcome": "DENY_403",
+      "evidence": {
+        "tokenChain": [
+          "user-token",
+          "exchange-skipped"
+        ],
+        "activity": [
+          "token"
+        ]
+      },
+      "maturity": "works",
+      "productRoles": {
+        "idp": "Issues the user access token the agent attempts to forward.",
+        "bff": "Refuses to forward the raw user token to MCP; only RFC 8693-exchanged, agent-scoped tokens leave the BFF (fail-closed ff_skip_token_exchange guard).",
+        "gw": "Never reached on this path — the block fires at the BFF source, which is the demonstration point."
+      },
+      "primaryTool": null,
+      "needs": [
+        "idp",
+        "gw",
+        "bff"
+      ],
+      "flag": null,
+      "opens": "none",
+      "linkOut": null
+    },
+    {
+      "id": "UC17",
+      "track": "controls",
+      "title": "JIT / ephemeral credentials",
+      "buyerStory": "A long-lived agent credential is a standing risk — tokens should be short-lived so a captured one is dead within minutes.",
+      "pingOneSolution": "PingOne issues delegated tokens with a tight TTL; a refresh loop ensures the agent always holds a fresh credential.",
+      "trigger": {
+        "type": "chip",
+        "text": "show my balance"
+      },
+      "expectedOutcome": "PERMIT",
+      "evidence": {
+        "tokenChain": [
+          "user-token",
+          "token-exchange",
+          "tool-dispatched"
+        ],
+        "activity": [
+          "token",
+          "mcp"
+        ]
+      },
+      "maturity": "works",
+      "productRoles": {
+        "idp": "Issues delegated tokens with a configurable TTL; the short expiry is enforced at introspection.",
+        "gw": "Introspects every token; a token past its TTL is rejected with 401 even if its signature is valid."
+      },
+      "primaryTool": "get_account_balance",
+      "needs": [
+        "idp",
+        "gw"
+      ],
+      "flag": null,
+      "opens": "none",
+      "linkOut": null
+    },
+    {
+      "id": "UC18",
+      "track": "attacks",
+      "title": "Rate-limit / resource-overload defense",
+      "buyerStory": "An agent flooding the gateway with tool calls must be throttled before it exhausts resources or runs up cost.",
+      "pingOneSolution": "The agent gateway enforces per-agent / per-tool rate limits; a burst of calls is rejected with 429.",
+      "trigger": {
+        "type": "attack",
+        "sim": "rate-limit-burst"
+      },
+      "expectedOutcome": "DENY_429",
+      "evidence": {
+        "tokenChain": [
+          "user-token"
+        ],
+        "activity": [
+          "gateway"
+        ]
+      },
+      "maturity": "works",
+      "productRoles": {
+        "gw": "Enforces per-agent / per-tool rate limits; returns 429 on quota breach before any tool dispatch."
+      },
+      "primaryTool": null,
+      "needs": [
+        "gw"
+      ],
+      "flag": null,
+      "opens": "none",
+      "linkOut": null
+    },
+    {
+      "id": "UC29",
+      "track": "attacks",
+      "title": "Token-validation outage — fail closed",
+      "buyerStory": "If the token-validation backend itself goes down, the gateway must reject every call — not silently let traffic through.",
+      "pingOneSolution": "Token validation is on the request path for every call; when it cannot be reached, the gateway fails closed rather than open.",
+      "trigger": {
+        "type": "attack",
+        "sim": "introspection-down"
+      },
+      "expectedOutcome": "DENY_503",
+      "evidence": {
+        "tokenChain": [
+          "user-token"
+        ],
+        "activity": [
+          "gateway"
+        ]
+      },
+      "maturity": "works",
+      "productRoles": {
+        "gw": "Verifies every token (JWKS signature; RFC 7662 introspection where configured) before evaluating policy; on validation failure, rejects the call with a 503 rather than forwarding it."
+      },
+      "primaryTool": null,
+      "needs": [
+        "gw"
+      ],
+      "flag": null,
+      "opens": "none",
+      "linkOut": null
+    },
+    {
+      "id": "UC30",
+      "track": "controls",
+      "title": "Third-party MCP server, scoped at the gateway",
+      "buyerStory": "A third-party tool the agent calls must be constrained to the business's actual footprint — even though the tool itself has no idea what that footprint is. That footprint should be something the business can change, not a hardcoded assumption.",
+      "pingOneSolution": "The Agent Gateway fronts a third-party weather MCP server and enforces a live, admin-configurable state-scope policy (Texas by default) entirely at the edge — the backend never sees the restriction.",
+      "trigger": {
+        "type": "chip",
+        "text": "what's the weather in Austin, TX"
+      },
+      "expectedOutcome": "PERMIT",
+      "evidence": {
+        "tokenChain": [
+          "user-token",
+          "tool-dispatched"
+        ],
+        "activity": [
+          "token",
+          "mcp"
+        ]
+      },
+      "maturity": "works",
+      "productRoles": {
+        "gw": "Validates the token, then runs the currently-configured state-scope policy (Texas by default) before forwarding the call to the third-party server."
+      },
+      "primaryTool": "get_weather",
+      "needs": [
+        "gw"
+      ],
+      "flag": null,
+      "opens": "none",
+      "linkOut": null
+    },
+    {
+      "id": "UC31",
+      "track": "controls",
+      "title": "Third-party MCP server — out-of-scope call denied",
+      "buyerStory": "When an agent's tool call falls outside the business's actual footprint, it must be stopped before the third-party tool ever runs — not after.",
+      "pingOneSolution": "The Agent Gateway denies the call before it reaches the third-party weather MCP server, based on the currently-configured state scope (Texas by default) — the demo policy the backend never sees.",
+      "trigger": {
+        "type": "chip",
+        "text": "what's the weather in Miami"
+      },
+      "expectedOutcome": "DENY",
+      "evidence": {
+        "tokenChain": [
+          "user-token",
+          "tool-dispatched"
+        ],
+        "activity": [
+          "token",
+          "mcp"
+        ]
+      },
+      "maturity": "works",
+      "productRoles": {
+        "gw": "Runs the currently-configured state-scope policy (Texas by default) and returns DENY before the call is forwarded to the third-party server."
+      },
+      "primaryTool": "get_weather",
+      "needs": [
+        "gw"
+      ],
+      "flag": null,
+      "opens": "none",
+      "linkOut": null
+    },
+    {
+      "id": "UC32",
+      "track": "controls",
+      "title": "Live-reconfigure the gateway's scope policy",
+      "buyerStory": "A demo of a policy control isn't credible if the policy is actually hardcoded in the app. The business needs to change the rule itself — live, without a code change or a restart — and see the SAME request's outcome flip.",
+      "pingOneSolution": "An admin-editable Allowed State control, right on the gateway capability card, changes ff_weather_mcp_allowed_state live; the Agent Gateway reads it on the very next request, no restart.",
+      "trigger": {
+        "type": "link",
+        "path": "/weather-mcp",
+        "label": "Open the Weather MCP page"
+      },
+      "expectedOutcome": "POLICY_RECONFIGURED",
+      "evidence": {
+        "tokenChain": [],
+        "activity": []
+      },
+      "maturity": "works",
+      "productRoles": {
+        "gw": "Reads the currently-configured state on every request via the same flag-check call that already gates ff_weather_mcp_showcase — no new round-trip."
+      },
+      "primaryTool": null,
+      "needs": [
+        "gw"
+      ],
+      "flag": null,
+      "opens": "none",
+      "linkOut": null
+    },
+    {
+      "id": "UC41",
+      "track": "controls",
+      "title": "Third-party search server, filtered at the gateway",
+      "buyerStory": "An agent that can search the open web is useful and dangerous in the same breath. The business needs the useful half without hand-auditing every query, and without asking the search vendor to enforce a policy it has never heard of.",
+      "pingOneSolution": "The Agent Gateway fronts a third-party Brave Search MCP server and inspects the query argument against a content policy before the request leaves the perimeter — the search vendor never sees a blocked query at all.",
+      "trigger": {
+        "type": "chip",
+        "text": "search the news for PingOne DaVinci"
+      },
+      "expectedOutcome": "PERMIT",
+      "evidence": {
+        "tokenChain": [
+          "user-token",
+          "tool-dispatched"
+        ],
+        "activity": [
+          "token",
+          "mcp"
+        ]
+      },
+      "maturity": "works",
+      "productRoles": {
+        "gw": "Validates the token, runs the content-blocklist policy against the query argument, then forwards the call to the third-party server."
+      },
+      "primaryTool": "brave_news_search",
+      "needs": [
+        "gw"
+      ],
+      "flag": null,
+      "opens": "none",
+      "linkOut": null
+    },
+    {
+      "id": "UC42",
+      "track": "controls",
+      "title": "Third-party search server — blocked query denied",
+      "buyerStory": "A policy that only catches bad queries after the vendor has already run them is not a control. The block has to happen before the request leaves the building.",
+      "pingOneSolution": "The Agent Gateway denies the call at the edge when the query contains a blocked term, so the request is never sent to Brave — no vendor log, no billed call, no data leaving the perimeter.",
+      "trigger": {
+        "type": "chip",
+        "text": "search the news for bitcoin price today"
+      },
+      "expectedOutcome": "DENY",
+      "evidence": {
+        "tokenChain": [
+          "user-token",
+          "tool-dispatched"
+        ],
+        "activity": [
+          "token",
+          "mcp"
+        ]
+      },
+      "maturity": "works",
+      "productRoles": {
+        "gw": "Runs the content-blocklist policy against the query argument and returns DENY before the call is forwarded to the third-party server."
+      },
+      "primaryTool": "brave_news_search",
+      "needs": [
+        "gw"
+      ],
+      "flag": null,
+      "opens": "none",
+      "linkOut": null
+    },
+    {
+      "id": "UC-TOOL1",
+      "track": "tools",
+      "title": "Protected RAG",
+      "buyerStory": "Grounded code retrieval is useful only when the agent cannot widen its own access to the indexed source.",
+      "pingOneSolution": "The BFF exchanges the user token for a delegated MCP token with code:search, then the Agent Gateway and PingOne Authorize enforce the code_search call before Weaviate retrieval.",
+      "trigger": {
+        "type": "chip",
+        "text": "find where the BFF performs MCP token exchange"
+      },
+      "expectedOutcome": "PERMIT",
+      "evidence": {
+        "tokenChain": [
+          "user-token",
+          "token-exchange",
+          "authorize-decision",
+          "tool-dispatched"
+        ],
+        "activity": [
+          "token",
+          "authorize",
+          "mcp"
+        ]
+      },
+      "maturity": "works",
+      "productRoles": {
+        "idp": "Issues the user and delegated tokens used to preserve caller identity.",
+        "authz": "Evaluates the code_search tool request and returns the visible PERMIT or DENY decision.",
+        "gw": "Enforces code:search and the PingOne Authorize decision before forwarding retrieval."
+      },
+      "primaryTool": "code_search",
+      "needs": [
+        "idp",
+        "gw",
+        "authz"
+      ],
+      "flag": null,
+      "opens": "none",
+      "linkOut": null
+    },
+    {
+      "id": "UC-TOOL2",
+      "track": "tools",
+      "title": "Code Explorer",
+      "buyerStory": "Ask about flows, architecture, patterns, and implementation details — with real, current code context.",
+      "pingOneSolution": "Powered by CodeGraph — a semantic code knowledge graph that indexes every symbol, file, and dependency for AI-powered exploration.",
+      "trigger": {
+        "type": "link",
+        "path": "/code-explorer",
+        "label": "Open Code Explorer"
+      },
+      "expectedOutcome": "CODE_CONTEXT",
+      "evidence": {
+        "tokenChain": [],
+        "activity": []
+      },
+      "maturity": "works",
+      "productRoles": {},
+      "primaryTool": null,
+      "needs": [],
+      "flag": null,
+      "opens": "none",
+      "linkOut": null
+    },
+    {
+      "id": "UC-TOOL3",
+      "track": "tools",
+      "title": "LLM Gateway",
+      "buyerStory": "Verify what the Agent Privilege actually decided about an LLM call — the chat console classifies the outcome (denied by policy / provider refused / answered), while the raw-request tab (/llm-test) interprets nothing and shows exactly what was sent and returned.",
+      "pingOneSolution": "The PingOne Agent Privilege fronts every LLM backend behind a virtual key, scanning for prompt injection, PII, and malicious content and returning a policy verdict alongside the provider response.",
+      "trigger": {
+        "type": "link",
+        "path": "/llm-gateway",
+        "label": "Open LLM Gateway"
+      },
+      "expectedOutcome": "GATEWAY_VERDICT",
+      "evidence": {
+        "tokenChain": [],
+        "activity": []
+      },
+      "maturity": "works",
+      "productRoles": {},
+      "primaryTool": null,
+      "needs": [],
+      "flag": null,
+      "opens": "none",
+      "linkOut": null
+    },
+    {
+      "id": "UC46",
+      "track": "tools",
+      "title": "Privilege A2A access review",
+      "buyerStory": "Security analysts want to ask an agent to review access and follow how a delegated worker gathers evidence through Privilege-protected tools.",
+      "pingOneSolution": "A MainAgent delegates the analyst request to a WorkerAgent over A2A; the worker uses MCP through PingOne Privilege Gateway and returns an evidence-backed answer.",
+      "trigger": {
+        "type": "link",
+        "path": "/privilege-a2a",
+        "label": "Open A2A access review"
+      },
+      "expectedOutcome": "A2A_ACCESS_REVIEW",
+      "evidence": {
+        "tokenChain": [],
+        "activity": [
+          "a2a",
+          "mcp",
+          "llm"
+        ]
+      },
+      "maturity": "works",
+      "productRoles": {
+        "privilege": "Validates each agent’s Agent Access key and applies gateway policy to its LLM, A2A and MCP requests; its guardrail screens agent messages and tool results.",
+        "bff": "Requires the browser session and relays chat to MainAgent without forwarding browser identity or tokens."
+      },
+      "primaryTool": null,
+      "needs": [
+        "privilege",
+        "bff",
+        "a2a"
+      ],
+      "flag": null,
+      "opens": "a2a",
+      "linkOut": null
+    },
+    {
+      "id": "UC46A",
+      "track": "tools",
+      "title": "Privilege A2A access review in the agent",
+      "buyerStory": "Security analysts want to ask an agent to review access and follow how a delegated worker gathers evidence through Privilege-protected tools.",
+      "pingOneSolution": "A MainAgent delegates the analyst request to a WorkerAgent over A2A; the worker uses MCP through PingOne Privilege Gateway and returns an evidence-backed answer.",
+      "trigger": {
+        "type": "link",
+        "path": "/dashboard",
+        "label": "Run the access review in the agent"
+      },
+      "expectedOutcome": "A2A_ACCESS_REVIEW",
+      "evidence": {
+        "tokenChain": [],
+        "activity": [
+          "a2a",
+          "mcp",
+          "llm"
+        ]
+      },
+      "maturity": "works",
+      "productRoles": {
+        "privilege": "Validates each agent’s Agent Access key and applies gateway policy to its LLM, A2A and MCP requests; its guardrail screens agent messages and tool results.",
+        "bff": "Requires the browser session and relays chat to MainAgent without forwarding browser identity or tokens."
+      },
+      "primaryTool": null,
+      "needs": [
+        "privilege",
+        "bff",
+        "a2a"
+      ],
+      "flag": null,
+      "opens": "a2a",
+      "linkOut": null
+    },
+    {
+      "id": "UC47",
+      "track": "tools",
+      "title": "Privilege A2A three-deep agent chain",
+      "buyerStory": "Platform teams want agents to hand work to other agents without losing control of who may call whom, or what crosses each hand-off.",
+      "pingOneSolution": "A main agent calls a middle agent, which calls a specialist. Every hop goes through the PingOne Agent Privilege with that agent’s own key, so scope, policy and guardrail are checked between each pair of agents.",
+      "trigger": {
+        "type": "link",
+        "path": "/dashboard",
+        "label": "Run the agent chain"
+      },
+      "expectedOutcome": "A2A_AGENT_CHAIN",
+      "evidence": {
+        "tokenChain": [],
+        "activity": [
+          "a2a"
+        ]
+      },
+      "maturity": "works",
+      "productRoles": {
+        "privilege": "Sits between every pair of agents: validates the calling agent’s key, applies scope, policy and guardrail, and forwards with the remote agent’s credential.",
+        "bff": "Requires the browser session and relays the run to the main agent without forwarding browser identity or tokens."
+      },
+      "primaryTool": null,
+      "needs": [
+        "privilege",
+        "bff",
+        "a2a"
+      ],
+      "flag": null,
+      "opens": "a2a",
+      "linkOut": null
+    },
+    {
+      "id": "UC-MUSE1",
+      "track": "tools",
+      "title": "Your agent, our gateway (external agent, standard lane)",
+      "buyerStory": "Customers already run their own agents — Muse, Grok, LM Studio, LibreChat, ChatGPT — and want to use them against their bank without handing over credentials or losing protection.",
+      "pingOneSolution": "The agent connects to the bank’s MCP external door: RFC 9728 discovery, RFC 7591 DCR self-registration, PKCE login in the user’s browser, then a delegated token (sub=user, act=agent) through PingGateway and PingOne Authorize on every tool call.",
+      "trigger": {
+        "type": "link",
+        "path": "/use-case-diagrams/UC-MUSE1",
+        "label": "Open the standard-lane walkthrough"
+      },
+      "expectedOutcome": "PERMIT",
+      "evidence": {
+        "tokenChain": [
+          "user-token",
+          "token-exchange",
+          "gateway-permit",
+          "tool-dispatched"
+        ],
+        "activity": [
+          "token",
+          "mcp"
+        ]
+      },
+      "maturity": "works",
+      "productRoles": {
+        "gw": "Enforces discovery, registration, token exchange and per-call policy on the external door.",
+        "idp": "Authenticates the person, mints the delegated token (sub=user, act=agent) and evaluates policy per tool call."
+      },
+      "primaryTool": null,
+      "needs": [
+        "idp",
+        "gw"
+      ],
+      "flag": null,
+      "opens": "none",
+      "linkOut": null
+    },
+    {
+      "id": "UC-MUSE2",
+      "track": "tools",
+      "title": "Your agent, the Agent Privilege (external agent, lane 2)",
+      "buyerStory": "Teams running PingOne Privilege want the same external-agent story through the Agent Privilege: the user’s own agent, governed by per-user policy at the gateway rather than per-call token exchange.",
+      "pingOneSolution": "The agent connects to the facade’s privilege-gateway door: OAuth against the demo’s durable broker doubles as the sign-in that raises the BFF’s server-side leg to the Agent Privilege, which swaps the caller’s bearer for the operator’s token on the upstream hop (ownsUpstreamAuth) and enforces per-user policy.",
+      "trigger": {
+        "type": "link",
+        "path": "/use-case-diagrams/UC-MUSE2",
+        "label": "Open the AI-Gateway-lane walkthrough"
+      },
+      "expectedOutcome": "PERMIT",
+      "evidence": {
+        "tokenChain": [
+          "user-token",
+          "privilege-gateway-leg",
+          "credential-swap",
+          "tool-dispatched"
+        ],
+        "activity": [
+          "token",
+          "mcp"
+        ]
+      },
+      "maturity": "works",
+      "productRoles": {
+        "privilege": "Enforces per-user policy on the upstream call and dispatches to the registered Agentic App.",
+        "bff": "Registers clients durably, holds the gateway leg server-side, and swaps credentials on the upstream hop."
+      },
+      "primaryTool": null,
+      "needs": [
+        "privilege",
+        "bff"
+      ],
+      "flag": null,
+      "opens": "none",
+      "linkOut": null
+    },
+    {
+      "id": "UC-NHI1",
+      "track": "nhi",
+      "title": "Live agent NHI inventory",
+      "buyerStory": "Security teams need one governed place to see the AI agents actually authenticating through Ping, with their real identity state, before they can govern them.",
+      "pingOneSolution": "The AI Control Plane shows every live agent identity in one view and revokes it at the identity layer — every platform the agent touches loses trust in it at once.",
+      "trigger": {
+        "type": "link",
+        "path": "/ai-control-plane",
+        "label": "Open AI Control Plane"
+      },
+      "expectedOutcome": "SOURCE_TAGGED_ROSTER",
+      "evidence": {
+        "tokenChain": [],
+        "activity": []
+      },
+      "maturity": "works",
+      "productRoles": {},
+      "primaryTool": null,
+      "needs": [],
+      "flag": null,
+      "opens": "none",
+      "linkOut": null
+    },
+    {
+      "id": "UC-NHI2",
+      "track": "nhi",
+      "title": "Agent lifecycle export (JML)",
+      "buyerStory": "Teams governing agents through an existing IGA tool (like SailPoint) need agent join/move/leave events in a shape that tool can consume — not a competing identity store.",
+      "pingOneSolution": "Agent register/kill-switch/re-enable actions emit joiner/mover/leaver events, queryable live at GET /api/control-plane/lifecycle-events and optionally forwarded to an external webhook — illustrating how Ping would feed an existing IGA process rather than replace it.",
+      "trigger": {
+        "type": "link",
+        "path": "/agent-lifecycle",
+        "label": "Open Agent Lifecycle"
+      },
+      "expectedOutcome": "JML_EVENT_FEED",
+      "evidence": {
+        "tokenChain": [],
+        "activity": []
+      },
+      "maturity": "works",
+      "productRoles": {},
+      "primaryTool": null,
+      "needs": [],
+      "flag": null,
+      "opens": "none",
+      "linkOut": null
+    },
+    {
+      "id": "UC-LEARN1",
+      "track": "learn",
+      "title": "OAuth Academy",
+      "buyerStory": "An interactive teacher for OAuth 2.0 / 2.1 and OIDC — ask a question or watch a real authorization flow run live.",
+      "pingOneSolution": "Runs real PingOne authorization flows — PKCE, scopes, RFC 8693 token exchange, act/may_act delegation, HITL — with the actual token chain shown at every hop.",
+      "trigger": {
+        "type": "link",
+        "path": "/oauth-academy",
+        "label": "Open OAuth Academy"
+      },
+      "expectedOutcome": "GUIDED_LEARNING",
+      "evidence": {
+        "tokenChain": [],
+        "activity": []
+      },
+      "maturity": "works",
+      "productRoles": {},
+      "primaryTool": null,
+      "needs": [],
+      "flag": null,
+      "opens": "learning-link",
+      "linkOut": null
+    },
+    {
+      "id": "UC-LEARN2",
+      "track": "learn",
+      "title": "PingOne MCP Inspector",
+      "buyerStory": "See the hosted PingOne MCP server for real — browse its live tool schemas and invoke them.",
+      "pingOneSolution": "Calls the hosted PingOne MCP server over HTTP; tool schemas are fetched live and grouped by resource (Environments, Applications, Users, Populations).",
+      "trigger": {
+        "type": "link",
+        "path": "/pingone-mcp-inspector",
+        "label": "Open PingOne MCP Inspector"
+      },
+      "expectedOutcome": "LIVE_MCP_TOOLS",
+      "evidence": {
+        "tokenChain": [],
+        "activity": []
+      },
+      "maturity": "works",
+      "productRoles": {},
+      "primaryTool": null,
+      "needs": [],
+      "flag": null,
+      "opens": "learning-link",
+      "linkOut": "pingone-mcp-inspector"
+    },
+    {
+      "id": "UC-LEARN3",
+      "track": "learn",
+      "title": "Generic MCP Inspector",
+      "buyerStory": "Explore the demo’s own banking MCP server the same way you would any MCP endpoint.",
+      "pingOneSolution": "Inspects the demo’s banking MCP server — tool discovery, schema-driven invocation, and the live tool-call pipeline with token-exchange and Authorize gates.",
+      "trigger": {
+        "type": "link",
+        "path": "/mcp-inspector",
+        "label": "Open Generic MCP Inspector"
+      },
+      "expectedOutcome": "LIVE_MCP_TOOLS",
+      "evidence": {
+        "tokenChain": [],
+        "activity": []
+      },
+      "maturity": "works",
+      "productRoles": {},
+      "primaryTool": null,
+      "needs": [],
+      "flag": null,
+      "opens": "learning-link",
+      "linkOut": "mcp-tools"
+    },
+    {
+      "id": "UC-LEARN4",
+      "track": "learn",
+      "title": "MCP Tools",
+      "buyerStory": "Understand what MCP is and how tools, schemas, and invocations fit together.",
+      "pingOneSolution": "An education panel on the Model Context Protocol — tools, schemas, and how PingOne secures agent-to-tool calls.",
+      "trigger": {
+        "type": "link",
+        "path": "/mcp-tools",
+        "label": "Open MCP Tools"
+      },
+      "expectedOutcome": "GUIDED_LEARNING",
+      "evidence": {
+        "tokenChain": [],
+        "activity": []
+      },
+      "maturity": "works",
+      "productRoles": {},
+      "primaryTool": null,
+      "needs": [],
+      "flag": null,
+      "opens": "learning-link",
+      "linkOut": null
+    },
+    {
+      "id": "UC-LEARN5",
+      "track": "learn",
+      "title": "Learning Hub",
+      "buyerStory": "A curated landing page for the demo’s learning material and guided walkthroughs.",
+      "pingOneSolution": "The learning hub — a jumping-off point to the demo’s guides, concepts, and hands-on modules.",
+      "trigger": {
+        "type": "link",
+        "path": "/learning",
+        "label": "Open Learning Hub"
+      },
+      "expectedOutcome": "GUIDED_LEARNING",
+      "evidence": {
+        "tokenChain": [],
+        "activity": []
+      },
+      "maturity": "works",
+      "productRoles": {},
+      "primaryTool": null,
+      "needs": [],
+      "flag": null,
+      "opens": "learning-link",
+      "linkOut": "learning-hub"
+    },
+    {
+      "id": "UC-LEARN6",
+      "track": "learn",
+      "title": "Token Flow (Interactive)",
+      "buyerStory": "Watch the delegation and token chain unfold step by step — see how each hop is minted and validated.",
+      "pingOneSolution": "An interactive visualization of the RFC 8693 token-exchange and Authorize flow — user token → delegated agent token → gateway → decision → tool.",
+      "trigger": {
+        "type": "link",
+        "path": "/architecture/token-flow",
+        "label": "Open Token Flow"
+      },
+      "expectedOutcome": "GUIDED_LEARNING",
+      "evidence": {
+        "tokenChain": [],
+        "activity": []
+      },
+      "maturity": "works",
+      "productRoles": {},
+      "primaryTool": null,
+      "needs": [],
+      "flag": null,
+      "opens": "learning-link",
+      "linkOut": null
+    },
+    {
+      "id": "UC-LEARN7",
+      "track": "learn",
+      "title": "The Ungoverned Agent (OpenCLI)",
+      "buyerStory": "The \"before\" picture: an AI agent rides the user’s logged-in browser session and moves money through the bank’s own UI — full user power, no identity, no scope, no consent, no audit.",
+      "pingOneSolution": "The contrast that motivates the Agent Gateway: session-riding tools like OpenCLI carry no agent identity or delegated token, so the demo records the transfer as an ordinary user session — indistinguishable from the human. Governed access adds the RFC 8693 act-chain, PingOne Authorize decision, and an agent-attributed audit trail.",
+      "trigger": {
+        "type": "link",
+        "path": "/ungoverned-agent",
+        "label": "Open Ungoverned Agent"
+      },
+      "expectedOutcome": "GUIDED_LEARNING",
+      "evidence": {
+        "tokenChain": [],
+        "activity": []
+      },
+      "maturity": "works",
+      "productRoles": {},
+      "primaryTool": null,
+      "needs": [],
+      "flag": null,
+      "opens": "learning-link",
+      "linkOut": null
+    },
+    {
+      "id": "UC-PAM-SETUP",
+      "track": "learn",
+      "title": "Privilege Demo — SE Setup",
+      "buyerStory": "SEs need a repeatable checklist to onboard VMs, install the Privilege Agent, and enroll MFA before presenting the shared environment.",
+      "pingOneSolution": "PingOne Privilege shared MT environment with pre-provisioned AgentPrivilege and Approver groups — SEs complete VM and agent setup locally.",
+      "trigger": {
+        "type": "link",
+        "path": "/privilege-demo?tab=setup",
+        "label": "Open SE Privilege Setup"
+      },
+      "expectedOutcome": "GUIDED_LEARNING",
+      "evidence": {
+        "tokenChain": [],
+        "activity": []
+      },
+      "maturity": "works",
+      "productRoles": {
+        "privilege": "Hosts JIT access requests, approvals, session brokering, and audit for privileged resources."
+      },
+      "primaryTool": null,
+      "needs": [
+        "privilege"
+      ],
+      "flag": null,
+      "opens": "learning-link",
+      "linkOut": null
+    },
+    {
+      "id": "UC-PAM-SCRIPT",
+      "track": "learn",
+      "title": "Privilege Demo — Request Access Script",
+      "buyerStory": "An end user requests JIT access to AWS AppRoles, fine-grained S3 buckets, VPC bundles, and optional Kubernetes — approved through four-eyes workflows.",
+      "pingOneSolution": "PingOne Privilege brokers federated AWS access, gateway tunnels to VPC resources, sudo command filtering, session recording, and policy kill switches.",
+      "trigger": {
+        "type": "link",
+        "path": "/privilege-demo?tab=script",
+        "label": "Open SE Privilege Script"
+      },
+      "expectedOutcome": "GUIDED_LEARNING",
+      "evidence": {
+        "tokenChain": [],
+        "activity": []
+      },
+      "maturity": "works",
+      "productRoles": {
+        "privilege": "Request, approve, broker, record, and revoke privileged sessions across cloud and on-prem targets."
+      },
+      "primaryTool": null,
+      "needs": [
+        "privilege"
+      ],
+      "flag": null,
+      "opens": "learning-link",
+      "linkOut": null
+    },
+    {
+      "id": "UC-LEARN8",
+      "track": "learn",
+      "title": "Enterprise-Managed MCP Authorization",
+      "buyerStory": "IT should control which MCP servers employees can use — without per-server OAuth consent for every agent.",
+      "pingOneSolution": "MCP extension io.modelcontextprotocol/enterprise-managed-authorization: PingOne as IdP gates MCP access by group; this demo uses RFC 8693 as an ID-JAG stand-in until native ID-JAG ships.",
+      "trigger": {
+        "type": "edu",
+        "panel": "enterprise-managed-auth",
+        "tab": "overview",
+        "label": "Open EMA panel"
+      },
+      "expectedOutcome": "GUIDED_LEARNING",
+      "evidence": {
+        "tokenChain": [],
+        "activity": []
+      },
+      "maturity": "works",
+      "productRoles": {},
+      "primaryTool": null,
+      "needs": [],
+      "flag": null,
+      "opens": "learning-link",
+      "linkOut": null
+    },
+    {
+      "id": "UC-LEARN9",
+      "track": "learn",
+      "title": "ID-JAG / Cross-App Access",
+      "buyerStory": "Cross-app agent access needs a portable identity assertion — not a full federation hop for every resource server.",
+      "pingOneSolution": "Identity Assertion JWT Authorization Grant (ID-JAG): the enterprise IdP issues a grant the MCP Authorization Server exchanges for an MCP access token — the token enterprise-managed auth builds on.",
+      "trigger": {
+        "type": "edu",
+        "panel": "id-jag",
+        "tab": "how-it-works",
+        "label": "Open ID-JAG panel"
+      },
+      "expectedOutcome": "GUIDED_LEARNING",
+      "evidence": {
+        "tokenChain": [],
+        "activity": []
+      },
+      "maturity": "works",
+      "productRoles": {},
+      "primaryTool": null,
+      "needs": [],
+      "flag": null,
+      "opens": "learning-link",
+      "linkOut": "id-jag-standalone"
+    },
+    {
+      "id": "UC-LEARN10",
+      "track": "learn",
+      "title": "Orchestration SDK (Custom UI)",
+      "buyerStory": "Teams want their own sign-in UI without giving up orchestration — and without shipping an app release every time the flow changes.",
+      "pingOneSolution": "The Ping Orchestration SDK (@forgerock/davinci-client) runs a DaVinci flow with response_mode=pi.flow and hands the app collectors — a description of what the flow needs next — so the app renders every field itself while the flow stays editable in DaVinci.",
+      "trigger": {
+        "type": "link",
+        "path": "/davinci-sdk",
+        "label": "Open DaVinci SDK guide"
+      },
+      "expectedOutcome": "GUIDED_LEARNING",
+      "evidence": {
+        "tokenChain": [],
+        "activity": []
+      },
+      "maturity": "works",
+      "productRoles": {},
+      "primaryTool": null,
+      "needs": [],
+      "flag": null,
+      "opens": "learning-link",
+      "linkOut": null
+    },
+    {
+      "id": "UC-LEARN12",
+      "track": "learn",
+      "title": "PingFederate DaVinci Integration Kit",
+      "buyerStory": "Teams want their PingFederate authentication policy to run a DaVinci flow while keeping PingFederate in control of the sign-in session.",
+      "pingOneSolution": "PingFederate invokes the installed PingOne DaVinci IdP Adapter from its authentication policy. The user must sign in through PingFederate; a PingOne application login does not run this adapter.",
+      "trigger": {
+        "type": "link",
+        "path": "/pingfederate-davinci-kit",
+        "label": "Open PingFederate DaVinci Integration Kit"
+      },
+      "expectedOutcome": "GUIDED_LEARNING",
+      "evidence": {
+        "tokenChain": [],
+        "activity": []
+      },
+      "maturity": "works",
+      "productRoles": {},
+      "primaryTool": null,
+      "needs": [],
+      "flag": null,
+      "opens": "learning-link",
+      "linkOut": null
+    },
+    {
+      "id": "UC-LEARN13",
+      "track": "learn",
+      "title": "PingFederate RAR — the authorization server refuses an out-of-policy transfer",
+      "buyerStory": "An AI agent asks to move money for a user. The bank wants the authorization server, not the agent, to hold the line on whose accounts, how much and in what currency.",
+      "pingOneSolution": "PingFederate 13.1 receives the transaction as an authorization detail through PAR and runs a custom processor. It checks the request shape when it is pushed; after the user signs in it checks that the user is the one named, that both accounts are theirs and that the amount is within their limit. A request that fails is refused.",
+      "trigger": {
+        "type": "link",
+        "path": "/pingfederate-ai-agent",
+        "label": "Open the PingFederate RAR demo"
+      },
+      "expectedOutcome": "GUIDED_LEARNING",
+      "evidence": {
+        "tokenChain": [],
+        "activity": []
+      },
+      "maturity": "works",
+      "productRoles": {},
+      "primaryTool": null,
+      "needs": [],
+      "flag": null,
+      "opens": "learning-link",
+      "linkOut": null
+    },
+    {
+      "id": "UC-LEARN14",
+      "track": "learn",
+      "title": "CIBA human approval — PingFederate or PingOne, by how you signed in",
+      "buyerStory": "An AI agent needs a real person to approve a sensitive action on their own device, and the organisation may run its authorization server on PingFederate or on PingOne.",
+      "pingOneSolution": "The page asks the authorization server that issued your session. Signed in through PingFederate, it starts a PingFederate CIBA request and a mock phone pops up to approve it. Signed in through PingOne, it starts PingOne CIBA and the approval goes to your enrolled PingOne MFA device. Either way the page polls until the request is approved, denied or expired.",
+      "trigger": {
+        "type": "link",
+        "path": "/pingfederate-ai-agent",
+        "label": "Open the CIBA approval demo"
+      },
+      "expectedOutcome": "GUIDED_LEARNING",
+      "evidence": {
+        "tokenChain": [],
+        "activity": []
+      },
+      "maturity": "works",
+      "productRoles": {},
+      "primaryTool": null,
+      "needs": [],
+      "flag": null,
+      "opens": "approval",
+      "linkOut": null
+    },
+    {
+      "id": "UC-LEARN15",
+      "track": "learn",
+      "title": "Jev decision model — System One vs System Two",
+      "buyerStory": "An agent needs fast, typed judgments — block this text, route this request, score this risk — and a generative LLM is seconds and prose for what should be milliseconds and a number.",
+      "pingOneSolution": "Jev (TypeSafe) answers typed questions with a typed answer — a choice, a confidence, or a P(yes) — so the demo pairs a keyword baseline with the model and shows where confidence becomes (and never becomes) permission.",
+      "trigger": {
+        "type": "link",
+        "path": "/jev-learning"
+      },
+      "expectedOutcome": "GUIDED_LEARNING",
+      "evidence": {
+        "tokenChain": [],
+        "activity": []
+      },
+      "maturity": "works",
+      "productRoles": {},
+      "primaryTool": null,
+      "needs": [],
+      "flag": null,
+      "opens": "learning-link",
+      "linkOut": null
+    },
+    {
+      "id": "UC-LEARN11",
+      "track": "learn",
+      "title": "Privilege LLM — prompt injection blocked",
+      "buyerStory": "A model-facing prompt can carry an instruction override that tries to bypass policy and trigger a high-impact action.",
+      "pingOneSolution": "PingOne Privilege evaluates the LLM request at the gateway and blocks the prompt before it reaches the model.",
+      "trigger": {
+        "type": "link",
+        "path": "/llm-gateway?attack=prompt_injection",
+        "label": "Open Privilege LLM prompt-injection run"
+      },
+      "expectedOutcome": "DENY",
+      "evidence": {
+        "tokenChain": [],
+        "activity": [
+          "llm"
+        ],
+        "llm": [
+          "privilege-policy-deny"
+        ]
+      },
+      "maturity": "works",
+      "productRoles": {
+        "privilege": "Evaluates the LLM request for prompt-injection signals and blocks it before provider execution."
+      },
+      "primaryTool": null,
+      "needs": [
+        "privilege"
+      ],
+      "flag": null,
+      "opens": "learning-link",
+      "linkOut": null
+    },
+    {
+      "id": "UC-LEARN16",
+      "track": "learn",
+      "title": "MFA Test — FIDO2 passkey ceremony",
+      "buyerStory": "Presenters explaining the MFA step-up story need to show the raw PingOne MFA API — enrollment, FIDO2 passkey challenge, verification — not just the polished agent flow.",
+      "pingOneSolution": "The MFA Test page drives the real PingOne MFA endpoints end to end: device enrollment, passkey/WebAuthn assertion creation and verification, with every request/response shown.",
+      "trigger": {
+        "type": "link",
+        "path": "/mfa-test",
+        "label": "Open MFA Test"
+      },
+      "expectedOutcome": "GUIDED_LEARNING",
+      "evidence": {
+        "tokenChain": [],
+        "activity": []
+      },
+      "maturity": "works",
+      "productRoles": {},
+      "primaryTool": null,
+      "needs": [],
+      "flag": null,
+      "opens": "learning-link",
+      "linkOut": null
+    },
+    {
+      "id": "UC-LEARN17",
+      "track": "learn",
+      "title": "OAuth Debug — live token flow log",
+      "buyerStory": "After any token demo someone asks \"can I see the raw OAuth traffic?\" — the debug log viewer shows the actual requests, tokens, and decisions.",
+      "pingOneSolution": "A live log viewer over the BFF's OAuth traffic: authorization requests, code exchanges, introspection calls, and token decisions as they happened.",
+      "trigger": {
+        "type": "link",
+        "path": "/oauth-debug-logs",
+        "label": "Open OAuth Debug"
+      },
+      "expectedOutcome": "GUIDED_LEARNING",
+      "evidence": {
+        "tokenChain": [],
+        "activity": []
+      },
+      "maturity": "works",
+      "productRoles": {},
+      "primaryTool": null,
+      "needs": [],
+      "flag": null,
+      "opens": "learning-link",
+      "linkOut": null
+    },
+    {
+      "id": "UC-LEARN18",
+      "track": "learn",
+      "title": "LLM Test — raw provider chat",
+      "buyerStory": "To appreciate what Privilege adds, show the same model without it: a raw, ungoverned chat with the configured LLM provider.",
+      "pingOneSolution": "The LLM Test page is the unmediated counterpart to the Privilege LLM gateway — same provider, no policy gateway in the path.",
+      "trigger": {
+        "type": "link",
+        "path": "/llm-test",
+        "label": "Open LLM Test"
+      },
+      "expectedOutcome": "GUIDED_LEARNING",
+      "evidence": {
+        "tokenChain": [],
+        "activity": []
+      },
+      "maturity": "works",
+      "productRoles": {},
+      "primaryTool": null,
+      "needs": [],
+      "flag": null,
+      "opens": "learning-link",
+      "linkOut": null
+    },
+    {
+      "id": "UC-LEARN19",
+      "track": "learn",
+      "title": "Intent Inspector — PAR/RAR payloads",
+      "buyerStory": "The intent-binding story raises \"what exactly got pushed?\" — the inspector shows the pushed authorization request and its authorization_details.",
+      "pingOneSolution": "The Intent Inspector renders the PAR request objects and RFC 9396 authorization_details that UC14/UC14b push, so the audience can read the intent contract.",
+      "trigger": {
+        "type": "link",
+        "path": "/intent-inspector",
+        "label": "Open Intent Inspector"
+      },
+      "expectedOutcome": "GUIDED_LEARNING",
+      "evidence": {
+        "tokenChain": [],
+        "activity": []
+      },
+      "maturity": "works",
+      "productRoles": {},
+      "primaryTool": null,
+      "needs": [],
+      "flag": null,
+      "opens": "learning-link",
+      "linkOut": "intent-par-inspector"
+    },
+    {
+      "id": "UC25",
+      "track": "controls",
+      "title": "Enterprise-managed MCP access",
+      "buyerStory": "Employees sign in once with corporate SSO; IT pre-approves MCP servers — no separate Connect-to-MCP OAuth step for every agent session.",
+      "pingOneSolution": "When Enterprise-Managed MCP Auth is on, PingOne group policy gates token issuance; the BFF mints MCP tokens via RFC 8693 as an ID-JAG stand-in and auto-connects the agent when policy passes.",
+      "trigger": {
+        "type": "chip",
+        "text": "show my balance"
+      },
+      "expectedOutcome": "PERMIT",
+      "evidence": {
+        "tokenChain": [
+          "user-token",
+          "token-exchange",
+          "tool-dispatched"
+        ],
+        "activity": [
+          "token",
+          "mcp"
+        ]
+      },
+      "maturity": "flag:ff_enterprise_managed_mcp_auth",
+      "productRoles": {
+        "idp": "Evaluates group/population policy and issues delegated MCP tokens via RFC 8693 stand-in for ID-JAG.",
+        "gw": "Validates MCP access tokens and routes tool calls after gateway introspection."
+      },
+      "primaryTool": "get_account_balance",
+      "needs": [
+        "idp",
+        "gw"
+      ],
+      "flag": "ff_enterprise_managed_mcp_auth",
+      "opens": "none",
+      "linkOut": null
+    },
+    {
+      "id": "UC39",
+      "track": "controls",
+      "title": "Centralized MCP revocation",
+      "buyerStory": "When someone changes teams or leaves, IT revokes their MCP access in one console — not service by service.",
+      "pingOneSolution": "Removing the user from the allowed PingOne group makes the enterprise IdP refuse to issue an ID-JAG on the next tool call, and any MCP token the session still holds is revoked.",
+      "trigger": {
+        "type": "chip",
+        "text": "show my balance"
+      },
+      "expectedOutcome": "PERMIT",
+      "evidence": {
+        "tokenChain": [
+          "user-token",
+          "enterprise-managed-mode"
+        ],
+        "activity": [
+          "token",
+          "mcp"
+        ]
+      },
+      "maturity": "flag:ff_enterprise_managed_mcp_auth",
+      "productRoles": {
+        "idp": "Evaluates group membership and refuses to issue the ID-JAG when policy denies."
+      },
+      "primaryTool": "get_account_balance",
+      "needs": [
+        "idp"
+      ],
+      "flag": "ff_enterprise_managed_mcp_auth",
+      "opens": "none",
+      "linkOut": null
+    },
+    {
+      "id": "UC40",
+      "track": "controls",
+      "title": "Enterprise-Managed MCP Authorization (native ID-JAG)",
+      "buyerStory": "IT wants MCP access granted centrally per employee and per server — not a consent screen per MCP server, and not a shared credential the agent framework has to hold.",
+      "pingOneSolution": "The enterprise IdP evaluates PingOne group policy and signs a single-use Identity Assertion JWT Authorization Grant (ID-JAG); the MCP Authorization Server verifies it and issues an access token scoped to that one server — no MCP-side consent screen, and no token at all for an employee IT hasn't granted.",
+      "trigger": {
+        "type": "link",
+        "path": "/demo/enterprise-mcp",
+        "label": "Open Enterprise-Managed MCP Auth"
+      },
+      "expectedOutcome": "PERMIT",
+      "evidence": {
+        "tokenChain": [
+          "user-token",
+          "enterprise-managed-mode",
+          "id-jag-issued",
+          "id-jag-redeemed"
+        ],
+        "activity": [
+          "token",
+          "mcp"
+        ]
+      },
+      "maturity": "flag:ff_enterprise_managed_mcp_auth",
+      "productRoles": {
+        "idp": "Evaluates PingOne group policy and signs the ID-JAG before anything is minted.",
+        "authz": "The MCP Authorization Server verifies the ID-JAG and issues the scoped access token."
+      },
+      "primaryTool": null,
+      "needs": [
+        "idp",
+        "authz"
+      ],
+      "flag": "ff_enterprise_managed_mcp_auth",
+      "opens": "none",
+      "linkOut": null
+    },
+    {
+      "id": "UC-LOGIN",
+      "track": "demo",
+      "title": "PingOne login (OIDC + PKCE)",
+      "buyerStory": "Before an agent can act for someone, that person has to prove who they are — and the browser should never hold the tokens.",
+      "pingOneSolution": "PingOne authenticates the person with OIDC authorization code + PKCE; the BFF keeps the tokens server-side and gives the browser only a session cookie.",
+      "trigger": {
+        "type": "link",
+        "path": "/resource-server",
+        "label": "Sign in with PingOne, end on the resource server"
+      },
+      "expectedOutcome": "PERMIT",
+      "evidence": {
+        "tokenChain": [],
+        "activity": []
+      },
+      "maturity": "works",
+      "productRoles": {
+        "idp": "Authenticates the person and issues the authorization code and tokens."
+      },
+      "primaryTool": null,
+      "needs": [
+        "idp"
+      ],
+      "flag": null,
+      "opens": "none",
+      "linkOut": null
+    },
+    {
+      "id": "UC-LOGIN-PF",
+      "track": "demo",
+      "title": "PingFederate login (OIDC + PKCE)",
+      "buyerStory": "Some customers already run PingFederate as their identity provider — the same agent flows have to start from a PingFederate sign-in.",
+      "pingOneSolution": "PingFederate authenticates the person with OIDC authorization code + PKCE; the BFF keeps the tokens server-side and gives the browser only a session cookie.",
+      "trigger": {
+        "type": "link",
+        "path": "/resource-server",
+        "label": "Sign in with PingFederate, end on the resource server"
+      },
+      "expectedOutcome": "PERMIT",
+      "evidence": {
+        "tokenChain": [],
+        "activity": []
+      },
+      "maturity": "works",
+      "productRoles": {
+        "idp": "PingFederate authenticates the person and issues the authorization code and tokens."
+      },
+      "primaryTool": null,
+      "needs": [
+        "idp"
+      ],
+      "flag": null,
+      "opens": "none",
+      "linkOut": null
+    },
+    {
+      "id": "UC-LOGIN-AIC",
+      "track": "demo",
+      "title": "AIC login (federated through PingOne)",
+      "buyerStory": "Some customers keep their people in PingOne Advanced Identity Cloud — they should sign in there and still get the same governed agent flows.",
+      "pingOneSolution": "PingOne stays the authorization server and treats AIC as an external OIDC identity provider: the person signs in at AIC, and PingOne issues the tokens the BFF keeps server-side.",
+      "trigger": {
+        "type": "link",
+        "path": "/resource-server",
+        "label": "Sign in with AIC, end on the resource server"
+      },
+      "expectedOutcome": "PERMIT",
+      "evidence": {
+        "tokenChain": [],
+        "activity": []
+      },
+      "maturity": "works",
+      "productRoles": {
+        "idp": "AIC authenticates the person; PingOne federates to it and issues the authorization code and tokens."
+      },
+      "primaryTool": null,
+      "needs": [
+        "idp"
+      ],
+      "flag": null,
+      "opens": "none",
+      "linkOut": null
+    },
+    {
+      "id": "UC-AIC-TX",
+      "track": "demo",
+      "title": "AIC token exchange (delegation)",
+      "buyerStory": "An agent has to act for a person, but it should never hold that person's own token — and the authorization server should decide whether this agent is allowed to.",
+      "pingOneSolution": "PingOne Advanced Identity Cloud exchanges the person's token and the agent's token for a narrower token (RFC 8693) whose act claim names the agent, and only when the May Act script on the person's client authorizes that agent.",
+      "trigger": {
+        "type": "link",
+        "path": "/aic-token-exchange",
+        "label": "Open AIC Token Exchange"
+      },
+      "expectedOutcome": "PERMIT",
+      "evidence": {
+        "tokenChain": [],
+        "activity": []
+      },
+      "maturity": "works",
+      "productRoles": {
+        "idp": "AIC authenticates the person, issues the subject, actor and delegated tokens, and enforces the May Act script."
+      },
+      "primaryTool": null,
+      "needs": [
+        "idp"
+      ],
+      "flag": null,
+      "opens": "none",
+      "linkOut": null
+    },
+    {
+      "id": "UC-OBO",
+      "track": "demo",
+      "title": "On-behalf-of delegation (OBO inspector)",
+      "buyerStory": "An AI agent has to act for a signed-in person, but it must never hold that person's token, and every downstream call has to say who the person is and which agent acted.",
+      "pingOneSolution": "PingOne exchanges the person's token and the agent's own client-credentials token (RFC 8693) for a narrow token whose sub is the person and whose act claim names the agent. Delegation, not impersonation.",
+      "trigger": {
+        "type": "link",
+        "path": "/personal-agent?tab=obo",
+        "label": "Open the delegation inspector"
+      },
+      "expectedOutcome": "PERMIT",
+      "evidence": {
+        "tokenChain": [],
+        "activity": []
+      },
+      "maturity": "works",
+      "productRoles": {
+        "idp": "PingOne authenticates the person, issues the actor token and performs the RFC 8693 exchange that adds the act claim."
+      },
+      "primaryTool": null,
+      "needs": [
+        "idp"
+      ],
+      "flag": null,
+      "opens": "obo",
+      "linkOut": null
+    },
+    {
+      "id": "UC27",
+      "track": "hitl",
+      "title": "HITL consent bypass attempt",
+      "buyerStory": "A client claiming \"consent already given\" must never skip the human approval gate.",
+      "pingOneSolution": "The BFF verifies a real, live HITL receipt — no boolean flag can substitute for it.",
+      "trigger": {
+        "type": "chip",
+        "text": "transfer $600 from checking to savings"
+      },
+      "expectedOutcome": "STEP_UP",
+      "evidence": {
+        "tokenChain": [
+          "user-token",
+          "authorize-decision"
+        ],
+        "activity": [
+          "token",
+          "mcp",
+          "hitl"
+        ]
+      },
+      "maturity": "works",
+      "productRoles": {
+        "authz": "P1AZ policy still governs whether HITL is required for this transaction type.",
+        "gw": "Routes the call to the BFF preflight check before any tool dispatch."
+      },
+      "primaryTool": "create_transfer",
+      "needs": [
+        "gw",
+        "authz",
+        "mfa"
+      ],
+      "flag": null,
+      "opens": "approval",
+      "linkOut": null
+    },
+    {
+      "id": "UC28",
+      "track": "controls",
+      "title": "Tool set as the authorization boundary (airline chatbot-liability pattern)",
+      "buyerStory": "An agent must never be able to promise something it has no tool to actually do.",
+      "pingOneSolution": "The tool catalog itself is the authorization boundary — no tool can GRANT a waiver, so no waiver can be promised, no matter what the LLM says.",
+      "trigger": {
+        "type": "chip",
+        "text": "Can you waive the fee on my checking account?"
+      },
+      "expectedOutcome": "PERMIT",
+      "evidence": {
+        "tokenChain": [
+          "user-token",
+          "token-exchange"
+        ],
+        "activity": [
+          "mcp"
+        ]
+      },
+      "maturity": "works",
+      "productRoles": {
+        "gw": "Routes the tool call; the tool itself (not a policy check) is what bounds the action."
+      },
+      "primaryTool": "request_fee_waiver",
+      "needs": [
+        "gw"
+      ],
+      "flag": null,
+      "opens": "none",
+      "linkOut": null
+    },
+    {
+      "id": "UC37",
+      "track": "controls",
+      "title": "Verified Trust — signed agent assertion on A2A delegation",
+      "buyerStory": "When an agent hands off to another organization's agent, a bearer token alone doesn't let the receiving side verify the claim offline or prove it later without calling back to the issuer.",
+      "pingOneSolution": "PingOne Credentials issues a signed SD-JWT Verifiable Credential asserting which agent is acting for which user at A2A delegation start; the receiving specialist advertises it as a second security scheme alongside the existing bearer token.",
+      "trigger": {
+        "type": "chip",
+        "text": "hand off to a specialist"
+      },
+      "expectedOutcome": "PERMIT",
+      "evidence": {
+        "tokenChain": [
+          "user-token",
+          "a2a-agent1-actor",
+          "a2a-exchange1",
+          "verified-trust-issuance",
+          "a2a-agent2-actor",
+          "a2a-exchange2",
+          "tool-dispatched"
+        ],
+        "activity": [
+          "token",
+          "delegate",
+          "verified-trust",
+          "authorize",
+          "mcp"
+        ]
+      },
+      "maturity": "flag:ff_verified_trust_a2a",
+      "productRoles": {
+        "idp": "Mints the nested-act delegated bearer token exactly as UC2 does.",
+        "authz": "Evaluates the act chain as usual — the credential is additive, not a replacement authorization signal."
+      },
+      "primaryTool": "get_portfolio_summary",
+      "needs": [
+        "idp",
+        "authz",
+        "a2a"
+      ],
+      "flag": "ff_verified_trust_a2a",
+      "opens": "a2a",
+      "linkOut": null
+    },
+    {
+      "id": "UC38",
+      "track": "foundations",
+      "title": "Workload Agent: MFA-gated protected action",
+      "buyerStory": "Customers want a trusted digital assistant acting on their behalf — but delegation must require proof of identity and be scoped to what the user explicitly authorized.",
+      "pingOneSolution": "User authenticates with MFA; the pre-registered workload agent is verified; RFC 8693 exchange mints a delegated token (sub=user, act=assistant) scoped to the selected vertical action.",
+      "trigger": {
+        "type": "link",
+        "path": "/workload-agents?useCase=UC38",
+        "label": "Open MFA-gated workload action"
+      },
+      "expectedOutcome": "PERMIT",
+      "evidence": {
+        "tokenChain": [
+          "user-token",
+          "personal-agent-lookup",
+          "token-exchange",
+          "tool-dispatched"
+        ],
+        "activity": [
+          "token",
+          "mcp"
+        ]
+      },
+      "maturity": "flag:ff_personal_agent_concierge",
+      "productRoles": {
+        "idp": "Issues the high-assurance (MFA-satisfied) user token and serves as the source of truth for the pre-registered workload-agent identity.",
+        "gw": "Passes the delegated token to the MCP resource server; the act claim is visible in every tool call.",
+        "authz": "Evaluates the selected vertical action and any assurance obligations before the tool executes."
+      },
+      "primaryTool": "create_transfer",
+      "needs": [
+        "idp",
+        "gw",
+        "authz"
+      ],
+      "flag": "ff_personal_agent_concierge",
+      "opens": "none",
+      "linkOut": null
+    },
+    {
+      "id": "UC43",
+      "track": "foundations",
+      "title": "Consumer & Partner Agent — CIMD registration",
+      "buyerStory": "Customer-facing agents need a discoverable registration path that establishes trust without pretending the identity provider supports CIMD natively.",
+      "pingOneSolution": "The BFF runs a clearly labeled CIMD registration facade in the background, stores only public-safe metadata, and keeps the user-owned agent association visible in the NHI inventory.",
+      "trigger": {
+        "type": "link",
+        "path": "/agent-builder",
+        "label": "Open Consumer & Partner Agent registration"
+      },
+      "expectedOutcome": "CIMD_FACADE_REGISTERED",
+      "evidence": {
+        "tokenChain": [],
+        "activity": [
+          "register",
+          "inventory"
+        ]
+      },
+      "maturity": "works",
+      "productRoles": {
+        "idp": "Remains the source of the user identity and real PingOne-backed agent identity used by later governed flows.",
+        "gw": "Publishes the metadata facade and exposes the safe registration evidence."
+      },
+      "primaryTool": null,
+      "needs": [
+        "idp",
+        "gw"
+      ],
+      "flag": null,
+      "opens": "none",
+      "linkOut": null
+    },
+    {
+      "id": "UC44",
+      "track": "foundations",
+      "title": "Workload Agent: OBO customer-data read",
+      "buyerStory": "A hosted digital assistant must act for an authenticated customer without collapsing the assistant identity into the human identity.",
+      "pingOneSolution": "PingOne pre-registers the workload agent identity; RFC 8693 token exchange produces a delegated token with sub=user and act=assistant, which the gateway and Authorize evaluate on every tool call.",
+      "trigger": {
+        "type": "link",
+        "path": "/workload-agents?useCase=UC44",
+        "label": "Open OBO customer-data read"
+      },
+      "expectedOutcome": "PERMIT",
+      "evidence": {
+        "tokenChain": [
+          "user-token",
+          "personal-agent-lookup",
+          "token-exchange",
+          "tool-dispatched"
+        ],
+        "activity": [
+          "token",
+          "authorize",
+          "mcp"
+        ]
+      },
+      "maturity": "works",
+      "productRoles": {
+        "idp": "Authenticates the customer and issues the source token; PingOne is also the source of the pre-registered workload-agent identity.",
+        "gw": "Validates the delegated token and routes the assistant call to the protected tool.",
+        "authz": "Evaluates the user, assistant actor, scopes, resource ownership, and step-up requirements."
+      },
+      "primaryTool": "get_account_balance",
+      "needs": [
+        "idp",
+        "gw",
+        "authz"
+      ],
+      "flag": null,
+      "opens": "obo",
+      "linkOut": null
+    },
+    {
+      "id": "UC45",
+      "track": "foundations",
+      "title": "SaaS-Embedded Agent — Website Worker",
+      "buyerStory": "A SaaS website needs an embedded worker that acts for a signed-in customer while keeping its own workload identity and tenant context.",
+      "pingOneSolution": "PingOne provisions a distinct Website Worker identity; the BFF uses mocked CIMD registration for provenance and real delegated execution for every customer action.",
+      "trigger": {
+        "type": "link",
+        "path": "/embedded-worker",
+        "label": "Open Website Worker demo"
+      },
+      "expectedOutcome": "PERMIT",
+      "evidence": {
+        "tokenChain": [
+          "user-token",
+          "personal-agent-lookup",
+          "token-exchange",
+          "tool-dispatched"
+        ],
+        "activity": [
+          "register",
+          "inventory",
+          "token",
+          "authorize",
+          "mcp"
+        ]
+      },
+      "maturity": "works",
+      "productRoles": {
+        "idp": "Authenticates the customer and remains the source of the distinct Website Worker identity.",
+        "gw": "Validates and routes the worker request with the delegated customer context.",
+        "authz": "Evaluates the customer, worker actor, scopes, tenant context, and action policy."
+      },
+      "primaryTool": "redeem_miles",
+      "needs": [
+        "idp",
+        "gw",
+        "authz"
+      ],
+      "flag": null,
+      "opens": "none",
+      "linkOut": null
+    },
+    {
+      "id": "UC48",
+      "track": "foundations",
+      "title": "Consumer Agent — governed flight booking",
+      "buyerStory": "A consumer agent asked to \"book me a flight to Paris under $800\" must prove who it acts for, accept the price policy, and pause for the human when the transaction is consequential.",
+      "pingOneSolution": "The agent exchanges the user token (RFC 8693), PingOne Authorize evaluates the booking price against the transaction policy, returns a HITL consent obligation, and only a verified human approval receipt lets the booking write reach the reservations database.",
+      "trigger": {
+        "type": "link",
+        "path": "/use-cases",
+        "label": "Run the consumer agent booking in the agent (airlines vertical)"
+      },
+      "expectedOutcome": "HITL_REQUIRED",
+      "evidence": {
+        "tokenChain": [
+          "user-token",
+          "token-exchange",
+          "authorize-decision",
+          "hitl-receipt",
+          "tool-dispatched"
+        ],
+        "activity": [
+          "token",
+          "authorize",
+          "hitl",
+          "mcp"
+        ]
+      },
+      "maturity": "works",
+      "productRoles": {
+        "idp": "Authenticates the user and mints the delegated token the consumer agent books with.",
+        "gw": "Validates the delegated token, the intent token, and routes the booking to the airlines resource server.",
+        "authz": "Evaluates the booking price against the transaction policy and returns the HITL consent obligation."
+      },
+      "primaryTool": "book_airline_flight",
+      "needs": [
+        "idp",
+        "gw",
+        "authz",
+        "mfa"
+      ],
+      "flag": null,
+      "opens": "approval",
+      "linkOut": null
+    }
+  ]
+}

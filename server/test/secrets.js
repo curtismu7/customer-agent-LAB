@@ -1,0 +1,63 @@
+// Credential-shaped and personal-looking test values are assembled at run time, so no such string sits in the repository.
+export const SECRETS = {
+  github: ['gh', 'p_', 'a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8'].join(''),
+  githubPat: ['github', '_pat_', '11ABCDEFG0abcdefghijkl_mnopqrstuvwxyz0123456789ABCDEFGHIJ'].join(''),
+  gitlab: ['glpat', '-', 'AbCdEfGhIjKlMnOpQrSt'].join(''),
+  slack: ['xox', 'b-', '123456789012-abcdefghijklmnopqrstuvwx'].join(''),
+  aws: ['AKI', 'AIOSFODNN7EXAMPLE'].join(''),
+  openai: ['sk', '-proj-', 'Zy9Xw8Vv7Uu6Tt5Ss4Rr3Qq2Pp1'].join(''),
+  jwt: ['eyJhbGciOiJIUzI1NiJ9', 'eyJzdWIiOiJhYmNkZWYifQ', 'abcdefghij1234567890XYZ'].join('.'),
+  pem: ['-----BEGIN ', 'PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASC\nabcdefghijklmnop\n-----END ', 'PRIVATE KEY-----'].join(''),
+  bearer: ['Bear', 'er ', 'abcdEFGH1234567890.tokenvalue'].join(''),
+  assignment: ['pass', 'word=', 'hunter2hunter2'].join(''),
+  blob: 'QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVowMTIzNDU2Nzg5',
+  hex: 'deadbeef'.repeat(6),
+  hex40: ['3f786850e387550f', 'dab836ed7e6dc881de23001b'].join(''),
+  hex32: ['5d41402abc4b2a76', 'b9719d911017c592'].join(''),
+  // plain-language and short shapes (reviews found these raw in stored text)
+  plainIs: ['my pass', 'word is Tr0ub4dor-horse-stapl3'].join(''),
+  passcode: ['the pass', 'code is zebra-Quartz-77'].join(''),
+  pwEq: ['p', 'w=Hunter2Hunter2'].join(''),
+  pin: ['my ', 'pin is 482915'].join(''),
+  passphrase: ['pass', 'phrase: correct horse battery'].join(''),
+  userinfo: ['https://svc-user:', 'Sup3rS3cretPw@db.example/path'].join(''),
+  authToken: ['Authorization: tok', 'en abc123SECRETvalue'].join(''),
+  authBasic: ['Authoriz', 'ation: Basic dXNlcjpwYXNzd29yZA=='].join(''),
+  google: ['ya', '29.a0AfH6SMBxQ1w2e3r4t5y6u7i8o9p0'].join(''),
+  accountKey: ['Account', 'Key=abcdEFGH', '1234/ijkl'].join(''),
+  sessionId: ['session', 'id=00D5g000008dkQz!AQ4AQGhw12'].join(''),
+  key31: ['Zq9Xk2Lm8Rt4Vb7N', 'c1Hd5Fj3Gs6Pw0Y'].join(''),
+  shortGh: ['gh', 'p_shortone1234'].join(''),
+  skShort: ['sk', '-ab12cd34'].join(''),
+  secretIs: ['the cli', 'ent secret is Zx9Kq2Lm5Vb'].join(''),
+  zeroWidth: ['sk-liv', '​', 'e-Qw3rTy9Uio1Pas7Dfg'].join(''),
+  bom: ['ghp_Zk3Qw9Lm', '﻿', '2Xv8Rt5Yp1Nb7Hc4Jd6Fa0Sg'].join(''),
+  wordJoiner: ['AKIAZXCV', '⁠', 'BNMASDFGHJKL'].join(''),
+  // personal-looking data
+  ssn: ['123-', '45-', '6789'].join(''),
+  email: ['jane.doe', '@gmail.com'].join(''),
+  card: ['4111 1111 ', '1111 1111'].join(''),
+  cardDashes: ['4111-1111-', '1111-1111'].join(''),
+  phone: ['+1 415 ', '555 0134'].join(''),
+  phoneUs: ['(415) ', '555-0134'].join(''),
+};
+// The part of each value that must not survive in any answer, state or log.
+export const NEEDLE = {
+  github: 'a1B2c3D4e5F6g7H8', githubPat: '11ABCDEFG0abcdefghijkl', gitlab: 'AbCdEfGhIjKlMnOpQrSt', slack: '123456789012-abcdefgh', aws: 'AIOSFODNN7EXAMPLE', openai: 'Zy9Xw8Vv7Uu6Tt5Ss4Rr', jwt: 'abcdefghij1234567890XYZ',
+  pem: 'MIIEvQIBADANBgkqhkiG9w0BAQEFAASC', bearer: 'tokenvalue', assignment: 'hunter2hunter2', blob: 'QUJDREVGR0hJSktM', hex: 'deadbeefdeadbeef', hex40: '3f786850e387550f', hex32: '5d41402abc4b2a76',
+  plainIs: 'Tr0ub4dor', passcode: 'zebra-Quartz', pwEq: 'Hunter2Hunter2', pin: '482915', passphrase: 'correct horse', userinfo: 'Sup3rS3cretPw', authToken: 'abc123SECRETvalue', authBasic: ['dXNlcjpw', 'YXNzd29yZA'].join(''), google: ['a0AfH6SM', 'BxQ1w2e3'].join(''),
+  accountKey: ['abcdEFGH', '1234'].join(''), sessionId: ['00D5g00000', '8dkQz'].join(''), key31: ['Zq9Xk2Lm', '8Rt4Vb7N'].join(''), shortGh: 'shortone1234', skShort: 'ab12cd34', secretIs: 'Zx9Kq2Lm5Vb',
+  zeroWidth: 'Qw3rTy9Uio1Pas7Dfg', bom: 'Nb7Hc4Jd6Fa0Sg', wordJoiner: 'BNMASDFGHJKL', ssn: '123-45-6789', email: 'jane.doe', card: '4111 1111 1111', cardDashes: '4111-1111-1111', phone: '555 0134', phoneUs: '555-0134',
+};
+// What must NOT be masked: ordinary prose, ids, dates, resource and policy names.
+export const PLAIN = [
+  'I need read access to review the change for the release',
+  'please look at ag-bedrock-02 in 000000000001 for maya.chen until 2026-11-02T10:00:00Z under proposal prop-0001',
+  'the token requirements and the password policy are in the handbook',
+  'the secret is stored in the vault, and the pin is bent',
+  'phone support is available 24 hours, call 1234567890 or see version 1.2.3 and build 20261102',
+  'role-lab-admin-ops and sa-vertex-01.proj-lab-001 hold roles/aiplatform.user',
+  'passing the review needs sign-off from priya.nair and lee.park, see non-human-identity-governance-track',
+  'see https://gw1.fabrikam.example and https://github.example/payments-api/pull/123 and the incident write-up',
+  'order 4111 1111 1111 1112 is not a card number (it fails the check digit)',
+];

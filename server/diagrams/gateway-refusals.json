@@ -1,0 +1,157 @@
+{
+  "schema": "diagram-studio/1",
+  "id": "gateway-refusals",
+  "title": "What the gateway refuses, and with which status",
+  "lede": "Every refusal has its own status and its own reason. A refused call never reaches the tool. Simulated; the staged events and the thresholds are the lab's own.",
+  "groups": {
+    "people": {
+      "label": "Customer side",
+      "color": "blue"
+    },
+    "ping": {
+      "label": "Identity and policy",
+      "color": "red"
+    },
+    "gate": {
+      "label": "Gateway",
+      "color": "dark"
+    },
+    "tool": {
+      "label": "Tools",
+      "color": "grey"
+    }
+  },
+  "nodes": [
+    {
+      "id": "bff",
+      "label": "{{castBrand}} app (BFF)",
+      "group": "people",
+      "x": 0,
+      "y": 300
+    },
+    {
+      "id": "gw",
+      "label": "Agent gateway",
+      "group": "gate",
+      "x": 500,
+      "y": 300
+    },
+    {
+      "id": "r401",
+      "label": "401: bad signature, audience, expiry, act or proof",
+      "group": "gate",
+      "x": 1000,
+      "y": 0
+    },
+    {
+      "id": "r403",
+      "label": "403: scope, edge policy or forwarding",
+      "group": "gate",
+      "x": 1000,
+      "y": 200
+    },
+    {
+      "id": "r429",
+      "label": "429: rate limit",
+      "group": "gate",
+      "x": 1000,
+      "y": 400
+    },
+    {
+      "id": "r503",
+      "label": "503: validation down, fail closed",
+      "group": "gate",
+      "x": 1000,
+      "y": 600
+    },
+    {
+      "id": "az",
+      "label": "Authorize",
+      "group": "ping",
+      "x": 500,
+      "y": 600
+    }
+  ],
+  "edges": [
+    {
+      "source": "bff",
+      "target": "gw",
+      "label": "tool call"
+    },
+    {
+      "source": "gw",
+      "target": "r401",
+      "label": "token invalid"
+    },
+    {
+      "source": "gw",
+      "target": "r403",
+      "label": "not allowed"
+    },
+    {
+      "source": "gw",
+      "target": "r429",
+      "label": "too many calls"
+    },
+    {
+      "source": "gw",
+      "target": "r503",
+      "label": "cannot validate"
+    },
+    {
+      "source": "gw",
+      "target": "az",
+      "label": "token ok"
+    }
+  ],
+  "steps": [
+    {
+      "title": "The call arrives",
+      "what": "The BFF presents the delegated token to the gateway.",
+      "hop": "gateway-check",
+      "edges": [
+        0
+      ]
+    },
+    {
+      "title": "Invalid token: 401",
+      "what": "A wrong audience, a bad signature, a missing act claim or a replayed DPoP proof is refused with 401.",
+      "hop": "gateway-check",
+      "edges": [
+        1
+      ]
+    },
+    {
+      "title": "Not allowed: 403",
+      "what": "A token without the scope, a blocked query or state, or a raw user token forwarded without an exchange is refused with 403.",
+      "hop": "gateway-check",
+      "edges": [
+        2
+      ]
+    },
+    {
+      "title": "Too many calls: 429",
+      "what": "A burst over the limit (lab-invented: 30 per minute) is refused with 429 and a retry-after.",
+      "hop": "gateway-check",
+      "edges": [
+        3
+      ]
+    },
+    {
+      "title": "Cannot validate: 503",
+      "what": "When token validation cannot be reached the gateway fails closed.",
+      "hop": "gateway-check",
+      "edges": [
+        4
+      ]
+    },
+    {
+      "title": "Token ok: ask Authorize",
+      "what": "A valid token still needs a policy decision before the tool runs.",
+      "hop": "authorize-decision",
+      "edges": [
+        5
+      ]
+    }
+  ]
+}

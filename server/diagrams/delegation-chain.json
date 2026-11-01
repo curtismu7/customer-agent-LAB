@@ -1,0 +1,150 @@
+{
+  "schema": "diagram-studio/1",
+  "id": "delegation-chain",
+  "title": "Delegation: from sign-in to a dispatched tool call",
+  "lede": "The customer signs in (mock), consents, and the BFF exchanges the user token and the agent token for a delegated token whose act claim names the agent. The gateway checks it, Authorize decides, and only then does the tool run. Simulated: every token is a labelled MOCK.",
+  "groups": {
+    "people": {
+      "label": "Customer side",
+      "color": "blue"
+    },
+    "ping": {
+      "label": "Identity and policy",
+      "color": "red"
+    },
+    "gate": {
+      "label": "Gateway",
+      "color": "dark"
+    },
+    "tool": {
+      "label": "Tools",
+      "color": "grey"
+    }
+  },
+  "nodes": [
+    {
+      "id": "browser",
+      "label": "{{castUser}} in the browser",
+      "group": "people",
+      "x": 0,
+      "y": 0
+    },
+    {
+      "id": "bff",
+      "label": "{{castBrand}} app (BFF) and {{castAgent}}",
+      "group": "people",
+      "x": 500,
+      "y": 0
+    },
+    {
+      "id": "idp",
+      "label": "Identity provider (mock)",
+      "group": "ping",
+      "x": 0,
+      "y": 300
+    },
+    {
+      "id": "gw",
+      "label": "Agent gateway",
+      "group": "gate",
+      "x": 500,
+      "y": 300
+    },
+    {
+      "id": "az",
+      "label": "Authorize (policy decision)",
+      "group": "ping",
+      "x": 1000,
+      "y": 300
+    },
+    {
+      "id": "mcp",
+      "label": "MCP server: {{castReadTool}}, {{castWriteTool}}",
+      "group": "tool",
+      "x": 500,
+      "y": 600
+    }
+  ],
+  "edges": [
+    {
+      "source": "browser",
+      "target": "idp",
+      "label": "mock sign-in as a persona"
+    },
+    {
+      "source": "browser",
+      "target": "idp",
+      "label": "consent: may_act for {{castAgent}}"
+    },
+    {
+      "source": "bff",
+      "target": "idp",
+      "label": "token exchange (RFC 8693): user token + agent token"
+    },
+    {
+      "source": "bff",
+      "target": "gw",
+      "label": "tool call with the delegated token"
+    },
+    {
+      "source": "gw",
+      "target": "az",
+      "label": "decision request"
+    },
+    {
+      "source": "gw",
+      "target": "mcp",
+      "label": "dispatch, only after a permit"
+    }
+  ],
+  "steps": [
+    {
+      "title": "Mock sign-in",
+      "what": "{{castUser}} or {{castUser2}} signs in as a persona. The token is a labelled MOCK, signed with a public mock key.",
+      "hop": "sign-in",
+      "edges": [
+        0
+      ]
+    },
+    {
+      "title": "Consent",
+      "what": "The customer lets {{castAgent}} act for them (may_act) before any exchange.",
+      "hop": "consent",
+      "edges": [
+        1
+      ]
+    },
+    {
+      "title": "Token exchange",
+      "what": "The user token and the agent token become a delegated token: sub is the customer, act names the agent. Delegation, not impersonation.",
+      "hop": "token-exchange",
+      "edges": [
+        2
+      ]
+    },
+    {
+      "title": "Gateway check",
+      "what": "Signature, audience, expiry, act, scope and edge policy are checked before anything else.",
+      "hop": "gateway-check",
+      "edges": [
+        3
+      ]
+    },
+    {
+      "title": "Authorize decision",
+      "what": "PERMIT, DENY, or an obligation (step-up, human approval, CIBA). The thresholds are the lab's own.",
+      "hop": "authorize-decision",
+      "edges": [
+        4
+      ]
+    },
+    {
+      "title": "Tool dispatched",
+      "what": "Only a permitted call reaches the tool. A denial or an obligation stops here and nothing is dispatched.",
+      "hop": "tool-dispatched",
+      "edges": [
+        5
+      ]
+    }
+  ]
+}

@@ -1,0 +1,4 @@
+{
+  "_readme": "Copy to customer.config.json (git-ignored) to brand the lab. Only these two cast values are read; everything else is ignored. host is one label and becomes <host>.example. Overrides the chosen vertical's values. The people, agents and tools in the stories are synthetic and are not otherwise configurable.",
+  "cast": { "brand": "Fabrikam Bank", "host": "fabrikam" }
+}

@@ -1,0 +1,28 @@
+# OrbStack:  HOST_PORT=5601 docker compose up --build -d   ->  http://127.0.0.1:5601
+# The server binds 0.0.0.0 INSIDE the container (CALAB_BIND is the opt-in), but the port is published on loopback only.
+# Do not change the 127.0.0.1 below. HOST_PORT must stay in 5600-5699 (5601 is the Docker default; 5600 is the host-run port).
+# ALLOW_MOCK_SIGNIN=1 is the owner's opt-in to the mock persona sign-in; CAL_PUBLISH=loopback tells the guards that the publish above is loopback-only
+# (a test pins both). Remove ALLOW_MOCK_SIGNIN to turn mock sign-in off. CAL_ALLOW_LIVE is not set: live mode stays refused.
+name: customer-agent-lab
+
+services:
+  customer-agent-lab:
+    build: .
+    ports:
+      - "127.0.0.1:${HOST_PORT:-5601}:5600"
+    environment:
+      PORT: "5600"
+      CALAB_BIND: 0.0.0.0
+      CAL_PUBLISH: loopback
+      ALLOW_MOCK_SIGNIN: "1"
+      CAL_LAB_MODE: ${CAL_LAB_MODE:-mock}
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:5600/api/health').then(r=>r.json()).then(j=>process.exit(j.schema==='demo-health/1'&&j.state==='ready'?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      start_period: 5s
+      start_interval: 2s
+      timeout: 5s
+      retries: 3

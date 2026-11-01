@@ -1,0 +1,346 @@
+{
+  "schema": "demo-content-pack/1",
+  "id": "customer-agent-lab",
+  "title": "Customer Agent LAB",
+  "version": "0.1.0",
+  "demo": {
+    "id": "customer-agent-lab",
+    "name": "Customer Agent LAB",
+    "catalog": "D24",
+    "baseUrl": "http://localhost:5600",
+    "doctor": "/api/health",
+    "tags": [
+      "customer-agent",
+      "token-exchange",
+      "act-claim",
+      "authorize",
+      "gateway",
+      "step-up",
+      "hitl",
+      "ciba",
+      "attacks",
+      "simulated"
+    ]
+  },
+  "glossary": [
+    {
+      "id": "customer-agent",
+      "term": "Customer-facing agent",
+      "definition": "An AI agent that acts for a customer: it asks for a balance, a transfer, an order. Simulated in mock; the use case is from the AI-DEMO2 catalog, the amounts and events are lab-invented.",
+      "aliases": [
+        "customer agent"
+      ]
+    },
+    {
+      "id": "delegation",
+      "term": "Delegation with an act claim",
+      "definition": "RFC 8693 token exchange mints a delegated token whose sub is the customer and whose act claim names the agent. Delegation, not impersonation. Simulated in mock; the use case is from the AI-DEMO2 catalog, the amounts and events are lab-invented.",
+      "aliases": [
+        "act claim",
+        "on behalf of"
+      ]
+    },
+    {
+      "id": "consent",
+      "term": "Consent (may_act)",
+      "definition": "The customer lets a named agent act for them before the exchange. Simulated in mock; the use case is from the AI-DEMO2 catalog, the amounts and events are lab-invented.",
+      "aliases": [
+        "may_act"
+      ]
+    },
+    {
+      "id": "authorize-decision",
+      "term": "Authorize decision",
+      "definition": "A policy decision on every call: PERMIT, DENY, or an obligation (step-up, human approval, CIBA). The lab's thresholds are lab-invented, fitted to the catalog's example amounts. Simulated in mock; the use case is from the AI-DEMO2 catalog, the amounts and events are lab-invented.",
+      "aliases": [
+        "PDP"
+      ]
+    },
+    {
+      "id": "step-up-hitl",
+      "term": "Step-up and human approval",
+      "definition": "A risky write returns an obligation instead of running: MFA step-up, or a verified human approval receipt. A boolean \"approved\" flag from the client does not count. Simulated in mock; the use case is from the AI-DEMO2 catalog, the amounts and events are lab-invented.",
+      "aliases": [
+        "HITL",
+        "step up"
+      ]
+    },
+    {
+      "id": "ciba",
+      "term": "CIBA out-of-band approval",
+      "definition": "The agent asks the identity provider to authenticate the customer on another device and polls until they approve. Needs a live feature flag; runs in mock here. Simulated in mock; the use case is from the AI-DEMO2 catalog, the amounts and events are lab-invented.",
+      "aliases": [
+        "back-channel authentication"
+      ]
+    },
+    {
+      "id": "gateway-check",
+      "term": "Gateway check",
+      "definition": "The gateway validates signature, audience, expiry, act claim and scope, applies rate limits and edge policy, and fails closed. Simulated in mock; the use case is from the AI-DEMO2 catalog, the amounts and events are lab-invented.",
+      "aliases": [
+        "agent gateway"
+      ]
+    },
+    {
+      "id": "a2a-chain",
+      "term": "A2A delegation chain",
+      "definition": "A nested act claim when one agent hands work to another: scope is narrowed at each hop and an unregistered agent in the chain is denied. Simulated in mock; the use case is from the AI-DEMO2 catalog, the amounts and events are lab-invented.",
+      "aliases": [
+        "nested act"
+      ]
+    },
+    {
+      "id": "mock-token",
+      "term": "MOCK token",
+      "definition": "Every token in this lab is issued by the lab, labelled MOCK and signed ES256 with a public mock key. It protects nothing and is shown raw for education.",
+      "aliases": []
+    }
+  ],
+  "sources": [
+    {
+      "id": "catalog",
+      "title": "AI-DEMO2 use-case catalog, commit ff8fb9829 (read only)",
+      "url": "https://example.invalid/ai-demo2-use-case-catalog",
+      "kind": "catalog",
+      "use": "The 87 use cases, their tracks, stories, triggers, expected outcomes and evidence chains.",
+      "status": "read",
+      "checked": "2026-10-31"
+    }
+  ],
+  "cards": [
+    {
+      "id": "try-foundations",
+      "label": "Foundations track (15 use cases)",
+      "description": "Delegation basics: consent, token exchange with an act claim, A2A delegation, personal and workload agents. Simulated in mock; the use case is from the AI-DEMO2 catalog, the amounts and events are lab-invented.",
+      "group": "try-it",
+      "action": {
+        "type": "route",
+        "href": "/#track-foundations"
+      },
+      "terms": [
+        "customer-agent"
+      ],
+      "story": "S01"
+    },
+    {
+      "id": "try-learn",
+      "label": "Learn track (23 use cases)",
+      "description": "Guided learning pages. The lab lists them and links out to a sibling standalone where one covers the same thing (lab reading). Simulated in mock; the use case is from the AI-DEMO2 catalog, the amounts and events are lab-invented.",
+      "group": "try-it",
+      "action": {
+        "type": "route",
+        "href": "/#track-learn"
+      },
+      "terms": [
+        "customer-agent"
+      ],
+      "story": "S02"
+    },
+    {
+      "id": "try-controls",
+      "label": "Controls track (16 use cases)",
+      "description": "Policy controls: authorization denies, group and tier checks, third-party servers scoped at the gateway, enterprise-managed MCP. Simulated in mock; the use case is from the AI-DEMO2 catalog, the amounts and events are lab-invented.",
+      "group": "try-it",
+      "action": {
+        "type": "route",
+        "href": "/#track-controls"
+      },
+      "terms": [
+        "customer-agent"
+      ],
+      "story": "S03"
+    },
+    {
+      "id": "try-hitl",
+      "label": "Hitl track (4 use cases)",
+      "description": "Step-up, human approval and CIBA for risky writes. Simulated in mock; the use case is from the AI-DEMO2 catalog, the amounts and events are lab-invented.",
+      "group": "try-it",
+      "action": {
+        "type": "route",
+        "href": "/#track-hitl"
+      },
+      "terms": [
+        "customer-agent"
+      ],
+      "story": "S04"
+    },
+    {
+      "id": "try-demo",
+      "label": "Demo track (8 use cases)",
+      "description": "Presenter guides and sign-in flows. Simulated in mock; the use case is from the AI-DEMO2 catalog, the amounts and events are lab-invented.",
+      "group": "try-it",
+      "action": {
+        "type": "route",
+        "href": "/#track-demo"
+      },
+      "terms": [
+        "customer-agent"
+      ],
+      "story": "S05"
+    },
+    {
+      "id": "try-attacks",
+      "label": "Attacks track (11 use cases)",
+      "description": "Eleven attacks and the refusal each one ends in. Simulated in mock; the use case is from the AI-DEMO2 catalog, the amounts and events are lab-invented.",
+      "group": "try-it",
+      "action": {
+        "type": "route",
+        "href": "/#track-attacks"
+      },
+      "terms": [
+        "customer-agent"
+      ],
+      "story": "S06"
+    },
+    {
+      "id": "try-tools",
+      "label": "Tools track (8 use cases)",
+      "description": "Protected tools and agent-to-agent access review. Simulated in mock; the use case is from the AI-DEMO2 catalog, the amounts and events are lab-invented.",
+      "group": "try-it",
+      "action": {
+        "type": "route",
+        "href": "/#track-tools"
+      },
+      "terms": [
+        "customer-agent"
+      ],
+      "story": "S07"
+    },
+    {
+      "id": "try-nhi",
+      "label": "Nhi track (2 use cases)",
+      "description": "Non-human identity: the source-tagged roster and the joiner-mover-leaver feed. Simulated in mock; the use case is from the AI-DEMO2 catalog, the amounts and events are lab-invented.",
+      "group": "try-it",
+      "action": {
+        "type": "route",
+        "href": "/#track-nhi"
+      },
+      "terms": [
+        "customer-agent"
+      ],
+      "story": "S08"
+    },
+    {
+      "id": "try-delegation",
+      "label": "Run delegated access (UC1)",
+      "description": "Sign in as the mock customer, consent, exchange, gateway check, authorize, dispatch: seven hops, each with its raw request and response.",
+      "group": "try-it",
+      "action": {
+        "type": "route",
+        "href": "/#run-UC1"
+      },
+      "terms": [
+        "delegation",
+        "consent",
+        "gateway-check"
+      ]
+    },
+    {
+      "id": "try-step-up",
+      "label": "Run the step-up use case (UC7)",
+      "description": "A larger transfer returns a step-up obligation and the write is held. Thresholds are lab-invented.",
+      "group": "try-it",
+      "action": {
+        "type": "route",
+        "href": "/#run-UC7"
+      },
+      "terms": [
+        "authorize-decision",
+        "step-up-hitl"
+      ]
+    },
+    {
+      "id": "try-replay",
+      "label": "Run the DPoP replay attack (UC12)",
+      "description": "The first proof is accepted and the replay is refused with 401. Needs the live feature ff_dpop; runs in mock here.",
+      "group": "try-it",
+      "action": {
+        "type": "route",
+        "href": "/#run-UC12"
+      },
+      "terms": [
+        "gateway-check"
+      ]
+    },
+    {
+      "id": "concept-why-customer-agent",
+      "label": "Why it matters: a customer-facing agent that cannot overreach",
+      "description": "Challenge: A customer-facing AI agent can be asked to do anything, by the customer or by someone pretending to be them. Without a token chain, a policy decision and a gateway, nobody can show who authorized what. Technical: Delegation with an act claim (RFC 8693), a policy decision on every call, step-up and human approval for risky writes, and a gateway that fails closed. Business: Every agent action traces back to a person who consented, so a refused or approved action can be explained. (Lab summary of the AI-DEMO2 catalog text, not a Ping claim.)",
+      "group": "concept",
+      "action": {
+        "type": "route",
+        "href": "/#talk"
+      },
+      "terms": [
+        "customer-agent",
+        "delegation",
+        "authorize-decision"
+      ]
+    },
+    {
+      "id": "concept-mock-tokens",
+      "label": "Mock tokens",
+      "description": "Every token is a labelled MOCK, signed with a public mock key, shown raw with its decoded claims.",
+      "group": "concept",
+      "action": {
+        "type": "route",
+        "href": "/#tokens"
+      },
+      "terms": [
+        "mock-token"
+      ]
+    },
+    {
+      "id": "ref-doctor",
+      "label": "Doctor and health",
+      "description": "Preflight checks and the demo-health/1 endpoint.",
+      "group": "setup",
+      "action": {
+        "type": "route",
+        "href": "/api/health"
+      }
+    }
+  ],
+  "stories": [
+    {
+      "id": "S01",
+      "title": "Foundations track",
+      "say": "Delegation basics: consent, token exchange with an act claim, A2A delegation, personal and workload agents. 15 use cases."
+    },
+    {
+      "id": "S02",
+      "title": "Learn track",
+      "say": "Guided learning pages. The lab lists them and links out to a sibling standalone where one covers the same thing (lab reading). 23 use cases."
+    },
+    {
+      "id": "S03",
+      "title": "Controls track",
+      "say": "Policy controls: authorization denies, group and tier checks, third-party servers scoped at the gateway, enterprise-managed MCP. 16 use cases."
+    },
+    {
+      "id": "S04",
+      "title": "Hitl track",
+      "say": "Step-up, human approval and CIBA for risky writes. 4 use cases."
+    },
+    {
+      "id": "S05",
+      "title": "Demo track",
+      "say": "Presenter guides and sign-in flows. 8 use cases."
+    },
+    {
+      "id": "S06",
+      "title": "Attacks track",
+      "say": "Eleven attacks and the refusal each one ends in. 11 use cases."
+    },
+    {
+      "id": "S07",
+      "title": "Tools track",
+      "say": "Protected tools and agent-to-agent access review. 8 use cases."
+    },
+    {
+      "id": "S08",
+      "title": "Nhi track",
+      "say": "Non-human identity: the source-tagged roster and the joiner-mover-leaver feed. 2 use cases."
+    }
+  ]
+}

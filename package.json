@@ -1,0 +1,33 @@
+{
+  "name": "customer-agent-lab",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Customer Agent: the customer-facing AI agent of the AI-DEMO2 demo with all 87 of its use cases, in eight tracks and ten verticals (three full packs and seven stubs). A simulation: a mock engine produces every token, hop and decision offline. No tenant, no outbound network.",
+  "license": "MIT",
+  "workspaces": [
+    "server",
+    "web"
+  ],
+  "engines": {
+    "node": ">=26"
+  },
+  "scripts": {
+    "start": "npm start -w server",
+    "dev": "npm run dev -w server",
+    "test": "npm test -w server && npm test -w web && node --test scripts/*.test.mjs",
+    "build": "node scripts/build.mjs",
+    "e2e": "node scripts/e2e.mjs",
+    "doctor": "node scripts/doctor.mjs",
+    "reset": "node scripts/reset.mjs",
+    "smoke": "node scripts/smoke.mjs",
+    "prepare": "git config core.hooksPath .githooks || true",
+    "manifest": "node scripts/gen-manifest.mjs",
+    "talk-track": "node scripts/build-talk-track.mjs",
+    "content-pack": "node scripts/build-content-pack.mjs && node scripts/validate-content-pack.mjs"
+  },
+  "devDependencies": {
+    "ajv": "^8.20.0",
+    "playwright": "^1.64.1"
+  }
+}
