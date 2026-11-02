@@ -98,14 +98,16 @@ export default function RunPanel({ uc, vertical, verticals, persona, setPersona,
       <p className="muted">Expected outcome (the catalog's label): <Tag state={outcomeState(uc.expectedOutcome)}>{uc.expectedOutcome}</Tag> {uc.tool && <>Tool in this vertical: <code>{uc.tool}</code></>}</p>
       {uc.live?.status === "needs-flag" && <p className="muted" data-testid="flag-note">{uc.live.message}</p>}
       {uc.live?.status === "needs-build" && <p className="muted">{uc.live.message}</p>}
-      <Inputs uc={uc} />
+      {mode !== "live" && <Inputs uc={uc} />}
       <div className="runbar">
         {mode === "live" && <p className="muted" data-testid="live-persona-note">A live run reaches the identity provider only; the persona is not used.</p>}
-        <label className="field">Persona <InventedTag />
-          <select value={persona} onChange={(e) => setPersona(e.target.value)} data-testid="persona">
-            {personas.map((p) => <option key={p} value={p}>{p}</option>)}
-          </select>
-        </label>
+        {mode !== "live" && (
+          <label className="field">Persona <InventedTag />
+            <select value={persona} onChange={(e) => setPersona(e.target.value)} data-testid="persona">
+              {personas.map((p) => <option key={p} value={p}>{p}</option>)}
+            </select>
+          </label>
+        )}
         {/* aria-disabled, not disabled: a disabled button drops keyboard focus to the page body while the run is in flight. */}
         <button type="button" className="primary" onClick={running ? undefined : onRun} aria-disabled={running ? "true" : undefined} data-testid="run">{running ? "Running..." : mode ? `Run in ${mode}` : "Run"}</button>
       </div>

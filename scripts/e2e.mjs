@@ -60,6 +60,9 @@ let liveUp = false;
 for (let i = 0; i < 160 && !liveUp; i++) { try { liveUp = (await fetch(`${liveBase}/api/health`)).ok; } catch { await sleep(250); } }
 if (!liveUp) { server.kill(); liveServer.kill(); console.error('live server did not start'); process.exit(2); }
 
+const healthOf = async (b) => (await (await fetch(`${b}/api/health`)).json()).runtime;
+check((await healthOf(liveBase)) === 'live' && (await healthOf(base)) === 'offline', 'health: the live instance reports runtime live, the mock one offline');
+
 let browser;
 try {
   browser = await chromium.launch({ executablePath: process.env.E2E_CHROMIUM || undefined });
@@ -209,7 +212,7 @@ try {
       check((await t('banner').getAttribute('data-state')) === 'live' && (await t('mode').innerText()).includes('identity provider only'), `${tag}: the banner and the chip say LIVE, identity provider only`);
       check((await t('mode-msg').innerText()).includes('two real calls'), `${tag}: selecting Live says what a run does`);
       await t('search').fill('UC7'); await page.locator('[data-testid="uc-UC7"]').click(); await t('search').fill('');
-      check(await t('live-persona-note').isVisible(), `${tag}: the persona is marked unused in live`);
+      check(await t('live-persona-note').isVisible() && (await t('persona').count()) === 0 && (await t('lab-inputs').count()) === 0, `${tag}: the persona and the lab inputs are hidden in live and the note says why`);
       await t('run').click(); await t('result').waitFor();
       check((await t('outcome').innerText()) === 'LIVE_OK' && (await t('live-note-tag').innerText()) === 'live, identity provider only' && (await t('matches').count()) === 0, `${tag}: UC7 live is LIVE_OK, labelled identity provider only, with no engine-match claim`);
       check((await t('hop').count()) === 2 && (await t('hops').getByTestId('live-tag').count()) === 2 && (await t('hops').getByTestId('mock-tag').count()) === 0, `${tag}: two hops, both LIVE, none MOCK`);

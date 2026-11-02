@@ -167,7 +167,10 @@ export function createApp({
         const traceparent = parseTraceparent(req.headers.traceparent) ? req.headers.traceparent : randomTraceparent();
         let run;
         try { run = await live.run(uc, { vertical, traceparent }); } catch (e) {
-          if (e instanceof LiveRefused) return res.status(e.code === 'busy' ? 429 : 503).json({ error: e.code === 'busy' ? 'live_busy' : 'live_not_configured', detail: e.message });
+          if (e instanceof LiveRefused) {
+            const [status, error] = e.code === 'busy' ? [429, 'live_busy'] : e.code === 'not_configured' ? [503, 'live_not_configured'] : [502, 'live_refused'];
+            return res.status(status).json({ error, detail: e.message });
+          }
           throw e;
         }
         // The network call is done outside the workspace lock; the cap is checked again inside it.

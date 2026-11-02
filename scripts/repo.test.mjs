@@ -166,9 +166,9 @@ test('review fix: the talk track says seven stub verticals', () => {
   assert.match(t, /Seven verticals are data stubs/); assert.ok(!/Eight verticals are data stubs/.test(t));
 });
 
-test('step 3: CI has a conformance job (it skips itself where the gate is absent), the pack and the talk track carry live mode, and Docker stays Mock only', () => {
+test('step 3: CI has no self-skipping conformance job (it would be a green check with nothing behind it), the pack and the talk track carry live mode, and Docker stays Mock only', () => {
   const ci = read('.github/workflows/ci.yml');
-  assert.match(ci, /^  conformance:/m); assert.match(ci, /--new --tier=Demo/); assert.match(ci, /SKIPPED/);
+  assert.ok(!/conformance/i.test(ci) && !/SKIPPED/.test(ci)); assert.match(read('README.md'), /CI does not run conformance/);
   const pack = JSON.parse(read('content-pack.json'));
   assert.ok(pack.glossary.some((g) => g.id === 'live-mode' && /UNVERIFIED/.test(g.definition))); assert.ok(pack.cards.some((c) => c.id === 'concept-live-mode'));
   assert.match(read('docs/talk-track.md'), /## Mock and live/); assert.match(read('docs/talk-track.md'), /UNVERIFIED/);

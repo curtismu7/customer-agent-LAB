@@ -101,6 +101,8 @@ test('an opaque (non-JWT) token is masked and says there is nothing to decode', 
   });
 });
 
+test('the documented limit is two live runs in flight', () => { assert.equal(MAX_IN_FLIGHT, 2); });
+
 test('an unconfigured live refuses (not_configured) and makes no call; a third parallel run is refused as busy and the slot is freed afterwards', async () => {
   const none = createLive();
   assert.equal(none.configured(), false); assert.equal(none.origin(), null);

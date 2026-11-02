@@ -1,6 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createLive, liveConfig } from '../src/live.js';
+import { spawn } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { LiveRefused, createLive, liveConfig } from '../src/live.js';
 import { MAX_RUNS } from '../src/workspaces.js';
 import { createWorkspaces } from '../src/workspaces.js';
 import { get, post, put, run, W, withServer } from './helpers.js';
@@ -94,4 +99,35 @@ test('a credential typed into every field of a live run is never echoed (the API
     }
     const r = await post(url, `/api/run/${encodeURIComponent(CLIENT_SECRET)}`, { mode: 'live' }); assert.equal(r.status, 404); noSecret(await r.text(), 'a 404');
   });
+});
+
+test('the real entry point wires health: runtime is live when the opt-in holds and the settings are valid, offline otherwise', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cal-health-'));
+  const file = path.join(dir, '.env');
+  fs.writeFileSync(file, `${Object.entries(settingsFor()).map(([k, v]) => `${k}=${v}`).join('\n')}\n`, { mode: 0o600 });
+  const fake = await startFakePingOne();
+  const entry = fileURLToPath(new URL('../src/index.js', import.meta.url));
+  const runtimeOf = async (port, extra) => {
+    const env = { ...process.env, PORT: String(port), STANDALONE_ENV: file, CAL_LIVE_TEST_BASE: fake.base, ...extra };
+    for (const k of ['CALAB_BIND', 'CAL_LAB_MODE', 'ALLOW_MOCK_SIGNIN', 'IDP', 'CAL_ALLOW_LIVE']) if (!(k in extra)) delete env[k];
+    const child = spawn(process.execPath, [entry], { env, stdio: 'ignore' });
+    try {
+      for (let i = 0; i < 200; i++) {
+        try { return (await (await fetch(`http://127.0.0.1:${port}/api/health`)).json()).runtime; } catch { await new Promise((r) => setTimeout(r, 100)); }
+      }
+      throw new Error('the lab did not start');
+    } finally { child.kill(); }
+  };
+  try {
+    assert.equal(await runtimeOf(5691, { IDP: 'pingone', CAL_ALLOW_LIVE: '1' }), 'live');
+    assert.equal(await runtimeOf(5692, {}), 'offline');
+  } finally { await fake.close(); fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('a LiveRefused that is not "busy" or "not_configured" is a 502 live_refused, not a mislabelled 503', async () => {
+  const stub = { configured: () => true, problem: () => null, origin: () => 'http://127.0.0.1:1', run: async () => { throw new LiveRefused('other_origin', 'fixed text'); } };
+  await withServer(async (url) => {
+    const r = await run(url, 'UC1', { mode: 'live' });
+    assert.equal(r.status, 502); assert.equal(r.body.error, 'live_refused');
+  }, { env: LIVE_ENV, live: stub });
 });

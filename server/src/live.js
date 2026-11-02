@@ -142,7 +142,7 @@ export function createLive({ config = liveConfig({}, {}), fetchImpl = (...a) => 
       const tokOk = tok.status === 200 && raw !== null;
       if (tokOk) {
         const dec = decodeJwt(raw);
-        tokens.push({ label: 'agent client-credentials token (LIVE, masked)', mock: false, live: true, notice: 'LIVE token from your PingOne environment, shown masked (first 6 and last 4 characters, rule 4). The raw value is never returned or stored.', raw: mask(raw), header: dec?.header ?? null, claims: dec?.claims ?? { note: 'the token is opaque, not a JWT: there is nothing to decode' } });
+        tokens.push({ label: 'agent client-credentials token (LIVE, masked)', mock: false, live: true, notice: 'LIVE token from your PingOne environment, shown masked (first 6 and last 4 characters): real credentials stay write-only (rule 4). The raw value is never returned or stored.', raw: mask(raw), header: dec?.header ?? null, claims: dec?.claims ?? { note: 'the token is opaque, not a JWT: there is nothing to decode' } });
       }
       push({
         kind: 'live-actor-token', label: 'Live: the agent gets its own token (client credentials)', from: 'lab', to: 'idp', verdict: tokOk ? 'ok' : 'deny', traceparent: d2,

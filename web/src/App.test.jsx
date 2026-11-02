@@ -303,6 +303,7 @@ describe("mode toggle", () => {
     expect(screen.getByTestId("mode-msg").textContent).toMatch(/two real calls to your PingOne environment/);
     await u.click(screen.getByTestId("uc-UC1"));
     expect(screen.getByTestId("live-persona-note")).toBeTruthy();
+    expect(screen.queryByTestId("persona")).toBeNull(); expect(screen.queryByTestId("lab-inputs")).toBeNull();
     await runIt(u);
     expect(screen.getByTestId("outcome").textContent).toBe("LIVE_OK");
     expect(screen.getByTestId("live-note-tag").textContent).toBe("live, identity provider only");
