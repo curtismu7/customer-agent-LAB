@@ -107,11 +107,13 @@ export function mockSignInRefusal({ env, bind, headers }) {
   return net ? `Mock sign-in: ${net.charAt(0).toLowerCase()}${net.slice(1)}` : null;
 }
 
-// Live mode may be selected (the toggle) only when ALL of the following hold, and every live run asks again (CAL_LAB_MODE=live only sets the opening mode and does not check them): the owner opted in (CAL_ALLOW_LIVE=1, lab-invented key), no proxy headers, a loopback bind (or
-// CAL_PUBLISH=loopback), and the mock sign-in guards are not what is switching it on (IDP must name a live provider, not mock).
+// Live mode may be selected (the toggle) only when ALL of the following hold, and every live run asks again (CAL_LAB_MODE=live only sets the opening mode and does not check them): the owner opted in (CAL_ALLOW_LIVE=1, lab-invented key), IDP=pingone (the one live provider
+// this lab can reach; mock turns live off and any other value is not supported), no proxy headers, and a loopback bind (or CAL_PUBLISH=loopback).
+export const LIVE_IDP = 'pingone';
 export function liveRefusal({ env, bind, headers }) {
   if (env.CAL_ALLOW_LIVE !== '1') return 'Live mode is off. The owner enables it on this machine with CAL_ALLOW_LIVE=1.';
   if ((env.IDP ?? 'mock') === 'mock') return 'Live mode needs IDP set to a live provider (it is mock).';
+  if (env.IDP !== LIVE_IDP) return `Live mode supports IDP=${LIVE_IDP} only.`;
   const net = networkRefusal({ env, bind, headers });
   return net ? `Live mode: ${net.charAt(0).toLowerCase()}${net.slice(1)}` : null;
 }

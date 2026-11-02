@@ -18,15 +18,15 @@ export const BASE_NAV = [
 ];
 const EXTRA_PREFIX = "page-";
 // The banner is never blank and never claims one mode before it knows: until the story answers it says both, honestly.
-export const BANNER_UNKNOWN = "SIMULATED, MOCK or LIVE mode (loopback only). A mock engine produces every token, hop and decision offline; live mode is not built yet. No tenant, gateway or identity provider is touched.";
-const PRESENTER_TALK = { agent: ["say-first", "tracks", "delegation"], runs: ["honesty"], diagram: ["delegation", "obligations", "attacks"], talk: [], extra: ["obligations", "honesty"] };
+export const BANNER_UNKNOWN = "SIMULATED in MOCK mode, REAL only in LIVE mode (loopback only). Mock: an engine produces every token, hop and decision offline. Live, the owner's opt-in: two real calls to the owner's PingOne environment and nothing else.";
+const PRESENTER_TALK = { agent: ["say-first", "tracks", "delegation", "live"], runs: ["honesty"], diagram: ["delegation", "obligations", "attacks"], talk: [], extra: ["obligations", "honesty"] };
 const THEME_KEY = "cal.theme";
 const THEMES = [["auto", "Auto"], ["light", "Light"], ["dark", "Dark"]];
 
 const savedTheme = () => { try { const t = window.localStorage.getItem(THEME_KEY); return THEMES.some(([id]) => id === t) ? t : "auto"; } catch { return "auto"; } };
 const applyTheme = (t) => { const root = document.documentElement; if (t === "light" || t === "dark") root.setAttribute("data-theme", t); else root.removeAttribute("data-theme"); };
 const viewFromHash = () => window.location.hash.replace("#", "");
-const resultKey = (id, vertical, persona) => `${id}|${vertical}|${persona}`;
+const resultKey = (id, vertical, persona, mode) => `${id}|${vertical}|${persona}|${mode}`;
 
 export default function App() {
   const [info, setInfo] = useState(null);
@@ -96,7 +96,7 @@ export default function App() {
 
   const uc = catalog?.tracks.flatMap((t) => t.usecases).find((u) => u.id === selectedId) || null;
   const personas = info?.personas || ["standard", "premium"];
-  const result = uc ? results[resultKey(uc.id, vertical, persona)] : null;
+  const result = uc ? results[resultKey(uc.id, vertical, persona, mode)] : null;
 
   const pick = (id) => {
     setSelectedId(id);
@@ -109,7 +109,7 @@ export default function App() {
   const run = async () => {
     if (!uc || running) return;
     const mine = ++runSeq.current;
-    const key = resultKey(uc.id, vertical, persona);
+    const key = resultKey(uc.id, vertical, persona, mode);
     setRunning(true);
     const res = await postJson(`/api/run/${encodeURIComponent(uc.id)}`, { vertical, persona }, { traceparent: newTraceparent() }).catch(() => ({ ok: false, status: 0, body: { error: "network", detail: "The server did not answer. Is it running?" } }));
     if (mine !== runSeq.current) return; // a Reset or a newer run took over
@@ -118,7 +118,7 @@ export default function App() {
     setRunCount((n) => n + 1);
     if (res.ok) {
       setLast({ run: res.body.run, ucId: uc.id });
-      if (Object.hasOwn(EXTRAS, uc.opens)) setOpened((o) => ({ ...o, [uc.opens]: { run: res.body.run, uc } }));
+      if (res.body.run.kind !== "live" && Object.hasOwn(EXTRAS, uc.opens)) setOpened((o) => ({ ...o, [uc.opens]: { run: res.body.run, uc } }));
     }
   };
 
@@ -126,7 +126,7 @@ export default function App() {
   const chooseMode = async (m) => {
     if (m === mode) return;
     const res = await putJson("/api/mode", { mode: m }).catch(() => ({ ok: false, status: 0, body: { detail: "The server did not answer." } }));
-    if (res.ok) { setMode(res.body.mode); setModeMsg(res.body.mode === "live" ? "Live selected. Live mode is not built yet (step 3): runs are refused until it is." : "Mock selected."); }
+    if (res.ok) { setMode(res.body.mode); setModeMsg(res.body.mode === "live" ? "Live selected. A run makes two real calls to your PingOne environment (its discovery document and the agent's own token) and runs nothing else." : "Mock selected."); }
     else setModeMsg(`${m === "live" ? "Live" : "That mode"} was refused (HTTP ${res.status || "none"}): ${res.body?.detail || "no reason given"}`);
     loadMode();
   };
@@ -164,14 +164,14 @@ export default function App() {
         <div className="topbar__row">
           <div className="topbar__title">
             <h1 className="topbar__name">Customer Agent LAB</h1>
-            {!presenter && <p className="lede">The customer's AI agent and its {info?.total ?? 87} use cases, run by a mock engine. {story ? story.talkTrack[0]?.say : ""}</p>}
+            {!presenter && <p className="lede">The customer's AI agent and its {info?.total ?? 87} use cases, {mode === "live" ? "here reaching your identity provider only" : "run by a mock engine"}. {story ? story.talkTrack[0]?.say : ""}</p>}
           </div>
           <div className="toolbar">
             <div className="seg" role="group" aria-label="Mode">
               <button type="button" aria-pressed={mode === "mock"} onClick={() => chooseMode("mock")} data-testid="mode-mock">Mock</button>
-              <button type="button" aria-pressed={mode === "live"} onClick={() => chooseMode("live")} title={liveReason || "Live mode is not built yet (step 3)"} data-testid="mode-live">Live</button>
+              <button type="button" aria-pressed={mode === "live"} onClick={() => chooseMode("live")} title={liveReason || "Live: two real calls to your PingOne environment, identity provider only"} data-testid="mode-live">Live</button>
             </div>
-            <span className="chip" data-testid="mode">Mode: {mode || (modeFailed ? "unknown" : "...")}{mode === "live" ? " (not built: runs are refused)" : mode === "mock" ? " (engine, offline)" : modeFailed ? " (server did not answer)" : ""}</span>
+            <span className="chip" data-testid="mode">Mode: {mode || (modeFailed ? "unknown" : "...")}{mode === "live" ? " (real calls, identity provider only)" : mode === "mock" ? " (engine, offline)" : modeFailed ? " (server did not answer)" : ""}</span>
             <span className="chip" data-testid="workspace">Workspace: {workspaceId()}</span>
             <div className="seg" role="group" aria-label="Theme">
               {THEMES.map(([id, label]) => <button key={id} type="button" aria-pressed={theme === id} onClick={() => setTheme(id)} data-testid={`theme-${id}`}>{label}</button>)}

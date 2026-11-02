@@ -61,3 +61,28 @@ test('step 2: the web check is information, not a failure, when the app is not b
     assert.equal((await runChecks({ env: { WEB_DIST: dir } })).find((c) => c.id === 'web').level, 'pass');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('step 3: the live check is a pass when live is off, information when it is opted in but cannot run, and a pass naming the one host when it can; no value is printed', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cal-live-'));
+  const f = path.join(dir, '.env');
+  const secret = ['hunter2', 'hunter2', 'x9'].join('');
+  try {
+    const live = async (env) => (await runChecks({ env: { STANDALONE_ENV: f, ...env } })).find((x) => x.id === 'live');
+    fs.writeFileSync(f, '', { mode: 0o600 });
+    assert.equal((await live({})).level, 'pass'); assert.match((await live({})).detail, /live is off/);
+    assert.equal((await live({ CAL_ALLOW_LIVE: '1', IDP: 'pingone' })).level, 'info'); assert.match((await live({ CAL_ALLOW_LIVE: '1', IDP: 'pingone' })).detail, /cannot run: .*PINGONE_ENVIRONMENT_ID/);
+    fs.writeFileSync(f, `PINGONE_ENVIRONMENT_ID=11111111-2222-4333-8444-555555555555\nPINGONE_CLIENT_ID=cid\nPINGONE_CLIENT_SECRET=${secret}\n`, { mode: 0o600 });
+    const refused = await live({ CAL_ALLOW_LIVE: '1' }); assert.equal(refused.level, 'info'); assert.match(refused.detail, /refused: Live mode needs IDP/);
+    const ok = await live({ CAL_ALLOW_LIVE: '1', IDP: 'pingone' });
+    assert.equal(ok.level, 'pass'); assert.match(ok.detail, /only to https:\/\/auth\.pingone\.com \(/);
+    assert.ok(!JSON.stringify(await runChecks({ env: { STANDALONE_ENV: f, CAL_ALLOW_LIVE: '1', IDP: 'pingone' } })).match(/hunter2|11111111-2222|cid/), 'no environment id, client or secret in any line');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('step 3: health says runtime offline by default and live when the lab says so', async () => {
+  for (const [runtime, want] of [[undefined, 'offline'], [() => 'live', 'live']]) {
+    const h = createHealth({ runChecks: async () => [{ level: 'pass' }], intervalMs: 3_600_000, ...(runtime ? { runtime } : {}) }); await h.ready;
+    let body; h.router.stack[0].route.stack[0].handle({}, { set() {}, json(b) { body = b; } }); h.stop();
+    assert.equal(body.schema, 'demo-health/1'); assert.equal(body.runtime, want);
+  }
+});

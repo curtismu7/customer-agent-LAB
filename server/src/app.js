@@ -1,6 +1,7 @@
 // One Express app. /api = health, info, story, use cases, mode, run, runs, reset. Server state per workspace id (X-Workspace) is the mode and a short list of run
-// summaries, so one visitor's Reset never touches another's. Mock runs the lab's own engine; live is refused with a clear message until step 3.
-// Loopback-only, zero outbound calls. Nothing the visitor types is echoed: ids are looked up in fixed lists, errors are fixed text.
+// summaries, so one visitor's Reset never touches another's. Mock runs the lab's own engine and makes zero outbound calls; live (step 3, owner opt-in)
+// makes two real calls to the one configured PingOne environment through live.js and nothing else. Loopback-only.
+// Nothing the visitor types is echoed: ids are looked up in fixed lists, errors are fixed text.
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -19,6 +20,7 @@ import { maskDeep } from './mask.js';
 import { toolFor } from './cast.js';
 import { situationOf } from './situations.js';
 import { parseTraceparent, randomTraceparent } from './trace.js';
+import { createLive, LiveRefused } from './live.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const WEB_DIST = process.env.WEB_DIST || path.resolve(HERE, '../../web/dist');
@@ -31,7 +33,7 @@ const KEYS = Object.freeze({ run: ['vertical', 'persona', 'mode'], mode: ['mode'
 const view = (uc, cast) => ({ ...uc, tool: uc.primaryTool ? toolFor(cast, uc.primaryTool) : null, live: liveNote(uc), guided: !isFlow(uc), labInputs: { ...situationOf(uc.id) } });
 
 export function createApp({
-  health = createHealth(), configFile = CONFIG, env = process.env, bind = '127.0.0.1', workspaces = createWorkspaces({ defaultMode: defaultMode() }), webDist = WEB_DIST,
+  health = createHealth(), configFile = CONFIG, env = process.env, bind = '127.0.0.1', workspaces = createWorkspaces({ defaultMode: defaultMode() }), webDist = WEB_DIST, live = createLive(),
 } = {}) {
   const app = express();
   app.disable('x-powered-by');
@@ -74,6 +76,7 @@ export function createApp({
     res.json({
       mode: defaultMode(), modes: MODES, simulated: true, total: MANIFEST.meta.total, counts: MANIFEST.meta.counts, source: MANIFEST.source, personas: PERSONAS, verticals: verticalList(),
       guards: { mockSignIn: mockSignInRefusal(guardCtx(req)) === null ? 'allowed' : 'refused', live: liveRefusal(guardCtx(req)) === null ? 'allowed' : 'refused' },
+      liveSettings: { configured: live.configured(), origin: live.origin() }, // the one origin live mode may reach (no environment id, no client)
     });
   });
 
@@ -159,7 +162,26 @@ export function createApp({
       if (requested === 'live') {
         const why = liveRefusal(guardCtx(req));
         if (why) return res.status(403).json({ error: 'live_not_allowed', detail: why, live: liveNote(uc) });
-        return res.status(501).json({ error: 'live_not_built', detail: 'Live mode is not built yet (step 3). Switch to Mock to run this use case.', live: liveNote(uc) });
+        if (!live.configured()) return res.status(503).json({ error: 'live_not_configured', detail: live.problem(), live: liveNote(uc) });
+        if (workspaces.peek(id).runs.length >= MAX_RUNS) return res.status(409).json({ error: 'workspace_full', detail: `this workspace already holds ${MAX_RUNS} runs; Reset it to continue` });
+        const traceparent = parseTraceparent(req.headers.traceparent) ? req.headers.traceparent : randomTraceparent();
+        let run;
+        try { run = await live.run(uc, { vertical, traceparent }); } catch (e) {
+          if (e instanceof LiveRefused) {
+            const [status, error] = e.code === 'busy' ? [429, 'live_busy'] : e.code === 'not_configured' ? [503, 'live_not_configured'] : [502, 'live_refused'];
+            return res.status(status).json({ error, detail: e.message });
+          }
+          throw e;
+        }
+        // The network call is done outside the workspace lock; the cap is checked again inside it.
+        const out = await workspaces.write(id, (s) => {
+          if (s.runs.length >= MAX_RUNS) throw refuse('workspace_full', `this workspace already holds ${MAX_RUNS} runs; Reset it to continue`, 409);
+          s.seq += 1;
+          s.runs.push({ seq: s.seq, id: uc.id, vertical, persona: null, outcome: run.outcome, matchesExpected: null, traceId: run.traceId });
+          return { seq: s.seq, run };
+        });
+        res.set('traceparent', out.run.traceparent);
+        return res.json({ ok: true, workspace: id, seq: out.seq, run: out.run });
       }
       const why = mockSignInRefusal(guardCtx(req));
       if (why) return res.status(403).json({ error: 'mock_signin_refused', detail: why });

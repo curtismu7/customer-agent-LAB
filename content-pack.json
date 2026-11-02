@@ -90,6 +90,14 @@
       ]
     },
     {
+      "id": "live-mode",
+      "term": "Live mode (identity provider only)",
+      "definition": "Simulated in mock; in live (the owner's opt-in) a run makes two real calls to one PingOne environment: its discovery document and the agent's own client-credentials token (shown masked). It runs nothing else: no customer sign-in, token exchange, gateway check, policy decision or tool call, and it lists the steps it did not run. The path has not been run against a real tenant by the builder: UNVERIFIED.",
+      "aliases": [
+        "live"
+      ]
+    },
+    {
       "id": "mock-token",
       "term": "MOCK token",
       "definition": "Every token in this lab is issued by the lab, labelled MOCK and signed ES256 with a public mock key. It protects nothing and is shown raw for education.",
@@ -275,6 +283,19 @@
         "customer-agent",
         "delegation",
         "authorize-decision"
+      ]
+    },
+    {
+      "id": "concept-live-mode",
+      "label": "Mock and live",
+      "description": "Mock runs a whole use case offline. Live, which the owner switches on, reaches the identity provider only and lists what it did not run. UNVERIFIED on a real tenant.",
+      "group": "concept",
+      "action": {
+        "type": "route",
+        "href": "/#talk"
+      },
+      "terms": [
+        "live-mode"
       ]
     },
     {

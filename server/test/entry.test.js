@@ -4,9 +4,9 @@ import fs from 'node:fs';
 
 test('the entry installs the netguard first, before it can open any socket', () => {
   const src = fs.readFileSync(new URL('../src/index.js', import.meta.url), 'utf8');
-  const m = /^installNetguard\(\);/m.exec(src);
+  const m = /^(?:const guard = )?installNetguard\(\);/m.exec(src);
   assert.ok(m, 'installNetguard() is called as a statement');
-  for (const later of ['runChecks()', 'startHttpServer({', 'applySharedSettings(']) assert.ok(src.indexOf(later) > m.index, `${later} comes after the guard`);
+  for (const later of ['runChecks()', 'startHttpServer({', 'applySharedSettings(', 'guard.allowHost(']) assert.ok(src.indexOf(later) > m.index, `${later} comes after the guard`);
 });
 
 test('no source file evals, uses vm or Function, builds a regular expression from input, writes a file, uses a worker or child process, or reads process.env.MODE', () => {
@@ -34,10 +34,14 @@ test('key material is built with createECDH + createPrivateKey; generateKeyPair 
   assert.match(jwt, /createECDH\('prime256v1'\)/); assert.match(jwt, /createPrivateKey\(/);
 });
 
-test('the server holds no credential for any platform: no source reads a token, key or password from the environment or a file', () => {
+test('step 3: no source reads a credential from process.env; the one credential (the worker client secret) is read from the settings file by settings.js and held by live.js alone', () => {
   const dir = new URL('../src/', import.meta.url);
   for (const f of fs.readdirSync(dir).filter((x) => x.endsWith('.js') && x !== 'credentials.js' && x !== 'mask.js')) {
     const code = fs.readFileSync(new URL(f, dir), 'utf8');
     assert.ok(!/process\.env\.[A-Z_]*(TOKEN|SECRET|PASSWORD|KEY)/.test(code), `${f}: no credential env var`);
+    assert.equal(/CLIENT_SECRET|clientSecret/.test(code), ['settings.js', 'live.js'].includes(f), `${f}: only settings.js and live.js touch the client secret`);
   }
+  const idx = fs.readFileSync(new URL('../src/index.js', import.meta.url), 'utf8');
+  assert.ok(idx.indexOf('liveRefusal(') < idx.indexOf('guard.allowHost('), 'the netguard allows the PingOne host only after the live opt-in check');
+  assert.ok(!/process\.env\[[^\]]*\]\s*=|env\.PINGONE/.test(fs.readFileSync(new URL('../src/live.js', import.meta.url), 'utf8')), 'live.js never writes or reads the environment for the client');
 });

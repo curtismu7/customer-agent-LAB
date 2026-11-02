@@ -1,5 +1,7 @@
 // Runtime netguard: zero real outbound. Every non-loopback socket, DNS lookup, fetch and UDP send is refused and recorded.
-// The mock authorization server is in-process, so nothing in this app has a reason to leave the machine.
+// The mock engine is in-process, so nothing in this app has a reason to leave the machine. The one exception (step 3, live mode) is a single host the
+// owner configured: index.js calls allowHost() for the PingOne authorization host, and only when the live opt-in holds. fetch, socket and DNS lookup
+// accept that one host; UDP and the resolver functions stay loopback-only, and every other host is refused and recorded as before.
 import dns from 'node:dns';
 import net from 'node:net';
 import dgram from 'node:dgram';
@@ -10,6 +12,8 @@ let active = null;
 export function installNetguard() {
   if (active) return active;
   const attempts = [];
+  const allowed = new Set(); // the one live host, lower-case; empty unless allowHost() was called
+  const permitted = (h) => isLoopbackHost(h) || allowed.has(String(h).toLowerCase());
   const real = {
     connect: net.Socket.prototype.connect, lookup: dns.lookup, fetch: globalThis.fetch, send: dgram.Socket.prototype.send,
     plookup: dns.promises.lookup,
@@ -44,13 +48,13 @@ export function installNetguard() {
   };
   net.Socket.prototype.connect = function guardedConnect(...args) {
     const host = hostOf(args);
-    if (!isLoopbackHost(host)) { attempts.push(`socket:${host}`); throw new Error(`network blocked: ${host}`); }
+    if (!permitted(host)) { attempts.push(`socket:${host}`); throw new Error(`network blocked: ${host}`); }
     return real.connect.apply(this, args);
   };
   dns.lookup = function guardedLookup(host, ...rest) {
     // listen() resolves its bind address through lookup. A wildcard bind (the container's CALAB_BIND=0.0.0.0) is not outbound,
     // and connecting to it is still refused by the socket guard above, so only the lookup is allowed.
-    if (!isLoopbackHost(host) && host !== '0.0.0.0' && host !== '::') {
+    if (!permitted(host) && host !== '0.0.0.0' && host !== '::') {
       attempts.push(`dns:${host}`);
       const cb = rest.find((r) => typeof r === 'function');
       return cb?.(new Error(`network blocked: ${host}`));
@@ -58,12 +62,12 @@ export function installNetguard() {
     return real.lookup.call(dns, host, ...rest);
   };
   dns.promises.lookup = async function guardedPromiseLookup(host, ...rest) {
-    if (!isLoopbackHost(host) && host !== '0.0.0.0' && host !== '::') { attempts.push(`dns:${host}`); throw new Error(`network blocked: ${host}`); }
+    if (!permitted(host) && host !== '0.0.0.0' && host !== '::') { attempts.push(`dns:${host}`); throw new Error(`network blocked: ${host}`); }
     return real.plookup.call(dns.promises, host, ...rest);
   };
   globalThis.fetch = async function guardedFetch(input, init) {
     const url = new URL(typeof input === 'string' || input instanceof URL ? input : input.url);
-    if (!isLoopbackHost(url.hostname)) { attempts.push(`fetch:${url.hostname}`); throw new Error(`network blocked: ${url.hostname}`); }
+    if (!permitted(url.hostname)) { attempts.push(`fetch:${url.hostname}`); throw new Error(`network blocked: ${url.hostname}`); }
     return real.fetch(input, init);
   };
   dgram.Socket.prototype.send = function guardedSend(...args) {
@@ -77,7 +81,17 @@ export function installNetguard() {
   };
   active = {
     attempts,
+    // Allows one exact host name (not a pattern, not an IP literal range). Returns false and allows nothing for anything but a plain DNS name.
+    allowHost(host) {
+      const h = String(host || '').toLowerCase();
+      if (!/^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$/.test(h) || /^\d+(\.\d+){3}$/.test(h)) return false;
+      allowed.add(h);
+      return true;
+    },
+    allowedHosts: () => [...allowed],
+    isPermitted: permitted,
     restore() {
+      allowed.clear();
       for (const [holder, name, orig] of savedResolvers) holder[name] = orig;
       dns.promises.lookup = real.plookup;
       net.Socket.prototype.connect = real.connect; dns.lookup = real.lookup; globalThis.fetch = real.fetch; dgram.Socket.prototype.send = real.send;

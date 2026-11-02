@@ -24,9 +24,13 @@ A small transfer goes straight through. A larger one needs step-up, a larger one
 
 Eleven attacks run in mock: wrong scope, wrong audience, a replayed proof, a forged actor, an exceeded intent, a missing act claim, a burst of calls, a validation outage. Each ends in the refusal the catalog names, and nothing reaches the tool.
 
+## Mock and live
+
+Mock runs a whole use case offline. Live, which the owner switches on, makes two real calls to one identity provider environment: its discovery document and the agent's own token. It stops there, with no customer sign-in, no gateway and no tool call, and it lists the steps it did not run. That is what this lab can honestly show against a real tenant.
+
 ## What is simulated
 
-Everything. The tokens are mock and labelled. The use cases and their expected outcomes are the catalog's; the amounts, the events and the persona that make each one happen are the lab's. Use cases that need a feature flag run in mock and say what live feature they need.
+In Mock, everything. The tokens are mock and labelled. The use cases and their expected outcomes are the catalog's; the amounts, the events and the persona that make each one happen are the lab's. Use cases that need a feature flag run in mock and say what live feature they need.
 
 ## Why it matters: a customer-facing agent that cannot overreach
 
@@ -35,7 +39,8 @@ Challenge: A customer-facing AI agent can be asked to do anything, by the custom
 ## Not demonstrated
 
 - Anything about how a real identity provider, gateway or policy engine behaves: nothing here ran against one.
-- Live mode: refused until step 3.
+- Live mode reaches the identity provider only (discovery and the agent's client-credentials token). Sign-in, token exchange, gateway, authorize and tool steps are not run live, and a live run does not recompute the use case's outcome.
+- The live path has not been run against a real tenant by the builder: UNVERIFIED. The owner runs it.
 - The thresholds that decide step-up, approval and deny (lab-invented), the events that stage each attack, and the persona that drives group checks.
 - Seven verticals are data stubs (a name only); only banking, healthcare and retail have full packs.
 - Guided use cases (learning pages, presenter guides, A2A reviews, the NHI inventory): the lab opens a stand-in step and does not recompute their outcome.

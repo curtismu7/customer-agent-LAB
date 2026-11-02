@@ -45,6 +45,7 @@ test('live mode guards: the owner opt-in, a live IDP, no proxy, loopback: every 
   assert.match(liveRefusal(ctx({ IDP: 'pingone' })), /CAL_ALLOW_LIVE=1/);
   assert.match(liveRefusal(ctx({ CAL_ALLOW_LIVE: '1' })), /IDP set to a live provider/);
   assert.match(liveRefusal(ctx({ CAL_ALLOW_LIVE: '1', IDP: 'mock' })), /IDP set to a live provider/);
+  assert.match(liveRefusal(ctx({ CAL_ALLOW_LIVE: '1', IDP: 'okta' })), /IDP=pingone only/);
   assert.match(liveRefusal(ctx({ CAL_ALLOW_LIVE: '1', IDP: 'pingone' }, '127.0.0.1', { 'x-forwarded-for': '1' })), /proxy/);
   assert.match(liveRefusal(ctx({ CAL_ALLOW_LIVE: '1', IDP: 'pingone' }, '0.0.0.0')), /non-loopback/);
   assert.ok(liveRefusal(ctx({ CAL_ALLOW_LIVE: 'yes', IDP: 'pingone' })));

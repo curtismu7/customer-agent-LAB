@@ -126,7 +126,7 @@ test('rule 11: a mock run is refused (403) unless ALLOW_MOCK_SIGNIN=1, IDP is mo
   });
 });
 
-test('live mode: selecting it is refused (403) unless every guard is satisfied; when satisfied a live run is still refused honestly (501)', async () => {
+test('live mode: selecting it is refused (403) unless every guard is satisfied; when satisfied but the lab has no PingOne settings a live run is refused honestly (503)', async () => {
   await withServer(async (url) => {
     const before = await (await get(url, '/api/mode')).json();
     assert.equal(before.mode, 'mock'); assert.equal(before.live, 'refused'); assert.match(before.liveReason, /CAL_ALLOW_LIVE=1/);
@@ -138,15 +138,19 @@ test('live mode: selecting it is refused (403) unless every guard is satisfied; 
   await withServer(async (url) => {
     const r = await put(url, '/api/mode', { mode: 'live' }); assert.equal(r.status, 200); assert.equal((await r.json()).mode, 'live');
     const out = await run(url, 'UC12');
-    assert.equal(out.status, 501); assert.equal(out.body.error, 'live_not_built'); assert.match(out.body.detail, /step 3/);
+    assert.equal(out.status, 503); assert.equal(out.body.error, 'live_not_configured'); assert.match(out.body.detail, /PINGONE_ENVIRONMENT_ID/);
     assert.equal(out.body.live.status, 'needs-flag'); assert.equal(out.body.live.needs, 'ff_dpop');
     const back = await run(url, 'UC12', { mode: 'mock' }); assert.equal(back.status, 403, 'a live IDP turns the mock persona sign-in off, so a mock run is refused too'); assert.equal(back.body.error, 'mock_signin_refused');
     assert.equal((await (await get(url, '/api/mode', { 'x-workspace': 'other' })).json()).mode, 'mock', 'another workspace is still in mock');
+    assert.equal((await (await get(url, '/api/runs')).json()).count, 0, 'a refused live run leaves no history');
   }, { env: { ALLOW_MOCK_SIGNIN: '1', CAL_ALLOW_LIVE: '1', IDP: 'pingone' } });
   await withServer(async (url) => {
     assert.equal((await put(url, '/api/mode', { mode: 'live' }, { 'x-forwarded-host': 'x' })).status, 403, 'behind a proxy');
     assert.equal((await put(url, '/api/mode', { mode: 'live' })).status, 403, 'non-loopback bind');
   }, { env: { CAL_ALLOW_LIVE: '1', IDP: 'pingone' }, bind: '0.0.0.0' });
+  await withServer(async (url) => {
+    const r = await put(url, '/api/mode', { mode: 'live' }); assert.equal(r.status, 403); assert.match((await r.json()).detail, /supports IDP=pingone only/);
+  }, { env: { CAL_ALLOW_LIVE: '1', IDP: 'pingfederate' } });
 });
 
 test('PUT /api/mode: bad mode 400, unknown field 400, a non-object body 400', async () => {
