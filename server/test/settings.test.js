@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { SETTINGS_KEYS, applySharedSettings, readSharedSettings } from '../src/settings.js';
+import { LIVE_KEYS, SETTINGS_KEYS, applySharedSettings, readLiveSettings, readSharedSettings } from '../src/settings.js';
 import { modeFrom, modeOf } from '../src/config.js';
 
 const withFile = (text, fn) => {
@@ -35,4 +35,16 @@ test('the mode is mock or live; mock is the default; a bare MODE (another app\'s
   assert.throws(() => modeFrom({ CAL_LAB_MODE: 'prod' }), /not available/);
   assert.equal(modeOf('mock'), 'mock'); assert.equal(modeOf('live'), 'live');
   for (const bad of ['Mock', 'prod', '', undefined, null, 1, ['mock'], { toString: () => 'mock' }, '__proto__']) assert.equal(modeOf(bad), null);
+});
+
+test('step 3: the PingOne settings are read for live.js only, with util.parseEnv and only the four listed keys; they are never copied into the environment', () => {
+  assert.deepEqual(LIVE_KEYS, ['PINGONE_ENVIRONMENT_ID', 'PINGONE_REGION', 'PINGONE_CLIENT_ID', 'PINGONE_CLIENT_SECRET']);
+  withFile('PINGONE_ENVIRONMENT_ID=env-1\nPINGONE_REGION=eu\nPINGONE_CLIENT_ID=cid\nPINGONE_CLIENT_SECRET=csec\nPINGONE_ADMIN_PASSWORD=nope\nCAL_ALLOW_LIVE=1\nIDP=pingone\nPORT=1\nPINGONE_CLIENT_SECRET_OLD=x\n', (f) => {
+    assert.deepEqual(readLiveSettings(f), { PINGONE_ENVIRONMENT_ID: 'env-1', PINGONE_REGION: 'eu', PINGONE_CLIENT_ID: 'cid', PINGONE_CLIENT_SECRET: 'csec' });
+    const env = {}; applySharedSettings(env, f);
+    assert.deepEqual(env, {}, 'applySharedSettings copies none of them, and none of the guard keys');
+    assert.deepEqual(readSharedSettings(f), {});
+  });
+  withFile('PINGONE_CLIENT_ID=\n', (f) => assert.deepEqual(readLiveSettings(f), {}));
+  assert.deepEqual(readLiveSettings('/nonexistent/.env'), {}); assert.deepEqual(readLiveSettings(os.tmpdir()), {});
 });

@@ -78,7 +78,7 @@ test('README follows the README standard: title ends in LAB, plain Tier, Repo an
   const order = ['What is simulated', 'Run from a clone', 'Settings file', 'Ports, and what to do', 'Mock and live modes', 'Health, doctor and reset', 'Docker', 'Tests', 'Troubleshooting', 'Ownership', 'Not done'].map(at);
   assert.ok(order.every((i) => i > 0), order.join());
   assert.deepEqual([...order].sort((a, b) => a - b), order, 'sections are in order');
-  for (const w of ['lab-invented', 'lab reading', 'lab-derived', 'UNVERIFIED', 'util.parseEnv', 'ALLOW_MOCK_SIGNIN', 'step 2 of 3']) assert.ok(r.toLowerCase().includes(w.toLowerCase()), w);
+  for (const w of ['lab-invented', 'lab reading', 'lab-derived', 'UNVERIFIED', 'util.parseEnv', 'ALLOW_MOCK_SIGNIN', 'step 3 of 3']) assert.ok(r.toLowerCase().includes(w.toLowerCase()), w);
   assert.ok(!/ping-devops|cmuir|curtismu/i.test(r)); assert.ok(!/\bdoor\b/i.test(r));
 });
 
@@ -164,4 +164,21 @@ test('review fix: the README names the UC28 title change, the guided matchesExpe
 test('review fix: the talk track says seven stub verticals', () => {
   const t = read('docs/talk-track.md');
   assert.match(t, /Seven verticals are data stubs/); assert.ok(!/Eight verticals are data stubs/.test(t));
+});
+
+test('step 3: CI has no self-skipping conformance job (it would be a green check with nothing behind it), the pack and the talk track carry live mode, and Docker stays Mock only', () => {
+  const ci = read('.github/workflows/ci.yml');
+  assert.ok(!/conformance/i.test(ci) && !/SKIPPED/.test(ci)); assert.match(read('README.md'), /CI does not run conformance/);
+  const pack = JSON.parse(read('content-pack.json'));
+  assert.ok(pack.glossary.some((g) => g.id === 'live-mode' && /UNVERIFIED/.test(g.definition))); assert.ok(pack.cards.some((c) => c.id === 'concept-live-mode'));
+  assert.match(read('docs/talk-track.md'), /## Mock and live/); assert.match(read('docs/talk-track.md'), /UNVERIFIED/);
+  const compose = read('docker-compose.yml').replace(/^\s*#.*$/gm, '');
+  assert.ok(!/CAL_ALLOW_LIVE|IDP:|PINGONE|STANDALONE_ENV|\.env/.test(compose), 'Docker is Mock only: no live opt-in, no settings file mounted');
+  assert.match(read('docs/shelf-entry.json'), /UNVERIFIED/);
+});
+
+test('step 3: the README says how step 3 was read, that live is identity-provider only and UNVERIFIED on a real tenant, and what is not done', () => {
+  const r = read('README.md');
+  for (const w of ['smallest complete reading', 'identity provider only', 'UNVERIFIED against a real tenant', 'two real calls', 'Docker is Mock only', 'never copied into the process environment', 'LIVE_REFUSED', 'live_not_configured']) assert.ok(r.includes(w), w);
+  assert.ok(!/live mode is not built|not built yet \(step 3\)|step 3 is not started/i.test(r));
 });

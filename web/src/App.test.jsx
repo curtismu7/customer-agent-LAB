@@ -26,7 +26,7 @@ describe("header, banner and side nav", () => {
     api = mockApi(); vi.stubGlobal("fetch", () => new Promise(() => {}));
     render(<App />);
     expect(screen.getByTestId("banner").textContent).toBe(BANNER_UNKNOWN);
-    expect(BANNER_UNKNOWN).toMatch(/MOCK or LIVE/);
+    expect(BANNER_UNKNOWN).toMatch(/MOCK mode, REAL only in LIVE mode/);
   });
 
   test("header: app name, Mock | Live toggle, mode chip, workspace id, theme picker, Reset, Presenter", async () => {
@@ -292,20 +292,65 @@ describe("mode toggle", () => {
     expect(screen.getByTestId("banner").getAttribute("data-state")).toBe("mock");
   });
 
-  test("when the guards hold Live is selected, the banner and chip say live, and a run is refused as not built", async () => {
+  test("when the guards hold, Live is selected, the banner and chip say live, and a run shows real hops, a masked token and the steps it did not run", async () => {
     await boot({ live: "allowed" });
     const u = userEvent.setup();
     await u.click(screen.getByTestId("mode-live"));
     await waitFor(() => expect(screen.getByTestId("mode").textContent).toMatch(/Mode: live/));
-    expect(screen.getByTestId("banner").textContent).toMatch(/^LIVE mode is not built yet/);
+    expect(screen.getByTestId("mode").textContent).toMatch(/identity provider only/);
+    expect(screen.getByTestId("banner").textContent).toMatch(/^LIVE mode/);
     expect(screen.getByTestId("banner").getAttribute("data-state")).toBe("live");
-    expect(screen.getByTestId("mode-msg").textContent).toMatch(/not built yet \(step 3\)/);
+    expect(screen.getByTestId("mode-msg").textContent).toMatch(/two real calls to your PingOne environment/);
     await u.click(screen.getByTestId("uc-UC1"));
+    expect(screen.getByTestId("live-persona-note")).toBeTruthy();
+    expect(screen.queryByTestId("persona")).toBeNull(); expect(screen.queryByTestId("lab-inputs")).toBeNull();
     await runIt(u);
-    expect(screen.getByTestId("refusal").getAttribute("data-code")).toBe("live_not_built");
-    expect(screen.getByTestId("refusal").textContent).toMatch(/Switch to Mock/);
+    expect(screen.getByTestId("outcome").textContent).toBe("LIVE_OK");
+    expect(screen.getByTestId("live-note-tag").textContent).toBe("live, identity provider only");
+    expect(screen.queryByTestId("matches")).toBeNull(); expect(screen.queryByTestId("guided-note")).toBeNull();
+    expect(screen.getAllByTestId("hop")).toHaveLength(2);
+    expect(within(screen.getByTestId("hops")).getAllByTestId("live-tag")).toHaveLength(2);
+    expect(within(screen.getByTestId("hops")).queryByTestId("mock-tag")).toBeNull();
+    const not = screen.getByTestId("not-run");
+    expect(not.textContent).toMatch(/Not run in live mode \(3 steps/); expect(not.textContent).toMatch(/identity provider only/); expect(within(not).getAllByRole("listitem").map((x) => x.textContent)).toEqual(["user-token", "token-exchange", "tool-dispatched"]);
+    expect(within(screen.getByTestId("token")).getByTestId("live-tag")).toBeTruthy(); expect(within(screen.getByTestId("token")).queryByTestId("mock-tag")).toBeNull();
+    expect(screen.getByTestId("tokens").textContent).toMatch(/Token \(masked\)/); expect(screen.getByTestId("token-raw").textContent).toBe("eyJhbG...ab12");
+    expect(screen.getByTestId("run-announce").textContent).toBe("UC1 finished: LIVE_OK, live, identity provider only.");
+    await u.click(screen.getByTestId("nav-runs"));
+    expect(screen.getByTestId("history-row").textContent).toMatch(/n\/a \(live\).*LIVE_OK.*live, identity provider only/);
     await u.click(screen.getByTestId("mode-mock"));
     await waitFor(() => expect(screen.getByTestId("mode").textContent).toMatch(/Mode: mock/));
+  });
+
+  test("a live run is not mixed up with a mock run of the same use case, and a live run opens no extra page", async () => {
+    await boot({ live: "allowed" });
+    const u = userEvent.setup();
+    await u.click(screen.getByTestId("uc-UC1"));
+    await runIt(u);
+    expect(screen.getByTestId("outcome").textContent).toBe("PERMIT");
+    const tabsAfterMock = within(screen.getByTestId("nav")).getAllByRole("tab").length;
+    await u.click(screen.getByTestId("mode-live"));
+    await waitFor(() => expect(screen.getByTestId("mode").textContent).toMatch(/Mode: live/));
+    expect(screen.queryByTestId("result")).toBeNull();
+    await runIt(u);
+    expect(screen.getByTestId("outcome").textContent).toBe("LIVE_OK");
+    await u.click(screen.getByTestId("uc-UC7")); // opens the Human approval page when a MOCK run of it succeeds
+    await runIt(u);
+    expect(screen.getByTestId("outcome").textContent).toBe("LIVE_OK");
+    expect(within(screen.getByTestId("nav")).getAllByRole("tab")).toHaveLength(tabsAfterMock);
+    expect(screen.queryByTestId("nav-page-approval")).toBeNull();
+  });
+
+  test("a live run the lab cannot make says why in the server's words (not set up: 503)", async () => {
+    await boot({ live: "allowed", liveConfigured: false });
+    const u = userEvent.setup();
+    await u.click(screen.getByTestId("mode-live"));
+    await waitFor(() => expect(screen.getByTestId("mode").textContent).toMatch(/Mode: live/));
+    await u.click(screen.getByTestId("uc-UC1"));
+    await runIt(u);
+    const r = screen.getByTestId("refusal");
+    expect(r.getAttribute("data-code")).toBe("live_not_configured"); expect(r.getAttribute("data-state")).toBe("warn");
+    expect(r.textContent).toMatch(/Live is not set up.*HTTP 503.*PINGONE_ENVIRONMENT_ID/);
   });
 });
 

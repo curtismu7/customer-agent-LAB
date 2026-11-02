@@ -194,7 +194,7 @@ test('flag-gated use cases run in mock and say what live feature they need; UC15
   }
   const fifteen = go('UC15');
   assert.equal(fifteen.labSimulated, true); assert.equal(fifteen.live.status, 'needs-build'); assert.match(fifteen.live.message, /lab-simulated here, not claimed/);
-  assert.equal(go('UC1').labSimulated, false); assert.equal(go('UC1').live.status, 'available-later');
+  assert.equal(go('UC1').labSimulated, false); assert.equal(go('UC1').live.status, 'idp-only');
 });
 
 test('the enterprise-managed flag replaces consent with group policy; ID-JAG is issued then redeemed', () => {

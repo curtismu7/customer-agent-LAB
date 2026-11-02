@@ -9,9 +9,11 @@
 // request to another origin fails the run. Exit 0 only when every check passes.
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
+import { CLIENT_ID, CLIENT_SECRET, FAKE_TOKEN, settingsFor, startFakePingOne } from '../server/test/fakePingone.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const shots = process.env.E2E_SHOTS || path.join(root, '.data', 'e2e-screenshots');
@@ -42,6 +44,24 @@ const overlapScript = `(() => {
   }
   return { labels: labels.length, overlaps };
 })()`;
+
+// Live mode (step 3) is driven against a FAKE PingOne on loopback: a second lab instance with the owner's opt-in, a temp settings file (mode 600, fake values)
+// and CAL_LIVE_TEST_BASE pointing at the fake. No real tenant is touched; the real PingOne path is UNVERIFIED and owner-run.
+const livePort = port + 1;
+const liveBase = `http://127.0.0.1:${livePort}`;
+const fake = await startFakePingOne();
+const settingsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cal-e2e-'));
+const settingsFile = path.join(settingsDir, '.env');
+fs.writeFileSync(settingsFile, `${Object.entries(settingsFor()).map(([k, v]) => `${k}=${v}`).join('\n')}\n`, { mode: 0o600 });
+const liveEnv = { ...process.env, PORT: String(livePort), IDP: 'pingone', CAL_ALLOW_LIVE: '1', STANDALONE_ENV: settingsFile, CAL_LIVE_TEST_BASE: fake.base };
+delete liveEnv.CALAB_BIND; delete liveEnv.CAL_LAB_MODE; delete liveEnv.ALLOW_MOCK_SIGNIN;
+const liveServer = spawn(process.execPath, ['server/src/index.js'], { cwd: root, env: liveEnv, stdio: 'inherit' });
+let liveUp = false;
+for (let i = 0; i < 160 && !liveUp; i++) { try { liveUp = (await fetch(`${liveBase}/api/health`)).ok; } catch { await sleep(250); } }
+if (!liveUp) { server.kill(); liveServer.kill(); console.error('live server did not start'); process.exit(2); }
+
+const healthOf = async (b) => (await (await fetch(`${b}/api/health`)).json()).runtime;
+check((await healthOf(liveBase)) === 'live' && (await healthOf(base)) === 'offline', 'health: the live instance reports runtime live, the mock one offline');
 
 let browser;
 try {
@@ -170,6 +190,57 @@ try {
       await ctx.close();
     }
   }
-} finally { if (browser) await browser.close(); server.kill(); }
+
+  // ---- Live mode against the fake PingOne -------------------------------------------------------------------------------------------
+  for (const [width, height, name] of [[1280, 900, 'desktop'], [375, 800, 'phone']]) {
+    for (const scheme of ['light', 'dark']) {
+      const tag = `live-${name}-${scheme}`;
+      fake.seen.length = 0; fake.state.behaviour = 'ok';
+      const ctx = await browser.newContext({ viewport: { width, height }, colorScheme: scheme });
+      const page = await ctx.newPage();
+      const external = []; const errors = [];
+      page.on('request', (r) => { if (!r.url().startsWith(liveBase) && !/^(data|blob):/.test(r.url())) external.push(r.url()); });
+      page.on('pageerror', (e) => errors.push(e.message));
+      page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+      const t = (id) => page.getByTestId(id);
+      const overflow = () => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+      await page.goto(`${liveBase}/`);
+      await t('uc-UC1').waitFor();
+      check((await t('mode-live').getAttribute('title')).includes('two real calls'), `${tag}: Live is allowed (the title says what a live run does)`);
+      await t('mode-live').click(); await page.waitForFunction(() => document.querySelector('[data-testid="mode"]').textContent.includes('Mode: live'));
+      await page.waitForFunction(() => document.querySelector('[data-testid="banner"]').textContent.startsWith('LIVE mode'));
+      check((await t('banner').getAttribute('data-state')) === 'live' && (await t('mode').innerText()).includes('identity provider only'), `${tag}: the banner and the chip say LIVE, identity provider only`);
+      check((await t('mode-msg').innerText()).includes('two real calls'), `${tag}: selecting Live says what a run does`);
+      await t('search').fill('UC7'); await page.locator('[data-testid="uc-UC7"]').click(); await t('search').fill('');
+      check(await t('live-persona-note').isVisible() && (await t('persona').count()) === 0 && (await t('lab-inputs').count()) === 0, `${tag}: the persona and the lab inputs are hidden in live and the note says why`);
+      await t('run').click(); await t('result').waitFor();
+      check((await t('outcome').innerText()) === 'LIVE_OK' && (await t('live-note-tag').innerText()) === 'live, identity provider only' && (await t('matches').count()) === 0, `${tag}: UC7 live is LIVE_OK, labelled identity provider only, with no engine-match claim`);
+      check((await t('hop').count()) === 2 && (await t('hops').getByTestId('live-tag').count()) === 2 && (await t('hops').getByTestId('mock-tag').count()) === 0, `${tag}: two hops, both LIVE, none MOCK`);
+      check((await t('token-raw').innerText()) === `${FAKE_TOKEN.slice(0, 6)}...${FAKE_TOKEN.slice(-4)}` && (await t('token-claims').innerText()).includes(CLIENT_ID), `${tag}: the token is masked (first 6, last 4) and its claims are decoded`);
+      const not = await t('not-run').innerText();
+      check(not.includes('Not run in live mode') && not.includes('authorize-decision') && not.includes('identity provider only') && (await t('not-run').getByRole("listitem").count()) >= 1, `${tag}: the steps that were not run are listed`);
+      check((await t('nav-page-approval').count()) === 0, `${tag}: a live run of UC7 opens no extra page`);
+      await t('hops-toggle').click();
+      const text = await page.locator('body').innerText();
+      check(![CLIENT_SECRET, FAKE_TOKEN, FAKE_TOKEN.split('.')[2], Buffer.from(`${CLIENT_ID}:${CLIENT_SECRET}`).toString('base64')].some((x) => text.includes(x)), `${tag}: the page (all hops open) holds no secret and no raw token`);
+      check(fake.seen.length === 2 && fake.seen[0].method === 'GET' && fake.seen[1].method === 'POST', `${tag}: the fake PingOne saw exactly two calls (GET discovery, POST token)`);
+      check((await overflow()) <= 0, `${tag}: the live result does not scroll sideways (${await overflow()} px)`);
+      if (tag === 'live-desktop-light' || tag === 'live-phone-dark') await page.screenshot({ path: path.join(shots, `${tag}.png`), fullPage: true });
+      fake.state.behaviour = 'bad-secret';
+      await t('run').click(); await page.waitForFunction(() => document.querySelector('[data-testid="outcome"]').textContent === 'LIVE_REFUSED');
+      check((await t('hop').nth(1).getByTestId('hop-verdict').innerText()) === 'deny' && (await t('tokens').count()) === 0, `${tag}: a refused client secret shows a deny hop and no token`);
+      await t('nav-runs').click(); await t('history').waitFor();
+      check((await t('history-row').count()) === 2 && (await t('history-row').first().innerText()).includes('n/a (live)'), `${tag}: run history lists both live runs`);
+      await t('nav-diagram').click(); await page.locator('.react-flow__node').first().waitFor();
+      check((await overflow()) <= 0, `${tag}: the diagram page in live does not scroll sideways`);
+      await t('mode-mock').click(); await page.waitForFunction(() => document.querySelector('[data-testid="mode"]').textContent.includes('Mode: mock'));
+      await t('nav-agent').click(); await t('run').click(); await t('refusal').waitFor();
+      check((await t('refusal').getAttribute('data-code')) === 'mock_signin_refused', `${tag}: under IDP=pingone a mock run is refused (rule 11)`);
+      check(external.filter((u) => !u.startsWith(liveBase)).length === 0, `${tag}: the browser made no request to another origin (${external.length})`);
+      check(errors.every((e) => /status of (403)/.test(e)), `${tag}: no unexpected console error (${errors.filter((e) => !/status of 403/.test(e)).slice(0, 2).join(' | ')})`);
+      await ctx.close();
+    }
+  }
+} finally { if (browser) await browser.close(); server.kill(); liveServer.kill(); await fake.close(); fs.rmSync(settingsDir, { recursive: true, force: true }); }
 console.log(`\n${checks - failures} of ${checks} checks passed`);
 process.exit(failures ? 1 : 0);

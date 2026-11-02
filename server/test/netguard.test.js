@@ -85,3 +85,31 @@ test('udp: the address is found by position, so a message body cannot masquerade
     s.send('plain message', 9, '127.0.0.1', () => {}); // a string body is fine for loopback
   } finally { s.close(); g.restore(); }
 });
+
+test('allowHost (live mode): one exact DNS name is permitted for fetch, socket and lookup; every other host, and UDP, stays refused; restore clears it', async () => {
+  const g = installNetguard();
+  try {
+    assert.equal(g.allowHost('auth.pingone.example'), true);
+    assert.deepEqual(g.allowedHosts(), ['auth.pingone.example']);
+    assert.equal(g.isPermitted('AUTH.pingone.example'), true); assert.equal(g.isPermitted('127.0.0.1'), true);
+    for (const h of ['auth.pingone.example.evil.invalid', 'evil.auth.pingone.example', 'pingone.example', '192.0.2.1', 'other.invalid']) assert.equal(g.isPermitted(h), false, h);
+    // Refused hosts still throw and are recorded.
+    await assert.rejects(fetch('https://other.invalid/', { signal: AbortSignal.timeout(1500) }), /network blocked: other\.invalid/);
+    await assert.rejects(fetch('https://auth.pingone.example.evil.invalid/', { signal: AbortSignal.timeout(1500) }), /network blocked/);
+    assert.throws(() => net.connect({ host: '192.0.2.9', port: 443 }), /network blocked: 192\.0\.2\.9/);
+    assert.throws(() => { const s = dgram.createSocket('udp4'); try { s.send('x', 9, 'auth.pingone.example'); } finally { s.close(); } }, /network blocked/, 'UDP is never allowed');
+    await assert.rejects(dns.promises.resolve4('auth.pingone.example'), /network blocked/, 'the resolver functions stay loopback-only');
+    assert.ok(g.attempts.includes('udp:auth.pingone.example') && g.attempts.includes('dns:auth.pingone.example'), 'the refusals for the allowed host are recorded');
+    assert.ok(!g.attempts.some((x) => x === 'fetch:auth.pingone.example' || x === 'socket:auth.pingone.example'), 'the allowed host was never refused for fetch or socket');
+  } finally { g.restore(); }
+  assert.deepEqual(installNetguard().allowedHosts(), [], 'restore forgot the allowed host');
+  installNetguard().restore();
+});
+
+test('allowHost refuses anything that is not a plain DNS name: IP literals, wildcards, paths, empty, loopback aliases, non-strings', () => {
+  const g = installNetguard();
+  try {
+    for (const bad of ['192.0.2.1', '10.0.0.1', '*.pingone.example', 'auth.pingone.example/path', 'auth.pingone.example:443', '', ' ', 'localhost', undefined, null, 5, 'a', '-bad.example', 'bad-.example', 'x..example', 'https://auth.pingone.example']) assert.equal(g.allowHost(bad), false, String(bad));
+    assert.deepEqual(g.allowedHosts(), []);
+  } finally { g.restore(); }
+});
