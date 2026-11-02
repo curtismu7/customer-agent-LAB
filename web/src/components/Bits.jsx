@@ -10,6 +10,7 @@ export function Json({ value, label, testId }) {
 export const Tag = ({ state = "info", children, title, testId }) => <span className="tag" data-state={state} title={title} data-testid={testId}>{children}</span>;
 
 export const MockTag = () => <Tag state="info" testId="mock-tag" title="Issued or produced by this lab, not by a real system">MOCK</Tag>;
+export const LiveTag = () => <Tag state="ok" testId="live-tag" title="A real call to your PingOne environment, not produced by this lab">LIVE</Tag>;
 export const InventedTag = ({ children = "LAB-INVENTED" }) => <Tag state="warn" testId="invented-tag" title="The catalog does not say this; the lab made it up so the engine has something to compute">{children}</Tag>;
 
 // Stale-response guard: run() returns a function that says whether a newer request has started since.

@@ -21,3 +21,13 @@ export function applySharedSettings(env = process.env, file = settingsPath(env))
   for (const [k, v] of Object.entries(readSharedSettings(file))) if (env[k] === undefined) env[k] = v;
   return env;
 }
+
+// The live settings (step 3): the PingOne environment and the worker client, read from the same shared file with util.parseEnv. They are NEVER copied into
+// process.env (applySharedSettings above takes SETTINGS_KEYS only), so no other module, log line or child can see the secret; live.js holds it in a closure.
+export const LIVE_KEYS = ['PINGONE_ENVIRONMENT_ID', 'PINGONE_REGION', 'PINGONE_CLIENT_ID', 'PINGONE_CLIENT_SECRET'];
+export function readLiveSettings(file) {
+  try {
+    const parsed = parseEnv(fs.readFileSync(file, 'utf8'));
+    return Object.fromEntries(LIVE_KEYS.filter((k) => typeof parsed[k] === 'string' && parsed[k] !== '').map((k) => [k, parsed[k]]));
+  } catch { return {}; }
+}

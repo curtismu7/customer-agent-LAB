@@ -41,6 +41,21 @@ jobs:
       - name: content pack validates
         run: node scripts/validate-content-pack.mjs
 
+  conformance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 26
+      # The gate lives in the demo-kit-base checkout (not shipped into this repo, and not on GitHub-hosted runners). When CONFORMANCE_SCRIPT is not
+      # present the step says SKIPPED and passes: run it by hand then (node ~/Development/demo-kit-base/scripts/conformance.mjs . --new).
+      - shell: bash
+        run: |
+          script="${CONFORMANCE_SCRIPT:-$HOME/Development/demo-kit-base/scripts/conformance.mjs}"
+          if [ ! -f "$script" ]; then echo "SKIPPED: conformance script not on this runner; run it by hand"; exit 0; fi
+          node "$script" . --new --tier=Demo
+
   forbidden-strings:
     runs-on: ubuntu-latest
     steps:

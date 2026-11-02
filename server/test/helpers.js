@@ -8,10 +8,10 @@ export const C = VERTICALS.banking;
 export const MOCK_OK = { ALLOW_MOCK_SIGNIN: '1' };
 
 // A real Express app on an ephemeral loopback port. webDist defaults to a folder that does not exist, so these tests do not depend on whether `npm run build` has run. env is the app's injected environment (the guards read it), bind is the host the server claims.
-export async function withServer(fn, { configFile = '/nonexistent/customer.config.json', workspaces = createWorkspaces(), env = MOCK_OK, bind = '127.0.0.1', webDist = '/nonexistent/web-dist' } = {}) {
+export async function withServer(fn, { configFile = '/nonexistent/customer.config.json', workspaces = createWorkspaces(), env = MOCK_OK, bind = '127.0.0.1', webDist = '/nonexistent/web-dist', live } = {}) {
   const health = createHealth({ runChecks: async () => [], intervalMs: 3_600_000 });
   await health.ready;
-  const { server, url } = await startHttpServer({ port: 0, host: '127.0.0.1', app: createApp({ health, configFile, workspaces, env, bind, webDist }) });
+  const { server, url } = await startHttpServer({ port: 0, host: '127.0.0.1', app: createApp({ health, configFile, workspaces, env, bind, webDist, ...(live ? { live } : {}) }) });
   try { await fn(url.replace(/\/$/, ''), { workspaces }); } finally { health.stop(); await new Promise((res) => server.close(res)); }
 }
 

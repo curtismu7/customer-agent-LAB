@@ -292,8 +292,8 @@ function finalOutcome(ctx) {
 
 export function liveNote(uc) {
   if (uc.maturity === 'needs-build') return { status: 'needs-build', message: 'The source marks this use case needs-build: it is lab-simulated here, not claimed to work in the product.' };
-  if (uc.flag) return { status: 'needs-flag', needs: uc.flag, message: `Needs live feature ${uc.flag}. It runs in mock; in live mode it needs that feature turned on.` };
-  return { status: 'available-later', message: 'Live mode is not built yet (step 3).' };
+  if (uc.flag) return { status: 'needs-flag', needs: uc.flag, message: `Needs live feature ${uc.flag}. It runs in mock; the live run here reaches the identity provider only and does not exercise it.` };
+  return { status: 'idp-only', message: 'Live mode runs the identity-provider hops only (discovery and the agent token); the rest of this use case is not run live.' };
 }
 
 export function runUseCase(uc, input) {

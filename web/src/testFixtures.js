@@ -4,7 +4,7 @@ const uc = (over) => ({
   pingOneSolution: "After the user consents, token exchange mints a delegated token carrying act.", trigger: { type: "chip", text: "show my balance" },
   expectedOutcome: "PERMIT", evidence: { tokenChain: [], activity: [] }, maturity: "works", productRoles: { idp: "Mints the delegated token.", gw: "Validates it." },
   primaryTool: "get_account_balance", needs: ["idp", "gw"], flag: null, opens: "consent", linkOut: null, tool: "get_account_balance",
-  live: { status: "available-later", message: "Live mode is not built yet (step 3)." }, guided: false, labInputs: {}, ...over,
+  live: { status: "idp-only", message: "Live mode runs the identity-provider hops only." }, guided: false, labInputs: {}, ...over,
 });
 export const USECASES = [
   uc({}),
@@ -25,7 +25,7 @@ export const INFO = {
 };
 export const STORY = {
   title: "Customer Agent LAB",
-  banner: { mock: "SIMULATED, MOCK mode: a mock engine produces every token, hop and decision offline.", live: "LIVE mode is not built yet (step 3)." },
+  banner: { mock: "SIMULATED, MOCK mode: a mock engine produces every token, hop and decision offline.", live: "LIVE mode (the owner's opt-in): a run makes two real calls to your PingOne environment and nothing else." },
   talkTrack: [
     { id: "say-first", title: "Start with the question", say: "Fabrikam Bank has a customer-facing agent." },
     { id: "tracks", title: "Eight tracks", say: "Pick any one and run it." },
@@ -45,6 +45,17 @@ export const runBody = (ucId = "UC1", over = {}) => ({
     hops: [hop(1, "sign-in"), hop(2, "consent"), hop(3, "token-exchange"), hop(4, "tool-dispatched", { from: "gateway", to: "mcp" })],
     tokens: [{ label: "user token (MOCK)", mock: true, notice: "MOCK token, issued by this lab and signed with a public mock key", raw: RAW, header: { alg: "ES256", typ: "JWT" }, claims: { sub: "alex.morgan", note: "a‮b" } }],
     traceId: "a".repeat(32), traceparent: `00-${"a".repeat(32)}-${"b".repeat(16)}-01`, narration: "alex.morgan asks concierge-agent. The engine computed the outcome PERMIT.", ...over,
+  },
+});
+export const liveBody = (ucId = "UC1", over = {}) => ({
+  ok: true, workspace: "w-test", seq: 1,
+  run: {
+    schema: "customer-agent-run/1", mode: "live", useCase: { id: ucId, track: "foundations", title: "t", maturity: "works", flag: null }, vertical: "banking", expectedOutcome: "PERMIT",
+    live: { status: "idp-only", message: "Live mode runs the identity-provider hops only." }, labSimulated: false, kind: "live", computed: false, persona: null, outcome: "LIVE_OK", matchesExpected: null,
+    hops: [{ ...hop(1, "live-discovery", { from: "lab", to: "idp" }), mock: false, live: true }, { ...hop(2, "live-actor-token", { from: "lab", to: "idp" }), mock: false, live: true }],
+    tokens: [{ label: "agent client-credentials token (LIVE, masked)", mock: false, live: true, notice: "LIVE token, masked", raw: "eyJhbG...ab12", header: { alg: "RS256" }, claims: { client_id: "c" } }],
+    notRun: { reason: "Live mode in this lab reaches the identity provider only.", steps: ["user-token", "token-exchange", "tool-dispatched"] },
+    traceId: "a".repeat(32), traceparent: `00-${"a".repeat(32)}-${"b".repeat(16)}-01`, narration: "Live, identity provider only: the discovery document and the token came from your PingOne environment.", ...over,
   },
 });
 export const guidedBody = () => runBody("UC-LEARN2", { kind: "guided", computed: false, matchesExpected: null, outcome: "GUIDED_LEARNING", expectedOutcome: "GUIDED_LEARNING", hops: [hop(1, "guided", { from: "browser", to: "page" })], tokens: [] });
@@ -90,7 +101,12 @@ export function mockApi(state = {}) {
       if (s.runAnswer) return s.runAnswer(path.slice(9), JSON.parse(opts.body));
       const id = decodeURIComponent(path.slice(9));
       if (JSON.parse(opts.body).vertical === "government") return json(501, { error: "vertical_stub", detail: "this vertical is a data stub: it has a name and no pack yet" });
-      if (s.mode === "live") return json(501, { error: "live_not_built", detail: "Live mode is not built yet (step 3). Switch to Mock to run this use case." });
+      if (s.mode === "live") {
+        if (s.liveConfigured === false) return json(503, { error: "live_not_configured", detail: "the shared settings file has no valid PINGONE_ENVIRONMENT_ID" });
+        const lb = liveBody(id);
+        s.runs.push({ seq: s.runs.length + 1, id, vertical: "banking", persona: null, outcome: lb.run.outcome, matchesExpected: null, traceId: lb.run.traceId });
+        return json(200, lb);
+      }
       const body = id === "UC-LEARN2" ? guidedBody() : runBody(id);
       s.runs.push({ seq: s.runs.length + 1, id, vertical: "banking", persona: "standard", outcome: body.run.outcome, matchesExpected: body.run.matchesExpected, traceId: body.run.traceId });
       return json(200, body);

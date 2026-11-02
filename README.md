@@ -1,12 +1,14 @@
 # Customer Agent LAB
 
-A simulation of the customer-facing AI agent from the AI-DEMO2 demo, with all 87 of its use cases in eight tracks: delegation with an act claim, authorize decisions, step-up and human approval, gateway attacks and the refusals they end in. A mock engine produces every token, hop and decision offline.
+A simulation of the customer-facing AI agent from the AI-DEMO2 demo, with all 87 of its use cases in eight tracks: delegation with an act claim, authorize decisions, step-up and human approval, gateway attacks and the refusals they end in. A mock engine produces every token, hop and decision offline. An owner-only Live mode makes two real calls to one PingOne environment and runs nothing else.
 
 Tier: Demo
 Repo: https://github.com/ping-sandbox/customer-agent-LAB
 Catalog: D24
 
-**Status: step 2 of 3 (core, API and web).** The use-case manifest, the mock engine, the HTTP API and the web app (use case picker, run view, ReactFlow diagrams, presenter mode, theme picker) are built and tested. Live mode and the shelf and hub integration are step 3. See "Not done".
+**Status: step 3 of 3 (integration), built, not yet independently reviewed.** Steps 1 and 2 (core, API, web) shipped in commit e1e19ca. Step 3 is the integration step: Live mode, the doctor and health reporting of it, the Learning Hub pack and talk track entries for it, the shelf entry notes and a conformance job in CI. The shelf, hub and doctor artefacts (`docs/shelf-entry.json`, `content-pack.json`, `docs/talk-track.md`, `GET /api/health`) already existed from step 1 and are kept in sync here.
+
+**How step 3 was read (the plan is ambiguous, so this is the smallest complete reading).** The repo's plan says step 3 is "live mode and the shelf/hub integration". The lab holds no user credential and sign-in is pi.flow only (rule 16), and rule 11 forbids mixing the mock persona sign-in into a live run, so a live run cannot honestly run a whole use case. Live therefore reaches the **identity provider only**: two real calls to the one PingOne environment the owner configured (its public discovery document, and the agent's own client-credentials token from the worker client in the shared settings file). It does not sign a customer in, exchange tokens, call a gateway, ask a policy engine or dispatch a tool, and it lists the steps it did not run. No mock hop is mixed into a live run. **The live path is UNVERIFIED against a real tenant**: it was built and tested against a fake PingOne on loopback only; the owner runs it for real. The 87-use-case catalog and this lab's catalog id D24 (a board id, not yet a confirmed catalog row) are unchanged; no other catalog id was invented, and the placeholder ids of sibling labs (such as B2, A19, D99 and D25) are theirs and are not used here.
 
 ## What is simulated
 
@@ -24,7 +26,7 @@ Everything. **Mock** is the only mode that runs: a pure, deterministic engine bu
 - **Honesty labels:** a guided run says "guided, not computed" and never shows the catalog label as verified; a computed run says whether the engine's result matches the catalog's label; the numbers and events the lab feeds the engine (and the persona) are marked LAB-INVENTED; flag-gated use cases say which live feature they need.
 - **Link-outs are plain labels.** A use case that is a page in AI-DEMO2 shows its path as text, and a learn-track use case shows the name of the sibling standalone. The web app renders no link and contains no foreign hostname (a test pins both).
 - **Diagram:** two `diagram-studio/1` diagrams (delegation chain, gateway refusals) loaded by name from `GET /api/diagram?name=` and drawn with ReactFlow: movable boxes, **Simulate** (steps the arrows in order, shows the matching hop of your last run), a speed control, and **Reset** (restores the box positions). At phone width the view starts on the first two boxes; drag the background to pan.
-- **Mock | Live toggle:** the server decides. Live is refused (403) with the server's own message unless the owner has allowed it (see "Mock and live modes"); when it is allowed, Live can be selected but a run is refused with 501 because live mode is not built (step 3). The toggle never fakes a live run.
+- **Mock | Live toggle:** the server decides. Live is refused (403) with the server's own message unless the owner has allowed it (see "Mock and live modes"). When it is allowed, a live run shows two **LIVE** hops (never MOCK), the agent's token masked (first 6 and last 4 characters) with its decoded header and claims, and a "Not run in live mode" list of the use case's other steps. The persona is not used in live. The banner, the chip and the run say the mode. The toggle never fakes a live run.
 
 ### What is lab-derived, lab-invented, lab reading, or UNVERIFIED
 
@@ -78,8 +80,9 @@ curl -s -X POST localhost:5600/api/run/UC1 -H 'content-type: application/json' -
 The shared file `~/Development/.env` (mode 600; `STANDALONE_ENV` overrides the path) is read with `util.parseEnv`; this lab takes only:
 
 - `CAL_LAB_MODE` (optional): the mode a new workspace opens in, `mock` (default) or `live`. It does not check the live guard (see "Mock and live modes"). A bare `MODE` is never read.
+- Live only (step 3), read by `live.js` with `util.parseEnv` and **never copied into the process environment**: `PINGONE_ENVIRONMENT_ID` (a UUID), `PINGONE_REGION` (`com`, `eu`, `ca` or `asia`; `NA`, `US` and `AP` are accepted aliases; default `com`), `PINGONE_CLIENT_ID` and `PINGONE_CLIENT_SECRET` (the worker client the family already keeps there; the lab uses it as the agent client). Nothing else is taken from the file. The client secret is held in memory, sent only in the Authorization header of the token call, and never returned, logged or stored. Mock mode never reads or uses them.
 
-Per-run shell settings (not read from the shared file, so it cannot switch them on): `PORT`, `CALAB_BIND`, `ALLOW_MOCK_SIGNIN`, `IDP`, `CAL_ALLOW_LIVE`, `CAL_PUBLISH`. See `.env.example`. The lab holds no credential and no admin or worker key.
+Per-run shell settings (not read from the shared file, so it cannot switch them on): `PORT`, `CALAB_BIND`, `ALLOW_MOCK_SIGNIN`, `IDP`, `CAL_ALLOW_LIVE`, `CAL_PUBLISH`, and `CAL_LIVE_TEST_BASE` (tests and the e2e only: an `http://127.0.0.1:<port>/<environment id>` base for a fake PingOne; refused unless it is http on loopback). See `.env.example`.
 
 ## Ports, and what to do if the port is taken
 
@@ -101,10 +104,11 @@ Other variable: `HOST_PORT` (Docker host port, default 5601). Keep both inside 5
 ## Mock and live modes
 
 - **Mock** (default): the engine runs every use case. `PUT /api/mode` and `POST /api/run/:id` take `mock` or `live`.
-- **Live** is not built (step 3). It can be selected only when the owner has set `CAL_ALLOW_LIVE=1`, `IDP` names a live provider (not `mock`), there is no proxy header and the bind is loopback; a live run is then refused with 501 and says which live feature the use case needs. Any other attempt is 403. The toggle and every run check this guard; starting with `CAL_LAB_MODE=live` only makes new workspaces open showing live and does not check it, so such a lab shows live and refuses every run (403 until the guard holds, then 501). Both modes are loopback-only with zero outbound calls.
+- **Live** (step 3, identity provider only, UNVERIFIED on a real tenant) can be selected only when the owner has set `CAL_ALLOW_LIVE=1` and `IDP=pingone` (mock turns it off, any other value is refused), there is no proxy header and the bind is loopback. Any other attempt is 403. The toggle and every live run check this guard; `CAL_LAB_MODE=live` only makes new workspaces open showing live and checks nothing, so such a lab shows live and refuses every run with 403 until the guard holds. When the guard holds but the shared file lacks a valid PingOne environment and worker client, a live run is 503 `live_not_configured` (the detail names the missing setting, never a value). A run makes exactly two calls: `GET /<environment id>/as/.well-known/openid-configuration` and `POST /<environment id>/as/token` (client credentials), to `https://auth.pingone.<region>` only, with no redirect followed, an 8 s timeout and a 64 KB body cap. A PingOne refusal or an unreachable PingOne is a 200 run with a deny hop and the outcome `LIVE_REFUSED` or `LIVE_UNREACHABLE`, not an HTTP error. At most two live runs are in flight (a third is 429 `live_busy`). Mock makes zero outbound calls; the netguard allows the one PingOne host only when the live opt-in holds and the settings are valid, and refuses every other host, UDP and the resolver functions in both modes (a self-test and a zero-attempts test pin it).
+- **Docker is Mock only for now:** the compose file does not set `CAL_ALLOW_LIVE` and does not mount the shared settings file (a test pins that); run Live from a clone on the host.
 - **Mock sign-in (rule 11):** a mock run needs `IDP=mock` (the default) and `ALLOW_MOCK_SIGNIN=1`, and is refused (403) behind a proxy (forwarded headers) or on a non-loopback bind. Docker is the one exception: its compose file publishes on `127.0.0.1` alone and says so with `CAL_PUBLISH=loopback`. `NODE_ENV=production` is not a guard.
 
-API: `GET /api/health`, `GET /api/info`, `GET /api/story?vertical=`, `GET /api/diagram?name=` (two diagram-studio/1 diagrams: delegation-chain, gateway-refusals; the web app draws them), `GET /api/usecases?vertical=&track=`, `GET /api/usecases/:id`, `GET`/`PUT /api/mode`, `POST /api/run/:id` (`{vertical, persona, mode}`), `GET /api/runs`, `POST /api/reset`. The workspace id goes in the `X-Workspace` header (default `default`).
+API: `GET /api/health`, `GET /api/info`, `GET /api/story?vertical=`, `GET /api/diagram?name=` (two diagram-studio/1 diagrams: delegation-chain, gateway-refusals; the web app draws them), `GET /api/usecases?vertical=&track=`, `GET /api/usecases/:id`, `GET`/`PUT /api/mode`, `POST /api/run/:id` (`{vertical, persona, mode}`; `GET /api/info` adds `liveSettings`: whether the PingOne settings are present and the one origin, never the environment id or client), `GET /api/runs`, `POST /api/reset`. The workspace id goes in the `X-Workspace` header (default `default`).
 
 ## Health, doctor and reset
 
@@ -124,13 +128,14 @@ Open http://127.0.0.1:5601/ (the health answer is at http://127.0.0.1:5601/api/h
 
 `npm test` runs the server tests (`node --test test/*.test.js`, a glob) and the script tests. The web tests are vitest (`npm test -w web`). `npm run e2e` drives the built app in a real Chromium (Playwright; set `E2E_CHROMIUM` to a Chromium executable if `npx playwright install chromium` has not been run) on E2E_PORT, default 5690.
 
-Test counts on Node 26.8.2 (exit code 0 each time, three runs in a fresh clone after `npm ci`): server 125 pass; web 63 pass (vitest); scripts 39 pass and 1 skipped (the check that the committed manifest equals a fresh generation from the catalog file runs when `CAL_SOURCE_USECASES` points at that file: then 40 pass). `npm run e2e`: 186 of 186 checks in Chromium (desktop and phone, light and dark). Conformance: `node <demo-kit-base>/scripts/conformance.mjs . --new` shows 0 failed and 2 advisory warnings (rule 18, deferred). Run `check-drift.sh`, `check-css.sh` and conformance by hand.
+Test counts on Node 26.8.2 (local run, the Air was overloaded; exit code 0): server 146 pass; web 65 pass (vitest); scripts 41 pass and 1 skipped (the check that the committed manifest equals a fresh generation from the catalog file runs when `CAL_SOURCE_USECASES` points at that file). `npm run e2e`: 258 of 258 checks in Chromium (the 186 Mock checks plus 72 Live checks against a fake PingOne on loopback; desktop and phone, light and dark). Conformance: `node <demo-kit-base>/scripts/conformance.mjs . --new` shows 0 failed and 2 advisory warnings (rule 18, deferred). Run `check-drift.sh`, `check-css.sh` and conformance by hand.
 
 ## Troubleshooting
 
 1. **Every run is 403 "Mock sign-in is off".** Start with `ALLOW_MOCK_SIGNIN=1` (`./scripts/run.sh` and Docker do). It is refused behind a proxy, on a non-loopback bind and when `IDP` is not `mock`.
 2. **Port in use.** See the ports section above.
-3. **A run is 501.** Either the vertical is a data stub (use banking, healthcare or retail) or live mode was asked for (live is not built).
+3. **A run is 501.** The vertical is a data stub (use banking, healthcare or retail).
+3b. **A live run is 403 or 503.** 403: the owner's opt-in does not hold (`CAL_ALLOW_LIVE=1`, `IDP=pingone`, loopback, no proxy). 503: the shared settings file has no valid `PINGONE_*` values (the answer names which). A live run that says `LIVE_REFUSED` means PingOne answered with an error (check the client secret and that the client may use client credentials); `LIVE_UNREACHABLE` means no answer.
 4. **409 workspace_full.** A workspace holds 100 runs. `npm run reset`, or use another `X-Workspace`.
 5. **The browser console shows 4xx.** Deliberate refusals keep their honest status codes (403, 404, 409, 429, 501).
 
@@ -140,7 +145,10 @@ Owner: the Ping demo-lab owner. Licence: MIT (see `LICENSE`). Report problems as
 
 ## Not done
 
-- Live mode, real-provider flows and the step 3 integration (shelf merge, content-pack hub check): step 3. The Live toggle works as described above but a live run is refused.
+- **Live against a real tenant is UNVERIFIED.** Everything about Live was tested against a fake PingOne on loopback (server tests and the real-browser e2e). Whether a real PingOne environment answers these two calls as the lab expects (discovery path, Basic client authentication for the worker client, a JWT access token) has not been run. The owner runs it once and records the result.
+- Live does not run sign-in, token exchange, the gateway, the policy decision or the tool call, and does not recompute a use case's outcome. Docker is Mock only.
+- The lab does not register itself on the local shelf (`~/Development/demo-shelf/.data/demos.local.json`, git-ignored, outside this repo): the entry in `docs/shelf-entry.json` passes the shelf's own validator; merging it and running `npm run doctor` there is the owner's step.
+- The `conformance` job in CI skips itself on GitHub-hosted runners (the gate lives in demo-kit-base, which is not shipped into this repo); run it by hand.
 - The e2e script is not in CI (CI has no browser step); it is run by hand.
 - The SE k8s mock build is deferred by the owner (2026-10-31); there are no k8s manifests.
 - Repo creation under `ping-sandbox` needs the owner's approval; nothing has been pushed.

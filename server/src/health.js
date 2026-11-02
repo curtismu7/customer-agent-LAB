@@ -9,7 +9,7 @@ import { allPassed, runChecks as defaultChecks } from './doctor.js';
 const { version } = JSON.parse(fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '../package.json'), 'utf8'));
 export const DEMO = { id: 'customer-agent-lab', name: 'Customer Agent LAB', version };
 
-export function createHealth({ runChecks = defaultChecks, now = () => new Date(), intervalMs = 60_000 } = {}) {
+export function createHealth({ runChecks = defaultChecks, now = () => new Date(), intervalMs = 60_000, runtime = () => 'offline' } = {}) {
   let last = { state: 'unknown', at: null };
   async function refresh() {
     try { last = { state: allPassed(await runChecks()) ? 'ready' : 'broken', at: now().toISOString() }; }
@@ -22,7 +22,7 @@ export function createHealth({ runChecks = defaultChecks, now = () => new Date()
   const router = express.Router();
   router.get('/', (_req, res) => {
     res.set('Cache-Control', 'no-store');
-    res.json({ schema: 'demo-health/1', at: last.at || now().toISOString(), state: last.state, runtime: 'offline', demo: DEMO });
+    res.json({ schema: 'demo-health/1', at: last.at || now().toISOString(), state: last.state, runtime: runtime(), demo: DEMO });
   });
   router.all('/', (_req, res) => res.set('Allow', 'GET').status(405).json({ error: 'method_not_allowed' }));
   return { router, refresh, ready, stop: () => clearInterval(timer) };
