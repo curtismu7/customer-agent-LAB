@@ -125,9 +125,9 @@ export default function App() {
   // The Mock | Live toggle. The server decides: a refused Live stays Mock and says why, in the server's own words.
   const chooseMode = async (m) => {
     if (m === mode) return;
-    const res = await putJson("/api/mode", { mode: m }).catch(() => ({ ok: false, status: 0, body: { detail: "The server did not answer." } }));
-    if (res.ok) { setMode(res.body.mode); setModeMsg(res.body.mode === "live" ? "Live selected. A run makes two real calls to your PingOne environment (its discovery document and the agent's own token) and runs nothing else." : "Mock selected."); }
-    else setModeMsg(`${m === "live" ? "Live" : "That mode"} was refused (HTTP ${res.status || "none"}): ${res.body?.detail || "no reason given"}`);
+    const res = await postJson("/api/mode", { source: m === "live" ? "real" : "mock" }).catch(() => ({ ok: false, status: 0, body: { detail: "The server did not answer." } }));
+    if (res.ok) { setMode(res.body.source === "real" ? "live" : "mock"); setModeMsg(res.body.source === "real" ? "Real selected. A run makes two real calls to your PingOne environment (its discovery document and the agent's own token) and runs nothing else." : "Mock selected."); }
+    else setModeMsg(`${m === "live" ? "Real" : "That mode"} was refused (HTTP ${res.status || "none"}): ${res.body?.message || res.body?.detail || "no reason given"}`);
     loadMode();
   };
 
@@ -169,7 +169,7 @@ export default function App() {
           <div className="toolbar">
             <div className="seg" role="group" aria-label="Mode">
               <button type="button" aria-pressed={mode === "mock"} onClick={() => chooseMode("mock")} data-testid="mode-mock">Mock</button>
-              <button type="button" aria-pressed={mode === "live"} onClick={() => chooseMode("live")} title={liveReason || "Live: two real calls to your PingOne environment, identity provider only"} data-testid="mode-live">Live</button>
+              <button type="button" aria-pressed={mode === "live"} onClick={() => chooseMode("live")} title={liveReason || "Real: two real calls to your PingOne environment, identity provider only"} data-testid="mode-live">Real</button>
             </div>
             <span className="chip" data-testid="mode">Mode: {mode || (modeFailed ? "unknown" : "...")}{mode === "live" ? " (real calls, identity provider only)" : mode === "mock" ? " (engine, offline)" : modeFailed ? " (server did not answer)" : ""}</span>
             <span className="chip" data-testid="workspace">Workspace: {workspaceId()}</span>
