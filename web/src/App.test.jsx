@@ -286,7 +286,7 @@ describe("mode toggle", () => {
     const u = userEvent.setup();
     await u.click(screen.getByTestId("mode-live"));
     const msg = await screen.findByTestId("mode-msg");
-    expect(msg.textContent).toMatch(/Live was refused \(HTTP 403\)/);
+    expect(msg.textContent).toMatch(/Real was refused \(HTTP 409\)/);
     expect(msg.textContent).toMatch(/CAL_ALLOW_LIVE=1/);
     expect(screen.getByTestId("mode-mock").getAttribute("aria-pressed")).toBe("true");
     expect(screen.getByTestId("banner").getAttribute("data-state")).toBe("mock");
