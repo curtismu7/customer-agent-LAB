@@ -73,8 +73,11 @@ export function createApp({
 
   api.get('/info', (req, res) => {
     noStore(res);
+    const realAvailable = liveRefusal(guardCtx(req)) === null;
     res.json({
-      mode: defaultMode(), modes: MODES, simulated: true, total: MANIFEST.meta.total, counts: MANIFEST.meta.counts, source: MANIFEST.source, personas: PERSONAS, verticals: verticalList(),
+      mode: defaultMode(), modes: MODES, simulated: true, total: MANIFEST.meta.total, counts: MANIFEST.meta.counts, sourceRef: MANIFEST.source, personas: PERSONAS, verticals: verticalList(),
+      source: workspaces.peek('default').mode === 'live' ? 'real' : 'mock', // rule 19: the default workspace's current source
+      realAvailable, // rule 19: whether Real (this app's live PingOne path) is configured
       guards: { mockSignIn: mockSignInRefusal(guardCtx(req)) === null ? 'allowed' : 'refused', live: liveRefusal(guardCtx(req)) === null ? 'allowed' : 'refused' },
       liveSettings: { configured: live.configured(), origin: live.origin() }, // the one origin live mode may reach (no environment id, no client)
     });
@@ -114,6 +117,26 @@ export function createApp({
     if (!uc) return res.status(404).json({ error: 'unknown_use_case' });
     const v = verticalOf(req.query.vertical, res); if (!v) return;
     res.json({ vertical: v, usecase: view(uc, loadCast(configFile, isFullVertical(v) ? v : DEFAULT_VERTICAL)) });
+  });
+
+  // Rule 19 (owner, 2026-11-02): GET /api/info gains source + realAvailable; POST /api/mode {source:"mock"|"real"}
+  // switches at runtime. "real" maps onto this app's live machinery (PingOne credentials); the workspace PUT /mode stays.
+  api.post('/mode', async (req, res, next) => {
+    try {
+      const id = ws(req, res); if (!id) return;
+      noStore(res);
+      const b = bodyOf(req);
+      if (!b || typeof b !== 'object' || Array.isArray(b) || Object.keys(b).length !== 1 || !['mock', 'real'].includes(b.source)) {
+        return res.status(400).json({ error: 'bad_body', detail: 'body must be exactly {"source": "mock" or "real"}' });
+      }
+      const mode = b.source === 'real' ? 'live' : 'mock';
+      if (mode === 'live') {
+        const why = liveRefusal(guardCtx(req));
+        if (why) return res.status(409).json({ error: 'conflict', message: why });
+      }
+      await workspaces.write(id, (s) => { s.mode = mode; });
+      return res.json({ source: b.source, workspace: id });
+    } catch (e) { return next(e); }
   });
 
   api.get('/mode', (req, res) => {

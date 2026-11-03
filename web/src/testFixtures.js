@@ -89,10 +89,12 @@ export function mockApi(state = {}) {
     if (path === "/api/story") return query.get("vertical") === "government" ? json(501, { error: "vertical_stub" }) : json(200, STORY);
     if (path === "/api/usecases") return json(200, catalog(query.get("vertical") || "banking"));
     if (path === "/api/mode" && method === "GET") return json(200, { workspace: "w-test", mode: s.mode, modes: ["mock", "live"], live: s.live, liveReason: s.live === "allowed" ? null : s.liveReason });
-    if (path === "/api/mode" && method === "PUT") {
-      const want = JSON.parse(opts.body).mode;
-      if (want === "live" && s.live !== "allowed") return json(403, { error: "live_not_allowed", detail: s.liveReason });
-      s.mode = want; return json(200, { workspace: "w-test", mode: want });
+    if (path === "/api/mode" && method === "POST") {
+      const body = JSON.parse(opts.body);
+      if (!body || Object.keys(body).length !== 1 || !["mock", "real"].includes(body.source)) return json(400, { error: "bad_body", detail: 'body must be exactly {"source": "mock" or "real"}' });
+      const want = body.source === "real" ? "live" : "mock";
+      if (want === "live" && s.live !== "allowed") return json(409, { error: "conflict", message: s.liveReason });
+      s.mode = want; return json(200, { source: body.source, workspace: "w-test" });
     }
     if (path === "/api/diagram") return json(200, DIAGRAM);
     if (path === "/api/runs") return json(200, { ...RUNS, count: s.runs.length, runs: s.runs });

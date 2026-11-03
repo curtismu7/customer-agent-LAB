@@ -290,3 +290,22 @@ test('step 2: the built web app is served from the same origin with a same-origi
     await withServer(async (url) => { assert.equal((await get(url, '/')).status, 404, 'no build, no page'); });
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('rule 19: POST /api/mode switches source; Real is 409 while the live guards refuse; GET /api/info reports source and realAvailable', async () => {
+  await withServer(async (url) => {
+    const info = await (await get(url, '/api/info')).json();
+    assert.equal(info.source, 'mock'); assert.equal(info.realAvailable, false);
+    const bad = await post(url, '/api/mode', { source: 'sideways' }); assert.equal(bad.status, 400);
+    const extra = await post(url, '/api/mode', { source: 'mock', extra: 1 }); assert.equal(extra.status, 400);
+    const refused = await post(url, '/api/mode', { source: 'real' }); assert.equal(refused.status, 409);
+    assert.equal((await (await get(url, '/api/info')).json()).source, 'mock', 'a refused switch changes nothing');
+    const ok = await post(url, '/api/mode', { source: 'mock' }); assert.equal(ok.status, 200); assert.equal((await ok.json()).source, 'mock');
+  });
+  await withServer(async (url) => {
+    const switched = await post(url, '/api/mode', { source: 'real' }); assert.equal(switched.status, 200); assert.equal((await switched.json()).source, 'real');
+    assert.equal((await (await get(url, '/api/info')).json()).realAvailable, true);
+    const info = await (await get(url, '/api/info')).json();
+    assert.ok(!('environmentId' in info.liveSettings), 'info never leaks settings values');
+    const back = await post(url, '/api/mode', { source: 'mock' }); assert.equal(back.status, 200); assert.equal((await back.json()).source, 'mock');
+  }, { env: { CAL_ALLOW_LIVE: '1', IDP: 'pingone' } });
+});
