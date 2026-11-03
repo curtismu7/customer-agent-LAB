@@ -66,10 +66,16 @@ export function cleanText(value, max = 80) {
   return String(value ?? '').replace(/[\u0000-\u001f\u007f-\u009f‪-‮⁦-⁩]/g, ' ').trim().slice(0, max);
 }
 
+// Family standard (lab-proxy path mode): extra Host names via this lab's own env namespace.
+const allowedHosts = () => new Set(String(process.env.LAB_ALLOWED_HOSTS || '').split(',').map((h) => h.trim().toLowerCase()).filter(Boolean));
+const hostAllowed = (raw) => {
+  const h = String(raw ?? '').toLowerCase();
+  return allowedHosts().has(h) || allowedHosts().has(h.replace(/:\d+$/, ''));
+};
 export function hostCheck(req, res, next) {
   const raw = String(req.headers.host || '');
   const host = raw.startsWith('[') ? raw.slice(0, raw.indexOf(']') + 1) : raw.replace(/:\d+$/, '');
-  if (!isLoopbackHost(host)) return res.status(403).json({ error: 'bad_host', message: 'Host must be a loopback name' });
+  if (!isLoopbackHost(host) && !hostAllowed(raw)) return res.status(403).json({ error: 'bad_host', message: 'Host must be a loopback name' });
   next();
 }
 
@@ -81,7 +87,13 @@ export function sameOriginWrites(req, res, next) {
   const origin = req.headers.origin;
   if (origin) {
     let ok = false;
-    try { ok = new URL(origin).host.toLowerCase() === String(req.headers.host || '').toLowerCase(); } catch { /* malformed */ }
+    try {
+      const u = new URL(origin);
+      const hostRaw = String(req.headers.host || '').toLowerCase();
+      const hostBare = hostRaw.replace(/:\d+$/, '');
+      ok = u.host.toLowerCase() === hostRaw
+        || (u.protocol === 'https:' && u.hostname === 'local.ping-devops.com' && u.port === '8443' && hostAllowed(hostRaw) && !u.username && !u.password);
+    } catch { /* malformed */ }
     if (!ok) return res.status(403).json({ error: 'cross_origin', message: 'writes must be same-origin' });
   }
   next();
