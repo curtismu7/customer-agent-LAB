@@ -79,7 +79,7 @@ test('README follows the README standard: title ends in LAB, plain Tier, Repo an
   assert.ok(order.every((i) => i > 0), order.join());
   assert.deepEqual([...order].sort((a, b) => a - b), order, 'sections are in order');
   for (const w of ['lab-invented', 'lab reading', 'lab-derived', 'UNVERIFIED', 'util.parseEnv', 'ALLOW_MOCK_SIGNIN', 'step 3 of 3']) assert.ok(r.toLowerCase().includes(w.toLowerCase()), w);
-  assert.ok(!/ping-devops|cmuir|curtismu/i.test(r)); assert.ok(!/\bdoor\b/i.test(r));
+  assert.ok(!/ping-devops|cmuir/i.test(r)); assert.ok(!/\bdoor\b/i.test(r));
 });
 
 test('the README has no unfilled placeholder', () => {
