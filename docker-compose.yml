@@ -11,6 +11,7 @@ services:
     ports:
       - "127.0.0.1:${HOST_PORT:-5601}:5600"
     environment:
+      SHELF_URL: ${SHELF_URL:-}
       PORT: "5600"
       CALAB_BIND: 0.0.0.0
       CAL_PUBLISH: loopback
