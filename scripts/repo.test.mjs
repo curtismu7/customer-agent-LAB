@@ -177,8 +177,8 @@ test('step 3: CI has no self-skipping conformance job (it would be a green check
   assert.match(read('docs/shelf-entry.json'), /UNVERIFIED/);
 });
 
-test('step 3: the README says how step 3 was read, that live is identity-provider only and UNVERIFIED on a real tenant, and what is not done', () => {
+test('step 3: the README says how step 3 was read, that live is identity-provider only (VERIFIED on a real PingOne environment 2026-11-05), and what is not done', () => {
   const r = read('README.md');
-  for (const w of ['smallest complete reading', 'identity provider only', 'UNVERIFIED against a real tenant', 'two real calls', 'Docker is Mock only', 'never copied into the process environment', 'LIVE_REFUSED', 'live_not_configured']) assert.ok(r.includes(w), w);
+  for (const w of ['smallest complete reading', 'identity provider only', 'VERIFIED against a real PingOne environment by the owner on 2026-11-05', 'two real calls', 'Docker is Mock only', 'never copied into the process environment', 'LIVE_REFUSED', 'live_not_configured']) assert.ok(r.includes(w), w);
   assert.ok(!/live mode is not built|not built yet \(step 3\)|step 3 is not started/i.test(r));
 });
