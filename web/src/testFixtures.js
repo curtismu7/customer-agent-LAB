@@ -97,6 +97,7 @@ export function mockApi(state = {}) {
       s.mode = want; return json(200, { source: body.source, workspace: "w-test" });
     }
     if (path === "/api/diagram") return json(200, DIAGRAM);
+    if (path === "/api/shelf") return json(200, { shelfUrl: null }); // ShelfLink: null -> the button renders nothing
     if (path === "/api/runs") return json(200, { ...RUNS, count: s.runs.length, runs: s.runs });
     if (path === "/api/reset") { s.runs = []; s.mode = "mock"; return json(200, { reset: "ok", workspace: "w-test" }); }
     if (path.startsWith("/api/run/")) {

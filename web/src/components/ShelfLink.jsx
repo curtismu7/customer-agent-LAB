@@ -1,4 +1,5 @@
 import React from "react";
+import { workspaceFetch } from "../workspace";
 
 /**
  * ShelfLink: the "Shelf" button that appears in the header of every -LAB app.
@@ -15,7 +16,7 @@ export default function ShelfLink({ url, className = "" }) {
   React.useEffect(() => {
     if (url) { setHref(url); return undefined; }
     let alive = true;
-    fetch("/api/shelf")
+    workspaceFetch("/api/shelf")
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => { if (alive && d?.shelfUrl) setHref(d.shelfUrl); })      .catch(() => { /* stay hidden: no shelf, no button */ });
     return () => { alive = false; };
