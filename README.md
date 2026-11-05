@@ -3,7 +3,7 @@
 A simulation of the customer-facing AI agent from the AI-DEMO2 demo, with all 87 of its use cases in eight tracks: delegation with an act claim, authorize decisions, step-up and human approval, gateway attacks and the refusals they end in. A mock engine produces every token, hop and decision offline. An owner-only Live mode makes two real calls to one PingOne environment and runs nothing else.
 
 Tier: Demo
-Repo: https://github.com/ping-sandbox/customer-agent-LAB
+Repo: https://github.com/curtismu7/customer-agent-LAB
 Catalog: D24
 
 **Status: step 3 of 3 (integration), built, not yet independently reviewed.** Steps 1 and 2 (core, API, web) shipped in commit e1e19ca. Step 3 is the integration step: Live mode, the doctor and health reporting of it, the Learning Hub pack and talk track entries for it, and the shelf entry notes. The shelf, hub and doctor artefacts (`docs/shelf-entry.json`, `content-pack.json`, `docs/talk-track.md`, `GET /api/health`) already existed from step 1 and are kept in sync here.
@@ -59,7 +59,7 @@ Everything. **Mock** is the only mode that runs: a pure, deterministic engine bu
 Prerequisites: Node 26. Docker (OrbStack) only for the Docker form.
 
 ```
-git clone https://github.com/ping-sandbox/customer-agent-LAB.git
+git clone https://github.com/curtismu7/customer-agent-LAB.git
 cd customer-agent-LAB
 npm ci
 npm run build
