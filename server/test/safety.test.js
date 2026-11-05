@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { isLoopbackHost, portProblem, resolvePort, assertBindAllowed, bindHost, scanHosts, scanKeys, mockSignInRefusal, liveRefusal, PORT_MIN, PORT_MAX, DEFAULT_PORT } from '../src/safety.js';
-import { rawHttp, withServer, get, post } from './helpers.js';
+import { isLoopbackHost, portProblem, resolvePort, assertBindAllowed, bindHost, scanHosts, scanKeys, mockSignInRefusal, liveRefusal, allowedExtraHosts, PORT_MIN, PORT_MAX, DEFAULT_PORT } from '../src/safety.js';
+import { rawHttp, withServer, get, post, MOCK_OK } from './helpers.js';
 
 const ctx = (env = {}, bind = '127.0.0.1', headers = {}) => ({ env, bind, headers });
 
@@ -16,6 +16,12 @@ test('ports: 5600-5699 only, the default is 5600, the reserved ports are refused
 test('loopback names are recognised; a lookalike is not', () => {
   for (const h of ['localhost', '127.0.0.1', '127.255.0.9', '::1', '[::1]', 'LOCALHOST']) assert.equal(isLoopbackHost(h), true, h);
   for (const h of ['127.0.0.1.evil.example', 'evil.example', '128.0.0.1', '0.0.0.0', '127.0.0.256', '']) assert.equal(isLoopbackHost(h), false, h);
+});
+
+test('LAB_ALLOWED_HOSTS: validated host names only, empty by default, no hardcoded domain ships', () => {
+  assert.deepEqual([...allowedExtraHosts({})], []);
+  assert.deepEqual([...allowedExtraHosts({ LAB_ALLOWED_HOSTS: 'lab-a.local.ping-devops.com, Lab-B.local.ping-devops.com' })], ['lab-a.local.ping-devops.com', 'lab-b.local.ping-devops.com']);
+  for (const bad of ['not a host', '../etc/passwd', 'a b', '-dot-', 'x'.repeat(300)]) assert.throws(() => allowedExtraHosts({ LAB_ALLOWED_HOSTS: bad }), /not a host name/, bad);
 });
 
 test('bind: loopback by default, anything else needs CALAB_BIND', () => {
@@ -71,4 +77,21 @@ test('Host check: a non-loopback Host is refused (DNS rebinding); same-origin wr
     assert.equal((await fetch(`${url}/api/reset`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' })).status, 200, 'no Origin header (curl, scripts) is allowed');
     assert.equal((await get(url, '/api/health', { origin: 'http://evil.example' })).status, 200, 'reads are not origin-gated');
   });
+});
+
+test('no hardcoded proxy domain in the shipped source: extra hosts come from LAB_ALLOWED_HOSTS only', async () => {
+  const src = await import('node:fs').then((fs) => fs.promises.readFile(new URL('../src/safety.js', import.meta.url), 'utf8'));
+  assert.ok(!/local\.ping-devops\.com/.test(src), 'safety.js must not hardcode a domain');
+  await withServer(async (url) => {
+    const port = new URL(url).port;
+    const allowed = await rawHttp(url, { path: '/api/health', headers: { host: `lab-y.local.ping-devops.com:${port}` } });
+    assert.equal(allowed.status, 403, 'an unconfigured proxy Host is still refused');
+  }, { env: { ...MOCK_OK, LAB_ALLOWED_HOSTS: 'lab-x.local.ping-devops.com' } });
+  await withServer(async (url) => {
+    const port = new URL(url).port;
+    const ok = await rawHttp(url, { path: '/api/health', headers: { host: `lab-x.local.ping-devops.com:${port}` } });
+    assert.ok(ok.status !== 403, 'a configured proxy Host passes the host check');
+    const write = await rawHttp(url, { method: 'POST', path: '/api/reset', headers: { host: `lab-x.local.ping-devops.com:${port}`, origin: 'https://lab-x.local.ping-devops.com:8443' } });
+    assert.equal(write.status, 403, 'a same-site-but-different-origin write is still refused (no hardcoded origin exemption)');
+  }, { env: { ...MOCK_OK, LAB_ALLOWED_HOSTS: 'lab-x.local.ping-devops.com' } });
 });

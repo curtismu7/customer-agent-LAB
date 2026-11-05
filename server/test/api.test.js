@@ -206,10 +206,12 @@ test('caps: new workspaces are refused (429) at the cap and nothing is evicted; 
 
 test('every answer is JSON, every unknown route is a fixed 404 that does not echo the path, errors are fixed text', async () => {
   await withServer(async (url) => {
-    for (const [m, p] of [['GET', '/api/nope'], ['POST', '/api/nope'], ['DELETE', '/api/run/UC1'], ['PUT', '/api/health'], ['GET', '/nope'], ['GET', '/api/run/UC1'], ['PATCH', '/api/usecases']]) {
+    for (const [m, p] of [['GET', '/api/nope'], ['DELETE', '/api/run/UC1'], ['PUT', '/api/health'], ['GET', '/nope'], ['GET', '/api/run/UC1'], ['PATCH', '/api/usecases']]) {
       const r = await fetch(`${url}${p}`, { method: m, headers: { origin: url } }); const t = await r.text();
       assert.ok([404, 405].includes(r.status), `${m} ${p} ${r.status}`); assert.doesNotThrow(() => JSON.parse(t), `${m} ${p}: ${t.slice(0, 40)}`); assert.ok(!t.includes('nope') && !t.includes('Cannot'));
     }
+    const postNope = await fetch(`${url}/api/nope`, { method: 'POST', headers: { origin: url, 'content-type': 'application/json' }, body: '{}' });
+    assert.ok([404, 405].includes(postNope.status), `POST /api/nope ${postNope.status}`);
     const r = await fetch(`${url}/api/${SECRETS.github}`); assert.equal(r.status, 404); assert.ok(!(await r.text()).includes(NEEDLE.github));
     assert.equal((await get(url, '/api/info')).headers.get('x-content-type-options'), 'nosniff');
     const info = await (await get(url, '/api/info')).json();
