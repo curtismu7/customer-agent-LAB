@@ -8,6 +8,7 @@ import TalkTrack from "./components/TalkTrack";
 import { getJson, postJson, putJson, resetWorkspace } from "./api";
 import { EXTRAS, newTraceparent } from "./lib";
 import { workspaceId } from "./workspace";
+import ShelfLink from "./components/ShelfLink.jsx";
 
 // The side nav holds the agent's own areas only. An extra page joins it when a run of a use case that opens it succeeds, and Reset removes it.
 export const BASE_NAV = [
@@ -164,6 +165,7 @@ export default function App() {
         <div className="topbar__row">
           <div className="topbar__title">
             <h1 className="topbar__name">Customer Agent LAB</h1>
+        <ShelfLink />
             {!presenter && <p className="lede">The customer's AI agent and its {info?.total ?? 87} use cases, {mode === "live" ? "here reaching your identity provider only" : "run by a mock engine"}. {story ? story.talkTrack[0]?.say : ""}</p>}
           </div>
           <div className="toolbar">
