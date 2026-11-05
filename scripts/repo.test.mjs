@@ -43,7 +43,7 @@ test('customer.config.json is git-ignored, and its example only sets the two cas
 });
 
 test('no shipped text names a real customer, company or tenant', () => {
-  const skip = new Set(['node_modules', 'dist', '.git', '.data', 'package-lock.json']); // .data is git-ignored (the e2e screenshots are binary)
+  const skip = new Set(['node_modules', 'dist', '.git', '.data', 'package-lock.json', '.env', 'customer.config.json']); // git-ignored files (local settings: the e2e screenshots are binary; .env holds this Mac's host names)
   const hits = [];
   const walk = (dir) => {
     for (const name of fs.readdirSync(dir)) {
