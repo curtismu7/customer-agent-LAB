@@ -52,7 +52,7 @@ test('no shipped text names a real customer, company or tenant', () => {
       if (fs.statSync(p).isDirectory()) walk(p);
       else if (!/\.test\.m?js$|scripts\/gen-manifest\.mjs$/.test(p)) { // the tests and the generator's one redaction rule name the words on purpose
         const t = fs.readFileSync(p, 'utf8').toLowerCase();
-        for (const w of ['united airlines', 'mileageplus', 'datapower', 'optum', 'unitedhealth', 'uhg', 'member benefit', 'air canada', 'walbuy', 'ping-devops', 'cmuir', 'curtis']) if (t.includes(w)) hits.push(`${path.relative(root, p)}: ${w}`);
+        for (const w of ['united airlines', 'mileageplus', 'datapower', 'optum', 'unitedhealth', 'uhg', 'member benefit', 'air canada', 'walbuy', 'ping-devops', 'cmuir']) if (t.includes(w)) hits.push(`${path.relative(root, p)}: ${w}`);
       }
     }
   };

@@ -128,7 +128,7 @@ Open http://127.0.0.1:5601/ (the health answer is at http://127.0.0.1:5601/api/h
 
 `npm test` runs the server tests (`node --test test/*.test.js`, a glob) and the script tests. The web tests are vitest (`npm test -w web`). `npm run e2e` drives the built app in a real Chromium (Playwright; set `E2E_CHROMIUM` to a Chromium executable if `npx playwright install chromium` has not been run) on E2E_PORT, default 5690.
 
-Test counts on Node 26.8.2 (local run, the Air was overloaded; exit code 0): server 146 pass; web 65 pass (vitest); scripts 41 pass and 1 skipped (the check that the committed manifest equals a fresh generation from the catalog file runs when `CAL_SOURCE_USECASES` points at that file). `npm run e2e`: 258 of 258 checks in Chromium (the 186 Mock checks plus 72 Live checks against a fake PingOne on loopback; desktop and phone, light and dark). Conformance: `node <demo-kit-base>/scripts/conformance.mjs . --new` shows 0 failed and 2 advisory warnings (rule 18, deferred). Run `check-drift.sh`, `check-css.sh` and conformance by hand.
+Test counts on Node 26.8.2 (local run, exit code 0): server 152 pass; web 65 pass (vitest); scripts 41 pass. `npm run e2e`: 259 of 259 checks in Chromium (the 187 Mock checks plus 72 Live checks against a fake PingOne on loopback; desktop and phone, light and dark). Conformance: `node <demo-kit-base>/scripts/conformance.mjs . --new` shows 0 failed and 2 advisory warnings (rule 18, deferred). Run the parent repo's `AI-DEMO-Standalone/scripts/check-drift.sh` and `check-css.sh` (they live there, not here) and conformance by hand.
 
 ## Troubleshooting
 
@@ -151,4 +151,4 @@ Owner: the Ping demo-lab owner. Licence: MIT (see `LICENSE`). Report problems as
 - CI does not run conformance: the gate lives in demo-kit-base, which is not shipped into this repo or onto GitHub-hosted runners, and a job that skips itself would be a green check with nothing behind it. Run `node <demo-kit-base>/scripts/conformance.mjs . --new` by hand until base-sync ships it (the rulebook wants new apps to call it in CI; that is an owner decision).
 - The e2e script is not in CI (CI has no browser step); it is run by hand.
 - The SE k8s mock build is deferred by the owner (2026-10-31); there are no k8s manifests.
-- Repo creation under `ping-sandbox` needs the owner's approval; nothing has been pushed.
+- Repo creation needed the owner's approval; the repo moved to the `curtismu7` org (2026-11-04).

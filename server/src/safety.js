@@ -66,16 +66,20 @@ export function cleanText(value, max = 80) {
   return String(value ?? '').replace(/[\u0000-\u001f\u007f-\u009f‪-‮⁦-⁩]/g, ' ').trim().slice(0, max);
 }
 
-// Family standard (lab-proxy path mode): extra Host names via this lab's own env namespace.
-const allowedHosts = () => new Set(String(process.env.LAB_ALLOWED_HOSTS || '').split(',').map((h) => h.trim().toLowerCase()).filter(Boolean));
-const hostAllowed = (raw) => {
-  const h = String(raw ?? '').toLowerCase();
-  return allowedHosts().has(h) || allowedHosts().has(h.replace(/:\d+$/, ''));
-};
-export function hostCheck(req, res, next) {
+// Family standard (lab-proxy path mode): extra Host names via this lab's own env namespace, comma separated
+// validated host names that point at this Mac (no hardcoded domain is shipped). Loopback always works.
+const HOSTNAME = /^(?=.{1,253}$)[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$/i;
+export function allowedExtraHosts(env = process.env) {
+  const extra = String(env.LAB_ALLOWED_HOSTS || '').split(',').map((h) => h.trim().toLowerCase()).filter(Boolean);
+  for (const h of extra) if (!HOSTNAME.test(h)) throw new Error(`LAB_ALLOWED_HOSTS: not a host name: ${h}`);
+  return new Set(extra);
+}
+export function hostCheck(req, res, next, extraHosts = allowedExtraHosts()) {
   const raw = String(req.headers.host || '');
   const host = raw.startsWith('[') ? raw.slice(0, raw.indexOf(']') + 1) : raw.replace(/:\d+$/, '');
-  if (!isLoopbackHost(host) && !hostAllowed(raw)) return res.status(403).json({ error: 'bad_host', message: 'Host must be a loopback name' });
+  const set = extraHosts;
+  const h = String(raw ?? '').toLowerCase();
+  if (!isLoopbackHost(host) && !set.has(h) && !set.has(h.replace(/:\d+$/, ''))) return res.status(403).json({ error: 'bad_host', message: 'Host must be a loopback name' });
   next();
 }
 
@@ -91,8 +95,7 @@ export function sameOriginWrites(req, res, next) {
       const u = new URL(origin);
       const hostRaw = String(req.headers.host || '').toLowerCase();
       const hostBare = hostRaw.replace(/:\d+$/, '');
-      ok = u.host.toLowerCase() === hostRaw
-        || (u.protocol === 'https:' && u.hostname === 'local.ping-devops.com' && u.port === '8443' && hostAllowed(hostRaw) && !u.username && !u.password);
+      ok = u.host.toLowerCase() === hostRaw;
     } catch { /* malformed */ }
     if (!ok) return res.status(403).json({ error: 'cross_origin', message: 'writes must be same-origin' });
   }

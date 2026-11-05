@@ -74,8 +74,8 @@ try {
       const external = []; const errors = []; const requests = [];
       page.on('request', (r) => { requests.push(r.url()); if (!r.url().startsWith(base) && !/^(data|blob):/.test(r.url())) external.push(r.url()); });
       page.on('pageerror', (e) => errors.push(e.message));
-      // the deliberate refusals (403 live, 501 stub) show up as console messages; anything else is a failure
-      page.on('console', (m) => { if (m.type() === 'error' && !/status of (403|501)/.test(m.text())) errors.push(m.text()); });
+      // the deliberate refusals (403 live, 409 Real refused, 501 stub) show up as console messages; anything else is a failure
+      page.on('console', (m) => { if (m.type() === 'error' && !/status of (403|409|501)/.test(m.text())) errors.push(m.text()); });
       const t = (id) => page.getByTestId(id);
       const overflow = () => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
       const pick = async (id) => { await t('search').fill(id); await page.locator(`[data-testid="uc-${id}"]`).click(); await t('search').fill(''); };
@@ -237,7 +237,7 @@ try {
       await t('nav-agent').click(); await t('run').click(); await t('refusal').waitFor();
       check((await t('refusal').getAttribute('data-code')) === 'mock_signin_refused', `${tag}: under IDP=pingone a mock run is refused (rule 11)`);
       check(external.filter((u) => !u.startsWith(liveBase)).length === 0, `${tag}: the browser made no request to another origin (${external.length})`);
-      check(errors.every((e) => /status of (403)/.test(e)), `${tag}: no unexpected console error (${errors.filter((e) => !/status of 403/.test(e)).slice(0, 2).join(' | ')})`);
+      check(errors.every((e) => /status of (403|409)/.test(e)), `${tag}: no unexpected console error (${errors.filter((e) => !/status of (403|409)/.test(e)).slice(0, 2).join(' | ')})`);
       await ctx.close();
     }
   }

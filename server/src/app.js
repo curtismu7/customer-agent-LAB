@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
-import { hostCheck, sameOriginWrites, liveRefusal, mockSignInRefusal } from './safety.js';
+import { hostCheck, sameOriginWrites, liveRefusal, mockSignInRefusal, allowedExtraHosts } from './safety.js';
 import { createHealth } from './health.js';
 import { DEFAULT_VERTICAL, isFullVertical, isKnownVertical, isPersona, loadCast, verticalList, PERSONAS } from './cast.js';
 import { defaultMode, modeOf, MODES } from './config.js';
@@ -37,12 +37,20 @@ export function createApp({
 } = {}) {
   const app = express();
   app.disable('x-powered-by');
-  app.use(hostCheck);
+  app.use((req, res, next) => hostCheck(req, res, next, allowedExtraHosts(env)));
   app.use(sameOriginWrites);
   // The page loads nothing from any other origin: scripts, styles, images and calls are same-origin only (styles may be inline, React Flow positions boxes with them).
   const CSP = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'";
   app.use((_req, res, next) => { res.set('X-Content-Type-Options', 'nosniff'); res.set('Content-Security-Policy', CSP); next(); });
 
+  // POST/PUT bodies are JSON only: a write without a JSON content-type is refused (415), not parsed leniently.
+  // Applied per write route, after routing, so unknown routes still answer their fixed 404/405 first.
+  const jsonWrites = (req, res, next) => {
+    if (!/application\/[^+]*\+?json/i.test(String(req.headers['content-type'] || ''))) {
+      return res.status(415).json({ error: 'unsupported_media_type', message: 'writes must be application/json' });
+    }
+    next();
+  };
   const api = express.Router();
   api.use(express.json({ limit: '8kb' }));
   // Defence in depth: every JSON answer is masked for credential-shaped values, whatever path produced it. The MOCK tokens the lab minted for THIS
@@ -121,7 +129,7 @@ export function createApp({
 
   // Rule 19 (owner, 2026-11-02): GET /api/info gains source + realAvailable; POST /api/mode {source:"mock"|"real"}
   // switches at runtime. "real" maps onto this app's live machinery (PingOne credentials); the workspace PUT /mode stays.
-  api.post('/mode', async (req, res, next) => {
+  api.post('/mode', jsonWrites, async (req, res, next) => {
     try {
       const id = ws(req, res); if (!id) return;
       noStore(res);
@@ -146,7 +154,7 @@ export function createApp({
     res.json({ workspace: id, mode: s.mode, modes: MODES, live: liveRefusal(guardCtx(req)) === null ? 'allowed' : 'refused', liveReason: liveRefusal(guardCtx(req)) });
   });
 
-  api.put('/mode', async (req, res, next) => {
+  api.put('/mode', jsonWrites, async (req, res, next) => {
     try {
       const id = ws(req, res); if (!id) return;
       noStore(res);
@@ -169,7 +177,7 @@ export function createApp({
     res.json({ workspace: id, mode: s.mode, count: s.runs.length, max: MAX_RUNS, runs: s.runs });
   });
 
-  api.post('/run/:id', async (req, res, next) => {
+  api.post('/run/:id', jsonWrites, async (req, res, next) => {
     try {
       const id = ws(req, res); if (!id) return;
       noStore(res);
@@ -221,7 +229,7 @@ export function createApp({
   });
 
   // Reset clears this workspace's mode and runs and nothing else.
-  api.post('/reset', async (req, res, next) => {
+  api.post('/reset', jsonWrites, async (req, res, next) => {
     try {
       const id = ws(req, res); if (!id) return;
       noStore(res);
