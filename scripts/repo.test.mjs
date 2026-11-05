@@ -72,7 +72,7 @@ test('the CI workflow is GitHub-hosted, Node 26 only, and carries the forbidden-
 
 test('README follows the README standard: title ends in LAB, plain Tier, Repo and Catalog lines, the port text, the 12 sections in order', () => {
   const r = read('README.md');
-  assert.match(r.split('\n')[0], /^# .* LAB$/); assert.match(r, /^Tier: Demo$/m); assert.match(r, /^Repo: https:\/\/github\.com\/ping-sandbox\/customer-agent-LAB$/m);
+  assert.match(r.split('\n')[0], /^# .* LAB$/); assert.match(r, /^Tier: Demo$/m); assert.match(r, /^Repo: https:\/\/github.com/curtismu7\/customer-agent-LAB$/m);
   assert.match(r, /lsof -iTCP:5600 -sTCP:LISTEN -n -P/); assert.match(r, /PORT=<other port> npm start/); assert.match(r, /Port range for this app: 5600-5699\./);
   const at = (h) => r.indexOf(`\n## ${h}`);
   const order = ['What is simulated', 'Run from a clone', 'Settings file', 'Ports, and what to do', 'Mock and live modes', 'Health, doctor and reset', 'Docker', 'Tests', 'Troubleshooting', 'Ownership', 'Not done'].map(at);
