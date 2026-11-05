@@ -43,7 +43,7 @@ test('hostile bodies: deep nesting, huge numbers, wrong types and control charac
     assert.equal((await fetch(`${url}/api/run/UC1`, { method: 'POST', headers: { 'content-type': 'application/json', origin: url }, body: `{"a":${'{"a":'.repeat(1200)}1${'}'.repeat(1200)}}` })).status, 400);
     for (const b of [{ vertical: 1e999 }, { vertical: null }, { persona: null }, { persona: 1 }, { mode: null }, { vertical: true }, { vertical: '\u0000banking' }, { vertical: 'banking\n' }, { vertical: ' banking' }, { vertical: 'BANKING' }]) assert.equal((await run(url, 'UC1', b)).status, 400, JSON.stringify(b));
     assert.equal((await run(url, 'UC1', { vertical: 'banking', persona: 'standard', mode: 'mock' })).status, 200);
-    assert.equal((await fetch(`${url}/api/run/UC1`, { method: 'POST', headers: { 'content-type': 'text/plain', origin: url }, body: '{"vertical":"retail"}' })).status, 200, 'a non-JSON content type is ignored, defaults apply');
+    assert.equal((await fetch(`${url}/api/run/UC1`, { method: 'POST', headers: { 'content-type': 'text/plain', origin: url }, body: '{"vertical":"retail"}' })).status, 415, 'a non-JSON content type on a write is refused (415), defaults do not apply');
   });
 });
 
