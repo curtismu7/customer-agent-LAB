@@ -36,7 +36,7 @@ describe("header, banner and side nav", () => {
     expect(screen.getByTestId("mode-live").getAttribute("aria-pressed")).toBe("false");
     expect(screen.getByTestId("mode").textContent).toMatch(/Mode: mock/);
     expect(screen.getByTestId("workspace").textContent).toMatch(/^Workspace: w-[0-9a-f]{16}$/);
-    for (const t of ["auto", "light", "dark"]) expect(screen.getByTestId(`theme-${t}`)).toBeTruthy();
+    expect(screen.getByTestId("theme").value).toBe("auto");
     expect(screen.getByTestId("reset")).toBeTruthy();
     expect(screen.getByTestId("presenter").textContent).toBe("Presenter (P)");
   });
@@ -358,14 +358,14 @@ describe("theme, presenter, reset", () => {
   test("the theme picker only sets data-theme on the root, and remembers the choice", async () => {
     await boot();
     const u = userEvent.setup();
-    await u.click(screen.getByTestId("theme-dark"));
+    await u.selectOptions(screen.getByTestId("theme"), "dark");
     expect(document.documentElement.getAttribute("data-theme")).toBe("dark");
     expect(window.localStorage.getItem("cal.theme")).toBe("dark");
-    await u.click(screen.getByTestId("theme-light"));
+    await u.selectOptions(screen.getByTestId("theme"), "light");
     expect(document.documentElement.getAttribute("data-theme")).toBe("light");
-    await u.click(screen.getByTestId("theme-auto"));
+    await u.selectOptions(screen.getByTestId("theme"), "auto");
     expect(document.documentElement.hasAttribute("data-theme")).toBe(false);
-    expect(screen.getByTestId("theme-auto").getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByTestId("theme").value).toBe("auto");
   });
 
   test("a saved theme is applied on load", async () => {

@@ -177,9 +177,11 @@ export default function App() {
             </div>
             <span className="chip" data-testid="mode">Mode: {mode || (modeFailed ? "unknown" : "...")}{mode === "live" ? " (real calls, identity provider only)" : mode === "mock" ? " (engine, offline)" : modeFailed ? " (server did not answer)" : ""}</span>
             <span className="chip" data-testid="workspace">Workspace: {workspaceId()}</span>
-            <div className="seg" role="group" aria-label="Theme">
-              {THEMES.map(([id, label]) => <button key={id} type="button" aria-pressed={theme === id} onClick={() => setTheme(id)} data-testid={`theme-${id}`}>{label}</button>)}
-            </div>
+            <label className="inline">Theme
+              <select value={theme} onChange={(e) => setTheme(e.target.value)} data-testid="theme">
+                {THEMES.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
+              </select>
+            </label>
             <button type="button" onClick={reset} data-testid="reset">Reset</button>
             <button type="button" aria-pressed={presenter} onClick={() => setPresenter((v) => !v)} data-testid="presenter">{presenter ? "Exit presenter (Esc)" : "Presenter (P)"}</button>
           </div>
