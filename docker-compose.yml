@@ -17,7 +17,7 @@ services:
       CAL_PUBLISH: loopback
       ALLOW_MOCK_SIGNIN: "1"
       CAL_LAB_MODE: ${CAL_LAB_MODE:-mock}
-      LAB_ALLOWED_HOSTS: ${LAB_ALLOWED_HOSTS:-}
+      LAB_ALLOWED_HOSTS: ${LAB_ALLOWED_HOSTS:-customer-agent.local.ping-devops.com}
     read_only: true
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
