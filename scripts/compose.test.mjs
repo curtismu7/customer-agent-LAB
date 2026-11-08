@@ -41,7 +41,7 @@ test('compose default host port and Dockerfile port are allowed ports and agree'
   const docker = here('Dockerfile');
   const port = Number(/^EXPOSE (\d+)/m.exec(docker)[1]);
   assert.equal(portProblem(port), null);
-  assert.equal(host, 5601, 'Docker publishes 5601 by default (the host-run port is 5600)');
+  assert.equal(host, 5603, 'Docker publishes 5603 by default (the host-run port is 5600)');
   assert.match(compose, new RegExp(`:${port}"`));
   assert.match(docker, /^ENV CALAB_BIND=0\.0\.0\.0$/m);
   assert.match(docker, /^USER node$/m);

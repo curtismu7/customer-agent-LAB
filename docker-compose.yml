@@ -1,6 +1,6 @@
-# OrbStack:  HOST_PORT=5601 docker compose up --build -d   ->  http://127.0.0.1:5601
+# OrbStack:  HOST_PORT=5603 docker compose up --build -d   ->  http://127.0.0.1:5603
 # The server binds 0.0.0.0 INSIDE the container (CALAB_BIND is the opt-in), but the port is published on loopback only.
-# Do not change the 127.0.0.1 below. HOST_PORT must stay in 5600-5699 (5601 is the Docker default; 5600 is the host-run port).
+# Do not change the 127.0.0.1 below. HOST_PORT must stay in 5600-5699 (5603 is the Docker default; 5601 is taken by Kibana; 5600 is the host-run port).
 # ALLOW_MOCK_SIGNIN=1 is the owner's opt-in to the mock persona sign-in; CAL_PUBLISH=loopback tells the guards that the publish above is loopback-only
 # (a test pins both). Remove ALLOW_MOCK_SIGNIN to turn mock sign-in off. CAL_ALLOW_LIVE is not set: live mode stays refused.
 name: customer-agent-lab
@@ -9,7 +9,7 @@ services:
   customer-agent-lab:
     build: .
     ports:
-      - "127.0.0.1:${HOST_PORT:-5601}:5600"
+      - "127.0.0.1:${HOST_PORT:-5603}:5600"
     environment:
       SHELF_URL: ${SHELF_URL:-}
       PORT: "5600"

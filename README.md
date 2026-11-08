@@ -99,7 +99,7 @@ If the port is taken:
 4. Do not use 8080, 5173, 3000, 4000, 4400, 4510, 4600-4601, 18080, 19080 or 19090.
 ```
 
-Other variable: `HOST_PORT` (Docker host port, default 5601). Keep both inside 5600-5699.
+Other variable: `HOST_PORT` (Docker host port, default 5603). Keep both inside 5600-5699.
 
 ## Mock and live modes
 
@@ -119,10 +119,10 @@ API: `GET /api/health`, `GET /api/info`, `GET /api/story?vertical=`, `GET /api/d
 ## Docker (optional)
 
 ```
-HOST_PORT=5601 docker compose up --build -d
+HOST_PORT=5603 docker compose up --build -d
 ```
 
-Open http://127.0.0.1:5601/ (the health answer is at http://127.0.0.1:5601/api/health). The port is published on `127.0.0.1` only (a test pins it); the container runs as a non-root user, read-only, with every capability dropped. Use OrbStack, never Docker Desktop.
+Open http://127.0.0.1:5603/ (the health answer is at http://127.0.0.1:5603/api/health). The port is published on `127.0.0.1` only (a test pins it); the container runs as a non-root user, read-only, with every capability dropped. Use OrbStack, never Docker Desktop.
 
 ## Tests
 

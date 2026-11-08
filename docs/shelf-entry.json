@@ -5,11 +5,11 @@
       "name": "Customer Agent LAB",
       "kind": "Demo",
       "description": "The customer-facing AI agent of the AI-DEMO2 demo with all 87 of its use cases in eight tracks: delegation with an act claim, authorize decisions, step-up and human approval, gateway attacks and refusals. A simulation: a mock engine produces every token and hop offline.",
-      "url": "http://localhost:5600",
+      "url": "http://localhost:5603",
       "healthPath": "/api/health",
       "composeFile": "customer-agent-LAB/docker-compose.yml",
       "composeOverlays": [],
-      "notes": "Host-run: ./scripts/run.sh (port 5600). Docker: HOST_PORT=5601 docker compose up --build -d (published on 127.0.0.1 only). Open the page at the url (npm run build first for the host-run form; the Docker image builds it). Mock by default. Live (host-run only, owner opt-in: CAL_ALLOW_LIVE=1, IDP=pingone, PingOne settings in the shared file) makes two real calls to one PingOne environment and is UNVERIFIED on a real tenant.",
+      "notes": "Host-run: ./scripts/run.sh (port 5600). Docker: HOST_PORT=5603 docker compose up --build -d (published on 127.0.0.1 only). Open the page at the url (npm run build first for the host-run form; the Docker image builds it). Mock by default. Live (host-run only, owner opt-in: CAL_ALLOW_LIVE=1, IDP=pingone, PingOne settings in the shared file) makes two real calls to one PingOne environment and is UNVERIFIED on a real tenant.",
       "catalogId": "D24"
     }
   ]

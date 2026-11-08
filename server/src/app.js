@@ -240,10 +240,12 @@ export function createApp({
     } catch (e) { return next(e); }
   });
 
+  // The header "Shelf" button. Must sit before the api 404 handler and outside the webDist check (it was unreachable behind both).
+  api.get('/shelf', (_req, res) => { res.set('Cache-Control', 'no-store'); res.json(shelfInfo(env)); });
+
   api.use((_req, res) => res.status(404).json({ error: 'not_found' }));
   app.use('/api', api);
   if (fs.existsSync(path.join(webDist, 'index.html'))) {
-app.get('/api/shelf', (_req, res) => { res.set('Cache-Control', 'no-store'); res.json(shelfInfo()); }); // the header "Shelf" button
     app.use(express.static(webDist));
     app.get(/^\/(?!api\/).*/, (_req, res) => res.sendFile(path.join(webDist, 'index.html')));
   }
