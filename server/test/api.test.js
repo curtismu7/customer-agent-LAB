@@ -5,7 +5,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createWorkspaces, MAX_RUNS } from '../src/workspaces.js';
 import { MANIFEST, TRACKS } from '../src/manifest.js';
-import { get, post, put, run, W, withServer } from './helpers.js';
+import { get, post, put, run, W, withServer, MOCK_OK } from './helpers.js';
 import { SECRETS, NEEDLE } from './secrets.js';
 
 test('GET /api/health is demo-health/1, public, GET only, no store, small', async () => {
@@ -18,6 +18,19 @@ test('GET /api/health is demo-health/1, public, GET only, no store, small', asyn
     assert.match(j.at, /^\d{4}-\d\d-\d\dT/);
     assert.ok(JSON.stringify(j).length < 400);
     const bad = await post(url, '/api/health', {}); assert.equal(bad.status, 405); assert.equal(bad.headers.get('allow'), 'GET');
+  });
+});
+
+test('GET /api/shelf answers (the header Shelf button) with the configured URL, or null when unset, and is GET only', async () => {
+  await withServer(async (url) => {
+    const r = await get(url, '/api/shelf'); const j = await r.json();
+    assert.equal(r.status, 200); assert.equal(r.headers.get('cache-control'), 'no-store');
+    assert.deepEqual(j, { shelfUrl: 'https://shelf.example:8443' });
+    assert.equal((await post(url, '/api/shelf', {})).status, 404);
+  }, { env: { ...MOCK_OK, SHELF_URL: 'https://shelf.example:8443/' } });
+  await withServer(async (url) => {
+    const j = await (await get(url, '/api/shelf')).json();
+    assert.ok(j.shelfUrl === null || typeof j.shelfUrl === 'string');
   });
 });
 
