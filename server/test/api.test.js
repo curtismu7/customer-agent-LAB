@@ -27,11 +27,44 @@ test('GET /api/shelf answers (the header Shelf button) with the configured URL, 
     assert.equal(r.status, 200); assert.equal(r.headers.get('cache-control'), 'no-store');
     assert.deepEqual(j, { shelfUrl: 'https://shelf.example:8443' });
     assert.equal((await post(url, '/api/shelf', {})).status, 404);
+    assert.equal((await (await get(url, '/api/info')).json()).shelfUrl, 'https://shelf.example:8443', '/api/info carries it too (the web app uses it behind the proxy)');
   }, { env: { ...MOCK_OK, SHELF_URL: 'https://shelf.example:8443/' } });
   await withServer(async (url) => {
     const j = await (await get(url, '/api/shelf')).json();
     assert.ok(j.shelfUrl === null || typeof j.shelfUrl === 'string');
   });
+});
+
+test('a write sent with the shelf proxy origin is accepted only when SHELF_URL names it; any other cross origin is refused', async () => {
+  const proxy = 'https://shelf.example:8443';
+  const H = { origin: proxy, 'sec-fetch-site': 'same-origin', ...W('proxy-ws-01') };
+  await withServer(async (url) => {
+    const ok = await post(url, '/api/reset', {}, H); assert.equal(ok.status, 200);
+    const other = await post(url, '/api/reset', {}, { ...H, origin: 'https://evil.example:8443' }); assert.equal(other.status, 403);
+    const http = await post(url, '/api/reset', {}, { ...H, origin: 'http://shelf.example:8443' }); assert.equal(http.status, 403);
+    const port = await post(url, '/api/reset', {}, { ...H, origin: 'https://shelf.example:9443' }); assert.equal(port.status, 403);
+  }, { env: { ...MOCK_OK, SHELF_URL: proxy } });
+  await withServer(async (url) => {
+    const r = await post(url, '/api/reset', {}, H); assert.equal(r.status, 403); assert.equal((await r.json()).error, 'cross_origin');
+  }, { env: { ...MOCK_OK, SHELF_URL: 'https://other.example:8443' } });
+});
+
+test("mock sign-in accepts only the shelf proxy's own two headers; any other proxy header, a mismatch, or live mode behind it is refused", async () => {
+  const proxy = 'https://shelf.example:8443';
+  const ours = { 'x-forwarded-host': 'shelf.example:8443', 'x-forwarded-proto': 'https', origin: proxy, 'sec-fetch-site': 'same-origin' };
+  await withServer(async (url) => {
+    const ok = await post(url, '/api/run/UC1', {}, { ...ours, ...W('proxy-run-01') }); assert.equal(ok.status, 200, 'our proxy: mock run allowed');
+    for (const extra of [{ 'x-forwarded-for': '203.0.113.9' }, { 'x-real-ip': '203.0.113.9' }, { forwarded: 'for=203.0.113.9' }]) {
+      const r = await post(url, '/api/run/UC1', {}, { ...ours, ...extra, ...W('proxy-run-02') }); assert.equal(r.status, 403); assert.match((await r.json()).detail, /proxy/);
+    }
+    const wrongHost = await post(url, '/api/run/UC1', {}, { ...ours, 'x-forwarded-host': 'evil.example:8443', ...W('proxy-run-03') }); assert.equal(wrongHost.status, 403);
+    const wrongProto = await post(url, '/api/run/UC1', {}, { ...ours, 'x-forwarded-proto': 'http', ...W('proxy-run-04') }); assert.equal(wrongProto.status, 403);
+    const live = await put(url, '/api/mode', { mode: 'live' }, { ...ours, ...W('proxy-run-05') }); assert.equal(live.status, 403, 'live never gets the exception');
+  }, { env: { ...MOCK_OK, SHELF_URL: proxy } });
+  await withServer(async (url) => {
+    const r = await post(url, '/api/run/UC1', {}, { 'x-forwarded-host': 'shelf.example:8443', 'x-forwarded-proto': 'https', ...W('proxy-run-06') });
+    assert.equal(r.status, 403, 'SHELF_URL names another proxy: refused');
+  }, { env: { ...MOCK_OK, SHELF_URL: 'https://other.example:8443' } });
 });
 
 test('GET /api/usecases is grouped by track, all 87, filterable by track and vertical, with the tool resolved for the vertical', async () => {

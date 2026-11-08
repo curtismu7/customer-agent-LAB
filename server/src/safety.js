@@ -84,7 +84,7 @@ export function hostCheck(req, res, next, extraHosts = allowedExtraHosts()) {
 }
 
 const WRITE = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
-export function sameOriginWrites(req, res, next) {
+export function sameOriginWrites(req, res, next, { proxyOrigin = null, extraHosts = new Set() } = {}) {
   if (!WRITE.has(req.method)) return next();
   const site = req.headers['sec-fetch-site'];
   if (site && site !== 'same-origin' && site !== 'none') return res.status(403).json({ error: 'cross_origin', message: 'writes must be same-origin' });
@@ -95,7 +95,10 @@ export function sameOriginWrites(req, res, next) {
       const u = new URL(origin);
       const hostRaw = String(req.headers.host || '').toLowerCase();
       const hostBare = hostRaw.replace(/:\d+$/, '');
-      ok = u.host.toLowerCase() === hostRaw;
+      // Same origin, or the shelf's own origin (the lab-proxy, given by the caller from SHELF_URL) while the Host the request was
+      // sent to is loopback or one this lab allows (fleet pattern: proxy-origin write acceptance).
+      ok = u.host.toLowerCase() === hostRaw
+        || (proxyOrigin !== null && u.origin === proxyOrigin && !u.username && !u.password && (isLoopbackHost(hostBare) || extraHosts.has(hostBare)));
     } catch { /* malformed */ }
     if (!ok) return res.status(403).json({ error: 'cross_origin', message: 'writes must be same-origin' });
   }
@@ -108,6 +111,21 @@ export function sameOriginWrites(req, res, next) {
 // image runs with NODE_ENV=production on purpose. Returns null when allowed, or the fixed reason it is refused (never echoes input).
 const LOOPBACK_BIND = new Set(['127.0.0.1', '::1', 'localhost']);
 export const FORWARDED = ['forwarded', 'x-forwarded-for', 'x-forwarded-host', 'x-forwarded-proto', 'x-real-ip'];
+
+// The one proxy the owner runs: the shared lab-proxy, whose origin is SHELF_URL. When the request carries exactly its two headers
+// (X-Forwarded-Host = that host, X-Forwarded-Proto = that scheme) and nothing else that names a proxy or a client address, the pair is
+// dropped so the MOCK sign-in guard can run on the rest. Any other proxy header, or a mismatch, keeps the headers whole (refused).
+// Used for mock sign-in only: live mode never gets this exception.
+export function trustedProxyHeaders(headers, proxyOrigin) {
+  if (!proxyOrigin || !headers) return headers;
+  let u; try { u = new URL(proxyOrigin); } catch { return headers; }
+  const ours = String(headers['x-forwarded-host'] ?? '').toLowerCase() === u.host.toLowerCase()
+    && String(headers['x-forwarded-proto'] ?? '').toLowerCase() === u.protocol.replace(':', '');
+  const others = ['forwarded', 'x-forwarded-for', 'x-real-ip'].some((h) => headers[h] !== undefined);
+  if (!ours || others) return headers;
+  const { 'x-forwarded-host': _h, 'x-forwarded-proto': _p, ...rest } = headers;
+  return rest;
+}
 
 function networkRefusal({ env, bind, headers }) {
   if (FORWARDED.some((h) => headers?.[h] !== undefined)) return 'Refused behind a proxy.';

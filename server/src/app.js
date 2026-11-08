@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
-import { hostCheck, sameOriginWrites, liveRefusal, mockSignInRefusal, allowedExtraHosts } from './safety.js';
+import { hostCheck, sameOriginWrites, liveRefusal, mockSignInRefusal, allowedExtraHosts, trustedProxyHeaders } from './safety.js';
 import { createHealth } from './health.js';
 import { DEFAULT_VERTICAL, isFullVertical, isKnownVertical, isPersona, loadCast, verticalList, PERSONAS } from './cast.js';
 import { defaultMode, modeOf, MODES } from './config.js';
@@ -39,7 +39,9 @@ export function createApp({
   const app = express();
   app.disable('x-powered-by');
   app.use((req, res, next) => hostCheck(req, res, next, allowedExtraHosts(env)));
-  app.use(sameOriginWrites);
+  // The shared lab-proxy's origin is the shelf's (SHELF_URL); null when unset or not a URL.
+  const proxyOrigin = () => { try { const shelf = shelfInfo(env).shelfUrl; return shelf ? new URL(shelf).origin : null; } catch { return null; } };
+  app.use((req, res, next) => sameOriginWrites(req, res, next, { proxyOrigin: proxyOrigin(), extraHosts: allowedExtraHosts(env) }));
   // The page loads nothing from any other origin: scripts, styles, images and calls are same-origin only (styles may be inline, React Flow positions boxes with them).
   const CSP = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'";
   app.use((_req, res, next) => { res.set('X-Content-Type-Options', 'nosniff'); res.set('Content-Security-Policy', CSP); next(); });
@@ -73,6 +75,8 @@ export function createApp({
     return true;
   };
   const guardCtx = (req) => ({ env, bind, headers: req.headers });
+  // Mock sign-in only: the shelf's own proxy headers are not a refusal (see trustedProxyHeaders). Live keeps the strict context above.
+  const mockCtx = (req) => ({ env, bind, headers: trustedProxyHeaders(req.headers, proxyOrigin()) });
   // vertical: absent means the default; present must be a known id. Returns the id, or null after answering.
   const verticalOf = (v, res) => {
     if (v === undefined) return DEFAULT_VERTICAL;
@@ -87,7 +91,8 @@ export function createApp({
       mode: defaultMode(), modes: MODES, simulated: true, total: MANIFEST.meta.total, counts: MANIFEST.meta.counts, sourceRef: MANIFEST.source, personas: PERSONAS, verticals: verticalList(),
       source: workspaces.peek('default').mode === 'live' ? 'real' : 'mock', // rule 19: the default workspace's current source
       realAvailable, // rule 19: whether Real (this app's live PingOne path) is configured
-      guards: { mockSignIn: mockSignInRefusal(guardCtx(req)) === null ? 'allowed' : 'refused', live: liveRefusal(guardCtx(req)) === null ? 'allowed' : 'refused' },
+      guards: { mockSignIn: mockSignInRefusal(mockCtx(req)) === null ? 'allowed' : 'refused', live: liveRefusal(guardCtx(req)) === null ? 'allowed' : 'refused' },
+      shelfUrl: shelfInfo(env).shelfUrl, // the header Shelf button uses this one (a proxy-mounted page cannot reach /api/shelf with cookies omitted)
       liveSettings: { configured: live.configured(), origin: live.origin() }, // the one origin live mode may reach (no environment id, no client)
     });
   });
@@ -215,7 +220,7 @@ export function createApp({
         res.set('traceparent', out.run.traceparent);
         return res.json({ ok: true, workspace: id, seq: out.seq, run: out.run });
       }
-      const why = mockSignInRefusal(guardCtx(req));
+      const why = mockSignInRefusal(mockCtx(req));
       if (why) return res.status(403).json({ error: 'mock_signin_refused', detail: why });
       const out = await workspaces.write(id, (s) => {
         if (s.runs.length >= MAX_RUNS) throw refuse('workspace_full', `this workspace already holds ${MAX_RUNS} runs; Reset it to continue`, 409);

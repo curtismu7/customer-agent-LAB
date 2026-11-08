@@ -165,7 +165,7 @@ export default function App() {
         <div className="topbar__row">
           <div className="topbar__title">
             <h1 className="topbar__name">Customer Agent LAB</h1>
-        <ShelfLink headers={() => ({ "x-workspace": workspaceId() })} />
+        <ShelfLink url={info?.shelfUrl} headers={() => ({ "x-workspace": workspaceId() })} />
             {!presenter && <p className="lede">The customer's AI agent and its {info?.total ?? 87} use cases, {mode === "live" ? "here reaching your identity provider only" : "run by a mock engine"}. {story ? story.talkTrack[0]?.say : ""}</p>}
           </div>
           <div className="toolbar">
