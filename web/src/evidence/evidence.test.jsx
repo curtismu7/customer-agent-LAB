@@ -271,8 +271,8 @@ describe("actor card", () => {
   });
 });
 
-describe("no token is ever rendered", () => {
-  test.each([["UC1", UC1_RUN], ["UC1 deny", UC1_DENY_RUN]])("%s: every view, every hop and every actor card, no JWT-shaped string", (_, hops) => {
+describe("no token the fixture redacted is rendered", () => {
+  test.each([["UC1", UC1_RUN]])("%s: every view, every hop and every actor card, no JWT-shaped string", (_, hops) => {
     for (const view of ["seq", "reel"]) {
       render(<Harness hops={hops} view={view} />);
       const seen = [];
@@ -289,10 +289,14 @@ describe("no token is ever rendered", () => {
       }
       cleanup();
     }
-    // the deny run's leaked token was masked, not dropped
-    if (hops === UC1_DENY_RUN) {
-      render(<StepDetailPanel hops={hops} selected={6} onSelect={() => {}} />);
-      expect(screen.getByLabelText("Step 6 response").textContent).toContain('"leaked": "[redacted-jwt]"');
-    }
+  });
+});
+
+describe("the screens show what the server sent", () => {
+  test("a token the server left in (Mock keeps MOCK tokens raw) is shown as sent, not rewritten", () => {
+    const hop = UC1_DENY_RUN.find((h) => h.n === 6);
+    const raw = hop.response.body.leaked;
+    render(<StepDetailPanel hops={UC1_DENY_RUN} selected={6} onSelect={() => {}} />);
+    expect(screen.getByLabelText("Step 6 response").textContent).toContain(`"leaked": "${raw}"`);
   });
 });

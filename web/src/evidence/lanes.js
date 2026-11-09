@@ -40,16 +40,15 @@ export const touches = (hop, id) => Boolean(hop) && (hop.from === id || hop.to =
 export const isNote = (hop) => hop.from === hop.to;
 
 // Verdict words: every status carries a word, never colour alone. State maps onto the app's .tag[data-state].
-export const VERDICT_WORD = { ok: "done", deny: "denied", held: "held", skip: "not in this path" };
-export const VERDICT_STATE = { ok: "ok", deny: "bad", held: "warn", skip: "info" };
+export const VERDICT_WORD = { ok: "done", deny: "denied", held: "held", obligation: "needs approval", skip: "not in this path" };
+export const VERDICT_STATE = { ok: "ok", deny: "bad", held: "warn", obligation: "warn", skip: "info" };
 export const verdictWord = (v) => VERDICT_WORD[v || "ok"] || String(v);
 export const verdictState = (v) => VERDICT_STATE[v || "ok"] || "info";
 export const STAGE_STATE = { pass: "ok", fail: "bad", skip: "info" };
 
-// Defence in depth: the server redacts before a hop leaves it, but anything JWT-shaped that slips through is masked
-// here too, and control characters become visible escapes (safeText).
-const JWT_IN_TEXT = /[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g;
-export const txt = (v) => visible(v == null ? "" : typeof v === "string" ? v : JSON.stringify(v)).replace(JWT_IN_TEXT, "[redacted-jwt]");
+// The screens show what the server sent. Redaction is the server's job (shared hop-detail): Mock keeps MOCK tokens raw for
+// teaching (rule 4), Real redacts, secrets are always write-only. Control characters become visible escapes (safeText).
+export const txt = (v) => visible(v == null ? "" : typeof v === "string" ? v : JSON.stringify(v));
 
 // Preferences outlive a reload; storage can be missing or throw (private mode), so every access is guarded.
 export function readPref(key, ok, fallback) {

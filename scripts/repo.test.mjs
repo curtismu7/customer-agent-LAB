@@ -94,7 +94,8 @@ test('docs never use the word "door"', () => {
 
 test('the lab ships no k8s manifests (deferred by the owner, 2026-10-31) and no bare MODE', () => {
   assert.ok(!fs.existsSync(path.join(root, 'k8s'))); assert.ok(!fs.existsSync(path.join(root, 'deploy')));
-  for (const f of fs.readdirSync(path.join(root, 'server/src'))) assert.ok(!/process\.env\.MODE\b/.test(read(`server/src/${f}`)), f);
+  const files = (dir) => fs.readdirSync(path.join(root, dir), { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? files(`${dir}/${e.name}`) : [`${dir}/${e.name}`]));
+  for (const f of files('server/src')) assert.ok(!/process\.env\.MODE\b/.test(read(f)), f);
 });
 
 test('the Dockerfile copies only what the server needs and runs as a non-root user; the data file is copied', () => {
