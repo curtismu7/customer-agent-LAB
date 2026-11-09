@@ -1,10 +1,11 @@
+import { Fragment } from "react";
 import SequenceView from "../evidence/SequenceView";
 import MovieReel from "../evidence/MovieReel";
 import StepDetailPanel from "../evidence/StepDetailPanel";
 import DiagramView from "./DiagramView";
 import TokenView from "./TokenView";
 import { DIAGRAMS, VIEWS, VIEW_LABEL } from "../quickConfig";
-import { routeOf } from "../handoff";
+import { handoffCarry, routeOf } from "../handoff";
 import { Tag } from "./Bits";
 
 // The hand-off summary the evidence column shows while a Hand off use case is selected and has not been previewed.
@@ -24,10 +25,7 @@ function HandoffSummary({ uc, catalog, vertical, userId }) {
         <div>
           <p className="kicker">Carried in the link</p>
           <dl className="kv">
-            <dt>from</dt><dd className="mono">customer-agent</dd>
-            <dt>uc</dt><dd className="mono">{uc.id}</dd>
-            <dt>vertical</dt><dd className="mono">{vertical}</dd>
-            {userId && <><dt>user</dt><dd className="mono">{userId}</dd></>}
+            {(handoffCarry(uc.id, vertical, userId) || []).map(([k, v]) => <Fragment key={k}><dt>{k}</dt><dd className="mono">{v}</dd></Fragment>)}
           </dl>
         </div>
         <div>

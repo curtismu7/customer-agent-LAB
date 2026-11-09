@@ -2,21 +2,30 @@
 // only from this fixed allow-list (app id -> lab-proxy path), never from anything typed or read from the address bar, so there is no open redirect.
 // Only when this page itself is served under the lab proxy (its path starts with /customer-agent/) is there a link, and then it is RELATIVE: the
 // other app sits beside this one under the same proxy. Served on its own port, the page says "Start <app> from the Shelf" and shows no link.
-// What travels in the link: ids only (from, uc, vertical). Never a token, a secret, a cookie or user data.
+// What travels in the link: ids only (from, uc, vertical, user = the persona id). Never a token, a secret, a cookie or user data. The card lists
+// exactly what handoffCarry returns, and handoffHref builds the query from the same list (one source of truth).
 
-// Paths copied from the shelf's lab-proxy route table (paths only), for the apps the routing table hands off to.
+// Paths from the lab-proxy route table (shared/lab-proxy/nginx.conf and the shelf's PROXY_PATHS; paths only), keyed by the app ids the routing
+// table uses. Where the table's id differs from the proxy path, the shelf entry (same port, same title) confirms they are one app:
+// cimd = the shelf's cimd-lab ("CIMD Lab"), privilege-a2a-anthropic-demo = the proxy's /privilege-a2a/. Apps with no proxy route get no link.
 export const PROXY_PATHS = Object.freeze({
   "a2a-lab": "/a2a-lab/",
   "agent-kill-switch": "/agent-kill-switch/",
   "agent-registry-demo": "/agent-registry-demo/",
   "ai-guard-sidecar": "/ai-guard-sidecar/",
   "ciba-hitl-lab": "/ciba-hitl-lab/",
+  cimd: "/cimd-lab/",
   "delegation-lab": "/delegation-lab/",
   "gateway-suite-lab": "/gateway-suite/",
   "hitl-mfa-lab": "/hitl-mfa-lab/",
+  "jev-lab": "/jev-lab/",
+  "jit-lab": "/jit-lab/",
   "mcp-gateway-lab": "/mcp-gateway-lab/",
   "meridian-a2a-hop": "/meridian-a2a-hop/",
   "no-tool-no-promise": "/no-tool-no-promise/",
+  "obo-lab": "/obo-lab/",
+  "pingone-mcp-inspector": "/pingone-mcp-inspector/",
+  "privilege-a2a-anthropic-demo": "/privilege-a2a/",
   "privilege-demo": "/privilege-demo/",
   "token-workbench": "/token-workbench/",
 });
@@ -28,15 +37,26 @@ export const routeOf = (u) => (u?.route && typeof u.route.route === "string" ? u
 export const isHandoff = (u) => routeOf(u).route === "Hand off";
 export const isDeeper = (u) => routeOf(u).route === "Here + go deeper";
 
-// The relative link to `app` for use case `uc` in `vertical`, or null when there must be no link.
-export function handoffHref(app, uc, vertical, pathname) {
-  if (typeof pathname !== "string" || !pathname.startsWith(SELF_PREFIX)) return null;
-  if (typeof app !== "string" || !Object.hasOwn(PROXY_PATHS, app)) return null;
+// What the link carries, in order: [[name, value], ...]. uc and vertical must be id-shaped (else null: no link and nothing to list); the user
+// (the persona id, e.g. alex.morgan) is carried only when it is id-shaped too.
+export function handoffCarry(uc, vertical, user) {
   if (!ID.test(String(uc)) || !ID.test(String(vertical))) return null;
+  const out = [["from", "customer-agent"], ["uc", String(uc)], ["vertical", String(vertical)]];
+  if (typeof user === "string" && ID.test(user)) out.push(["user", user]);
+  return out;
+}
+
+// The relative link to `app` for use case `uc` in `vertical` (and `user`), or null when there must be no link. The prefix check runs on the
+// pathname with repeated slashes folded (the proxy folds them too); the climb counts the segments of the pathname as the browser resolves it,
+// empty ones included, so "/customer-agent//" still lands on "/<app>/".
+export function handoffHref(app, uc, vertical, pathname, user) {
+  if (typeof pathname !== "string" || !pathname.replace(/\/{2,}/g, "/").startsWith(SELF_PREFIX)) return null;
+  if (typeof app !== "string" || !Object.hasOwn(PROXY_PATHS, app)) return null;
+  const carry = handoffCarry(uc, vertical, user);
+  if (!carry) return null;
   const dir = pathname.slice(0, pathname.lastIndexOf("/") + 1);
-  const up = "../".repeat(dir.split("/").filter(Boolean).length);
-  const q = new URLSearchParams({ from: "customer-agent", uc, vertical });
-  return `${up}${PROXY_PATHS[app].slice(1)}?${q.toString()}`;
+  const up = "../".repeat(dir.split("/").length - 2);
+  return `${up}${PROXY_PATHS[app].slice(1)}?${new URLSearchParams(carry).toString()}`;
 }
 
 export const currentPath = () => { try { return window.location.pathname; } catch { return "/"; } };

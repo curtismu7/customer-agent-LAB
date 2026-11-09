@@ -10,7 +10,6 @@ import EvidenceColumn from "./components/EvidenceColumn";
 import FullPageEvidence from "./components/FullPageEvidence";
 import QuickConfig from "./components/QuickConfig";
 import SetupSidebar, { VerticalSelect } from "./components/SetupSidebar";
-import { HandoffCard } from "./components/HandoffCard";
 import { getJson, postJson, resetWorkspace } from "./api";
 import { EXTRAS, newTraceparent } from "./lib";
 import { matchPrompt } from "./chat";
@@ -20,7 +19,8 @@ import { workspaceId } from "./workspace";
 import ShelfLink from "./components/ShelfLink.jsx";
 import "./layout.css";
 
-// The nav holds the agent's own areas only. An extra page joins it when a run of a use case that opens it succeeds, and Reset removes it.
+// The nav holds the agent's own areas only. An extra page joins the "More" menu beside it when a run of a use case that opens it succeeds, and
+// Reset removes it (one menu, so the shell bar stays one row however many extra pages are open).
 export const BASE_NAV = [
   { id: "agent", label: "Agent" },
   { id: "runs", label: "Run history" },
@@ -126,7 +126,8 @@ export default function App() {
   }, [setPresenter]);
 
   const extras = Object.keys(opened).filter((k) => Object.hasOwn(EXTRAS, k));
-  const nav = [...BASE_NAV, ...extras.map((k) => ({ id: `${EXTRA_PREFIX}${k}`, label: EXTRAS[k].label, extra: true }))];
+  const extraNav = extras.map((k) => ({ id: `${EXTRA_PREFIX}${k}`, label: EXTRAS[k].label, extra: true }));
+  const nav = [...BASE_NAV, ...extraNav];
   const page = FULL_PAGES.includes(view) ? view : null;
   const current = page ? "agent" : nav.some((n) => n.id === view) ? view : "agent"; // a hash for a page that is not open falls back to the agent
   const select = (id) => { setView_(id); try { window.history.replaceState(null, "", `#${id}`); } catch { /* ignore */ } };
@@ -146,8 +147,11 @@ export default function App() {
   const pick = (id) => {
     setSelectedId(id);
     setSelHop(null);
-    const needs = personaFor(allUc.find((u) => u.id === id));
+    const u = allUc.find((x) => x.id === id);
+    const needs = personaFor(u);
     if (needs) setPersona(needs);
+    // A hand-off picked from the list answers in the conversation, the same way a typed prompt does: the reasoning and the hand-off card.
+    if (u && isHandoff(u)) { const tid = ++turnSeq.current; setTurns((ts) => [...ts, { id: tid, said: `${u.id} ${u.title} (picked from the list)`, uc: u, vertical, how: "picked", status: "handoff" }]); }
     setTimeout(() => { if (window.matchMedia?.("(max-width: 900px)").matches) runRef.current?.scrollIntoView?.({ block: "start" }); }, 0);
   };
 
@@ -219,7 +223,7 @@ export default function App() {
     const fwd = e.key === "ArrowDown" || e.key === "ArrowRight";
     if (!fwd && e.key !== "ArrowUp" && e.key !== "ArrowLeft") return;
     e.preventDefault();
-    const next = nav[(i + (fwd ? 1 : nav.length - 1)) % nav.length];
+    const next = BASE_NAV[(i + (fwd ? 1 : BASE_NAV.length - 1)) % BASE_NAV.length];
     select(next.id);
     document.getElementById(`tab-${next.id}`)?.focus();
   };
@@ -243,11 +247,20 @@ export default function App() {
         {!presenter && (
           <nav className="shell-nav" aria-label="Agent areas">
             <div role="tablist" aria-orientation="horizontal" className="shell-nav__list" data-testid="nav">
-              {nav.map((n, i) => (
-                <button key={n.id} id={`tab-${n.id}`} role="tab" type="button" aria-selected={current === n.id} aria-controls={current === n.id ? `panel-${n.id}` : undefined} tabIndex={current === n.id ? 0 : -1}
-                  onClick={() => select(n.id)} onKeyDown={(e) => onKeyNav(e, i)} data-testid={`nav-${n.id}`} data-extra={n.extra ? "true" : "false"}>{n.label}</button>
+              {BASE_NAV.map((n, i) => (
+                <button key={n.id} id={`tab-${n.id}`} role="tab" type="button" aria-selected={current === n.id} aria-controls={current === n.id ? `panel-${n.id}` : undefined} tabIndex={current === n.id || (extraKey && i === 0) ? 0 : -1}
+                  onClick={() => select(n.id)} onKeyDown={(e) => onKeyNav(e, i)} data-testid={`nav-${n.id}`}>{n.label}</button>
               ))}
             </div>
+            {extraNav.length > 0 && (
+              <label className="shell-more">
+                <span className="sr-only">More pages</span>
+                <select id="tab-more" value={extraKey ? current : ""} onChange={(e) => { if (e.target.value) select(e.target.value); }} aria-controls={extraKey ? `panel-${current}` : undefined} data-current={extraKey ? "true" : undefined} data-testid="nav-more">
+                  <option value="">More ({extraNav.length})</option>
+                  {extraNav.map((n) => <option key={n.id} value={n.id} data-testid={`nav-${n.id}`}>{n.label}</option>)}
+                </select>
+              </label>
+            )}
           </nav>
         )}
         <div className="shell-right">
@@ -260,7 +273,7 @@ export default function App() {
           <button type="button" aria-expanded={qcOpen} aria-controls={qcOpen && current === "agent" && !page ? "quick-config" : undefined} onClick={() => { setQcOpen((v) => !v); if (page || current !== "agent") select("agent"); }} data-testid="qc-open">Quick Config</button>
           <button type="button" onClick={reset} data-testid="reset">Reset</button>
           <button type="button" aria-pressed={presenter} onClick={() => setPresenter((v) => !v)} data-testid="presenter">{presenter ? "Exit presenter (Esc)" : "Presenter (P)"}</button>
-          <label className="shell-theme">Theme
+          <label className="shell-theme"><span className="sr-only">Theme</span>
             <select value={theme} onChange={(e) => setTheme(e.target.value)} data-testid="theme">
               {THEMES.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
             </select>
@@ -276,7 +289,7 @@ export default function App() {
       </div>
       <p className="sr-only" role="status" aria-live="polite">{resetMsg}</p>
       <main className="content" id="main" tabIndex={-1}>
-        <div id={`panel-${current}`} role="tabpanel" aria-labelledby={`tab-${current}`}>
+        <div id={`panel-${current}`} role="tabpanel" aria-labelledby={extraKey ? "tab-more" : `tab-${current}`}>
           {error && <p className="app-error" role="alert">Could not load the lab ({error}). Is the server running?</p>}
           {presenter && story && sayIds.length > 0 && (
             <aside className="say" data-testid="presenter-say" aria-label="Talk track">
@@ -297,12 +310,11 @@ export default function App() {
                 </SetupSidebar>
               )}
               <div className="work">
-                <AgentColumn agent={cast.castAgent} brand={cast.castBrand} userId={userId} verticalLabel={verticalLabel} stub={stub} prompts={prompts} turns={turns}
+                <AgentColumn agent={cast.castAgent} brand={cast.castBrand} userId={userId} vertical={vertical} verticalLabel={verticalLabel} stub={stub} prompts={prompts} turns={turns}
                   status={running ? "running" : statusOf(lastTurn)} onSay={say} onHop={onHop} onPreview={preview} running={running}>
                   {uc && (
                     <details className="ucpanel" open ref={runRef} data-testid="uc-panel">
                       <summary>Use case {uc.id}: inputs, persona, Run and the raw result</summary>
-                      {isHandoff(uc) && <HandoffCard uc={uc} vertical={vertical} userId={userId} canPreview={!uc.guided} onPreview={run} previewing={running} />}
                       <RunPanel uc={uc} vertical={vertical} verticals={verticals} persona={persona} setPersona={setPersona} personas={personas} onRun={run} running={running} result={result} mode={mode} />
                     </details>
                   )}

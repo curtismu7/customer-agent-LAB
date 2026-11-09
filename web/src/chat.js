@@ -56,3 +56,13 @@ export function reasoningOf(turn, run) {
   else if (stop) steps.push(`${stop.title}: ${pillOf(stop.verdict)[0]}`);
   return steps;
 }
+
+// Why a Hand off use case does not run here: it needs more than one agent and this lab's mock engine (several agents, or the product's own pages),
+// so the routing table sends it to the standalone app that covers it. Plain text from the routing table, nothing generated.
+export const HANDOFF_WHY = (uc) => {
+  const r = uc?.route || {};
+  return [
+    `${uc.id} needs several agents or the product's own pages, so it runs in its own app`,
+    `Its home is ${r.app}${r.basis ? ` (routing table: ${r.basis})` : ""}`,
+  ];
+};

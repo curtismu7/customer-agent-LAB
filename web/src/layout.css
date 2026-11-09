@@ -1,20 +1,24 @@
 /* The Agno-style agent page (owner pick 2026-11-08, full page width: owner waived the 1100px frame for this app): shell bar, setup sidebar,
    a narrow agent column, a wide evidence column, Quick Config, the full-page diagram views and the hand-off card. Layout only, tokens only:
-   no colour literals, no theme media query, no forced priority, no italics, breakpoints 600px and 900px only. The columns wrap with flexbox
-   (no extra breakpoint): the evidence column drops under the agent column when the two do not fit side by side. */
+   no colour literals, no theme media query, no forced priority, no italics, breakpoints 600px and 900px only. The agent and evidence columns
+   wrap with flexbox instead of a third breakpoint: the agent column's base is clamp(380px, 30vw, 470px) and the evidence column's 360px, so
+   sidebar | agent | evidence sit side by side from a ~1090px viewport up (1100, 1280, 1440, 1600 all fit) and stack below that; one column on phones. */
 
 /* ===== shell bar (UI patterns 1): dark in both themes, Ping Red gradient rule, pill nav ===== */
-.shell-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 20px; margin: 0 -16px; padding: 10px 16px; background: var(--box-dark); color: var(--on-box); border-bottom: 3px solid transparent; border-image: var(--accent-gradient) 1; }
+.shell-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin: 0 -16px; padding: 10px 16px; background: var(--box-dark); color: var(--on-box); border-bottom: 3px solid transparent; border-image: var(--accent-gradient) 1; }
 .shell-brand { display: inline-flex; align-items: center; gap: 10px; min-width: 0; }
 .shell-logo { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 4px; background: var(--accent-gradient); color: var(--on-accent); font-weight: 800; font-size: 13px; }
-.shell-name { margin: 0; font-size: 17px; color: var(--on-box); }
+.shell-name { margin: 0; font-size: 16px; color: var(--on-box); }
 .shell-badge { padding: 1px 8px; border-radius: 999px; background: var(--accent-gradient); color: var(--on-accent); font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
-.shell-nav { flex: 1 1 320px; min-width: 0; }
+.shell-nav { flex: 1 1 320px; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .shell-nav__list { display: flex; flex-wrap: wrap; gap: 6px; }
-.shell-nav__list button { border-radius: 999px; min-height: 34px; padding: 4px 14px; }
-.shell-nav__list button[data-extra="true"] { border-style: dashed; }
-.shell-right { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.shell-right button { min-height: 34px; padding: 4px 12px; }
+.shell-nav__list button { border-radius: 999px; min-height: 34px; padding: 4px 9px; }
+.shell-bar button, .shell-bar select { font-size: 13px; }
+/* one fixed-width menu for the extra pages, so their number never widens the bar (a long label is cut, the full one is in the list) */
+.shell-more select { width: 6.5rem; border-radius: 999px; min-height: 34px; padding: 4px 10px; border-style: dashed; }
+.shell-more select[data-current="true"] { border-style: solid; font-weight: 700; }
+.shell-right { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.shell-right button { min-height: 34px; padding: 4px 8px; }
 .shell-bar .shell-theme { color: var(--on-box); }
 .statusline { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 8px 0; }
 .statusline .notice { flex-basis: 100%; margin: 0; }
@@ -66,20 +70,20 @@
 .sessions__item { width: 100%; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: space-between; padding: 4px 8px; min-height: 36px; font-size: 12px; text-align: left; }
 @media (min-width: 900px) {
   .agno { grid-template-columns: 270px minmax(0, 1fr); }
-  .setup { position: sticky; top: 8px; max-height: max(420px, calc(100vh - 220px)); overflow-y: auto; }
+  .setup { position: sticky; top: 8px; max-height: max(420px, calc(100vh - 196px)); overflow-y: auto; }
 }
 .app[data-presenter] .agno { grid-template-columns: minmax(0, 1fr); }
 
 .work { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-start; min-width: 0; }
 
 /* the narrow agent column */
-.agentcol { flex: 1 1 470px; min-width: 0; max-width: 100%; display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
+.agentcol { flex: 1 1 clamp(380px, 30vw, 470px); min-width: 0; max-width: 100%; display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
 .agentcol__head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--border); }
 .agentcol__who { margin: 0; flex: 1 1 200px; min-width: 0; font-size: 13px; color: var(--text-body); }
 .agentcol__scroll { padding: 12px; min-height: 0; overflow-wrap: anywhere; }
 .agentcol__foot { padding: 10px 12px; border-top: 1px solid var(--border); }
 @media (min-width: 900px) {
-  .agentcol { position: sticky; top: 8px; max-height: max(420px, calc(100vh - 220px)); }
+  .agentcol { position: sticky; top: 8px; max-height: max(420px, calc(100vh - 196px)); }
   .agentcol__scroll { flex: 1 1 auto; overflow-y: auto; }
 }
 .avatar { display: inline-flex; flex: 0 0 auto; align-items: center; justify-content: center; width: 28px; height: 28px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); color: var(--text); font-size: 10px; font-weight: 800; }
@@ -121,13 +125,17 @@
 
 .wtt { margin: 0 0 8px; }
 .wtt .kicker { margin-top: 0; }
-.wtt__list { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; max-height: 132px; overflow-y: auto; }
+.wtt__groups { display: grid; gap: 4px; max-height: 132px; overflow-y: auto; }
+.agentcol[data-talking] .wtt__groups { max-height: 92px; } /* once the chat has turns, the prompts give the reply more room (still visible, scrolls) */
+.wtt__list { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.wtt__group { margin: 4px 0 0; font-size: 12px; font-weight: 700; color: var(--muted); }
 .wtt__chip { min-height: 32px; padding: 3px 10px; border-radius: 999px; font-size: 12px; text-align: left; }
 .composer { display: flex; gap: 8px; }
 .composer input { flex: 1 1 auto; min-width: 0; }
 
 /* hand-off card and go deeper */
-.handoff { display: grid; gap: 6px; border-top-color: var(--status-info); }
+.handoff { display: grid; gap: 6px; border-top-color: var(--status-info); font-size: 13px; }
+.handoff__note { font-size: 12px; }
 .handoff p { margin: 0; }
 .handoff__title { margin: 0; font-size: 15px; }
 .handoff__ids { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; font-family: var(--font-mono); }
@@ -137,7 +145,7 @@
 .deeper p { margin: 0; }
 
 /* the wide evidence column */
-.evcol, .qc { flex: 999 1 560px; min-width: 0; max-width: 100%; display: grid; gap: 10px; align-content: start; padding: 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
+.evcol, .qc { flex: 999 1 360px; min-width: 0; max-width: 100%; display: grid; gap: 10px; align-content: start; padding: 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
 .evcol__head, .qc__head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .evcol__title { margin: 0; font-size: 16px; }
 .evtabs { display: flex; flex-wrap: wrap; gap: 6px; }

@@ -6,19 +6,42 @@ import Turn from "./Turn";
 
 const STATUS = { idle: ["Ready", "info"], running: ["Running", "info"], waiting: ["Waiting for you", "warn"], handoff: ["Ready to hand off", "info"], done: ["Done", "ok"], refused: ["Refused", "bad"] };
 
-// What to type, per vertical: always visible above the input (owner rule). A stub vertical says it has no demo pack yet.
-export function WhatToType({ prompts, verticalLabel, stub, onSay, disabled }) {
+// "Banking · Fabrikam Bank": the vertical's name, then its brand when that says something more.
+export const verticalHeading = (id, label) => {
+  const name = String(id || "").replace(/-/g, " ").replace(/^./, (c) => c.toUpperCase());
+  return label && label.toLowerCase() !== name.toLowerCase() ? `${name} · ${label}` : name || label || "";
+};
+const opensApp = (p) => p.route === "Hand off";
+
+function Chips({ list, onSay, disabled, label, testId }) {
   return (
-    <section className="wtt" aria-label={`What to type, ${verticalLabel}`} data-testid="what-to-type">
-      <p className="kicker">What to type · {verticalLabel}</p>
-      {stub ? <p className="muted" data-testid="wtt-stub">{verticalLabel}: no demo pack yet. Pick Banking, Healthcare or Retail to chat.</p> : prompts.length === 0 ? <p className="muted">Loading the prompts...</p> : (
-        <ul className="wtt__list">
-          {prompts.map((p) => (
-            <li key={p.uc}>
-              <button type="button" className="wtt__chip" onClick={() => onSay(p.text, "chip")} aria-disabled={disabled ? "true" : undefined} title={`Runs ${p.uc} ${p.title}`} data-testid={`wtt-${p.uc}`}>{p.text}</button>
-            </li>
-          ))}
-        </ul>
+    <ul className="wtt__list" aria-label={label} data-testid={testId}>
+      {list.map((p) => (
+        <li key={p.uc}>
+          <button type="button" className="wtt__chip" onClick={() => onSay(p.text, "chip")} aria-disabled={disabled ? "true" : undefined} title={`${opensApp(p) ? "Hands off" : "Runs"} ${p.uc} ${p.title}`} data-testid={`wtt-${p.uc}`}>{p.text}</button>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+// What to type, per vertical: always visible above the input (owner rule). The prompts that run here come first; the ones whose use case opens
+// its own app sit in their own group. A stub vertical says it has no demo pack yet.
+export function WhatToType({ prompts, vertical, verticalLabel, stub, onSay, disabled }) {
+  const heading = verticalHeading(vertical, verticalLabel);
+  const here = prompts.filter((p) => !opensApp(p));
+  const away = prompts.filter(opensApp);
+  return (
+    <section className="wtt" aria-label={`What to type, ${heading}`} data-testid="what-to-type">
+      <p className="kicker" data-testid="wtt-heading">What to type · {heading}</p>
+      {stub ? <p className="muted" data-testid="wtt-stub">{heading}: no demo pack yet. Pick Banking, Healthcare or Retail to chat.</p> : prompts.length === 0 ? <p className="muted">Loading the prompts...</p> : (
+        <div className="wtt__groups">
+          <Chips list={here} onSay={onSay} disabled={disabled} label="Runs here" testId="wtt-here" />
+          {away.length > 0 && <>
+            <p className="wtt__group">Opens its own app</p>
+            <Chips list={away} onSay={onSay} disabled={disabled} label="Opens its own app" testId="wtt-away" />
+          </>}
+        </div>
       )}
     </section>
   );
@@ -33,7 +56,7 @@ function Starters({ agent, brand, prompts, onSay, stub }) {
       <p className="muted">Type what a customer would say. Each prompt runs one use case and the evidence column draws every hop.</p>
       {!stub && (
         <ul className="starters__grid">
-          {prompts.slice(0, 4).map((p) => (
+          {prompts.filter((p) => !opensApp(p)).slice(0, 4).map((p) => (
             <li key={p.uc}>
               <button type="button" className="starter" onClick={() => onSay(p.text, "starter")} data-testid={`starter-${p.uc}`}>
                 <Tag state={outcomeState(p.expectedOutcome)}>{p.uc} · {p.expectedOutcome}</Tag>
@@ -49,19 +72,24 @@ function Starters({ agent, brand, prompts, onSay, stub }) {
   );
 }
 
-export default function AgentColumn({ agent, brand, userId, verticalLabel, stub, prompts, turns, status, onSay, onHop, onPreview, running, children }) {
+export default function AgentColumn({ agent, brand, userId, vertical, verticalLabel, stub, prompts, turns, status, onSay, onHop, onPreview, running, children }) {
   const [text, setText] = useState("");
   const endRef = useRef(null);
   // Keep the newest reply in view inside the column's own scroller (never scrollIntoView, which would also scroll the page).
   useEffect(() => {
     const box = endRef.current?.parentElement;
     const last = box?.querySelector(".turn:last-child");
-    if (box && last && box.scrollHeight > box.clientHeight) box.scrollTop = Math.max(0, last.offsetTop - box.offsetTop - 8);
+    if (!box || !last || box.scrollHeight <= box.clientHeight) return;
+    let top = last.offsetTop - box.offsetTop - 8;
+    // A hand-off reply taller than the column: keep its card whole in view (the reasoning above it may scroll off the top first).
+    const card = last.querySelector('[data-testid="handoff-card"]');
+    if (card) { const b = box.getBoundingClientRect(); const bottom = card.getBoundingClientRect().bottom - b.top + box.scrollTop + 8; top = Math.max(top, bottom - box.clientHeight); }
+    box.scrollTop = Math.max(0, top);
   }, [turns.length, turns[turns.length - 1]?.status]); // eslint-disable-line react-hooks/exhaustive-deps
   const [word, state] = STATUS[status] || STATUS.idle;
   const send = (e) => { e.preventDefault(); if (!text.trim() || running) return; onSay(text, "typed"); setText(""); };
   return (
-    <section className="agentcol" aria-label="Agent" data-testid="agent-column">
+    <section className="agentcol" aria-label="Agent" data-testid="agent-column" data-talking={turns.length ? "true" : undefined}>
       <header className="agentcol__head">
         <span className="avatar avatar--agent" aria-hidden="true">AI</span>
         <p className="agentcol__who"><b>{agent || "agent"}</b> acting for {userId || "the customer"} · {brand || verticalLabel}</p>
@@ -77,7 +105,7 @@ export default function AgentColumn({ agent, brand, userId, verticalLabel, stub,
         {children}
       </div>
       <div className="agentcol__foot">
-        <WhatToType prompts={prompts} verticalLabel={verticalLabel} stub={stub} onSay={onSay} disabled={running} />
+        <WhatToType prompts={prompts} vertical={vertical} verticalLabel={verticalLabel} stub={stub} onSay={onSay} disabled={running} />
         <form className="composer" onSubmit={send}>
           <label className="sr-only" htmlFor="composer-input">Message the agent</label>
           <input id="composer-input" type="text" value={text} maxLength={400} onChange={(e) => setText(e.target.value)} placeholder={stub ? "No demo pack for this vertical yet" : "Type what a customer would say"} autoComplete="off" data-testid="composer-input" />

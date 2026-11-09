@@ -1,5 +1,5 @@
-import { APPROVAL, pillOf, reasoningOf } from "../chat";
-import { isHandoff, routeOf } from "../handoff";
+import { APPROVAL, HANDOFF_WHY, pillOf, reasoningOf } from "../chat";
+import { isHandoff } from "../handoff";
 import { outcomeState } from "../lib";
 import { visible } from "../safeText";
 import { Tag } from "./Bits";
@@ -67,10 +67,11 @@ export default function Turn({ turn, onHop, onPreview, userId, running }) {
               <p className="kicker">Reasoning</p>
               <ol className="steps" data-testid="turn-reasoning">
                 {reasoningOf(turn, run).map((s, i) => <li key={i}><span className="steps__n">Step {i + 1}</span> {visible(s)}</li>)}
-                {handoff && <li><span className="steps__n">Step 2</span> {uc.id} runs in its own app, {routeOf(uc).app}, so it does not run here</li>}
+                {handoff && HANDOFF_WHY(uc).map((s, i) => <li key={`h${i}`}><span className="steps__n">Step {i + 2}</span> {visible(s)}</li>)}
               </ol>
             </div>
           )}
+          {handoff && <p data-testid="turn-handoff-say">This one runs in its own app. Open it with {visible(turn.vertical)}{userId ? ` and ${userId}` : ""} already chosen, or preview it here.</p>}
           {handoff && <HandoffCard uc={uc} vertical={turn.vertical} userId={userId} canPreview={!uc.guided} onPreview={() => onPreview?.(turn)} previewing={running} />}
           {turn.status === "running" && <p className="muted" data-testid="turn-running">Working on it...</p>}
           {res && !res.ok && <p className="turn__refused" data-testid="turn-refused">The server refused this run{res.status ? ` (HTTP ${res.status})` : " (no answer)"}: {visible(res.body?.detail || res.body?.message || "no reason given")}</p>}
@@ -91,7 +92,7 @@ export default function Turn({ turn, onHop, onPreview, userId, running }) {
                   {turn.preview && <> <Tag state="info">preview, mock engine</Tag></>}
                 </div>
               )}
-              <GoDeeper uc={uc} vertical={turn.vertical} />
+              <GoDeeper uc={uc} vertical={turn.vertical} userId={userId} />
             </>
           )}
         </div>

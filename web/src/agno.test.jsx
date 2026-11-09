@@ -5,7 +5,7 @@ import App from "./App";
 import { forgetWorkspace, workspaceId } from "./workspace";
 import { catalog, mockApi, RAW, runBody } from "./testFixtures";
 import { matchPrompt, normalize } from "./chat";
-import { handoffHref, PROXY_PATHS } from "./handoff";
+import { handoffCarry, handoffHref, PROXY_PATHS } from "./handoff";
 import { DEFAULTS, cleanConfig, chooseTab, setView } from "./quickConfig";
 import PROMPTS_DATA from "../../data/prompts.json";
 import HANDOFF_DATA from "../../data/handoff.json";
@@ -94,7 +94,10 @@ describe("What to type and the Scripted brain", () => {
   test("first open shows starter cards and the What to type chips for the vertical; a chip runs its use case and the reply is built from the run", async () => {
     await boot();
     expect(screen.getByTestId("starters")).toBeTruthy();
-    expect(screen.getByTestId("what-to-type").textContent).toMatch(/What to type · Fabrikam Bank/);
+    expect(screen.getByTestId("wtt-heading").textContent).toBe("What to type · Banking · Fabrikam Bank");
+    expect(within(screen.getByTestId("wtt-away")).getAllByRole("button").map((b) => b.textContent)).toEqual(["hand off to a specialist"]);
+    expect(within(screen.getByTestId("what-to-type")).getByText("Opens its own app")).toBeTruthy();
+    expect(screen.queryByTestId("starter-UC2")).toBeNull(); // starter cards are prompts that run here
     expect(screen.getAllByTestId(/^wtt-UC/).map((b) => b.textContent)).toEqual(PROMPTS.map((p) => p.text));
     const u = userEvent.setup();
     await u.click(screen.getByTestId("wtt-UC1"));
@@ -191,14 +194,23 @@ describe("the matcher on the real data: every shown prompt runs its use case", (
 });
 
 describe("hand-off and go deeper", () => {
-  test("a hand-off use case shows the card: the app, why, ids only, no link off the proxy, and Preview here runs the mock engine", async () => {
+  test("a hand-off picked in the sidebar answers in the conversation: reasoning, the card inline, Ready to hand off; ids only, no link off the proxy, and Preview here runs the mock engine", async () => {
     await boot();
     const u = userEvent.setup();
     await u.click(screen.getByTestId("uc-UC2"));
-    const card = within(screen.getByTestId("uc-panel")).getByTestId("handoff-card");
+    const turn = screen.getByTestId("turn");
+    expect(within(turn).getByTestId("turn-said").textContent).toBe("UC2 A2A delegation (picked from the list)");
+    const why = within(turn).getByTestId("turn-reasoning").textContent;
+    expect(why).toMatch(/You picked UC2 A2A delegation from the list/);
+    expect(why).toMatch(/UC2 needs several agents or the product's own pages, so it runs in its own app/);
+    expect(why).toMatch(/Its home is a2a-lab \(routing table: named in lab entry\)/);
+    expect(within(turn).getByTestId("turn-handoff-say").textContent).toMatch(/^This one runs in its own app/);
+    expect(screen.getByTestId("agent-status").textContent).toBe("Ready to hand off");
+    expect(screen.getAllByTestId("handoff-card")).toHaveLength(1); // in the reply, not repeated in the use case panel
+    const card = within(turn).getByTestId("handoff-card");
     expect(card.textContent).toMatch(/a2a-lab/);
     expect(card.textContent).toMatch(/named in lab entry/);
-    expect(within(card).getByRole("list", { name: "Carried in the link" }).textContent).toBe("uc=UC2vertical=bankinguser=alex.morgan");
+    expect(within(card).getByRole("list", { name: "Carried in the link" }).textContent).toBe("from=customer-agentuc=UC2vertical=bankinguser=alex.morgan");
     expect(card.textContent).toMatch(/Never carried: tokens, secrets or keys, cookies/);
     expect(within(card).getByTestId("handoff-open-shelf").textContent).toMatch(/Start a2a-lab from the Shelf/);
     expect(within(card).queryByTestId("handoff-open")).toBeNull();
@@ -208,6 +220,18 @@ describe("hand-off and go deeper", () => {
     await waitFor(() => expect(posts("UC2")).toHaveLength(1));
     await screen.findByTestId("turn-answer");
     expect(screen.queryByTestId("handoff-summary")).toBeNull();
+  });
+
+  test("the Opens its own app chip answers with the hand-off reply and card, runs nothing, and the status reads Ready to hand off", async () => {
+    await boot();
+    const u = userEvent.setup();
+    await u.click(within(screen.getByTestId("wtt-away")).getByTestId("wtt-UC2"));
+    const turn = screen.getByTestId("turn");
+    expect(turn.getAttribute("data-status")).toBe("handoff");
+    expect(within(turn).getByTestId("turn-reasoning").textContent).toMatch(/Matched your words to UC2 A2A delegation.*runs in its own app/);
+    expect(within(turn).getByTestId("handoff-card")).toBeTruthy();
+    expect(screen.getByTestId("agent-status").textContent).toBe("Ready to hand off");
+    expect(A.calls.filter((c) => c.method === "POST" && c.path.startsWith("/api/run/"))).toHaveLength(0);
   });
 
   test("a guided hand-off has no Preview here", async () => {
@@ -225,10 +249,15 @@ describe("hand-off and go deeper", () => {
     await u.click(screen.getByTestId("uc-UC2"));
     const open = screen.getByTestId("handoff-open");
     expect(open.textContent).toBe("Open a2a-lab");
-    expect(open.getAttribute("data-href")).toBe("../a2a-lab/?from=customer-agent&uc=UC2&vertical=banking");
+    expect(open.getAttribute("data-href")).toBe("../a2a-lab/?from=customer-agent&uc=UC2&vertical=banking&user=alex.morgan");
+    // the card lists exactly what the link carries, in order
+    const listed = within(screen.getByTestId("handoff-card")).getByRole("list", { name: "Carried in the link" }).querySelectorAll("li");
+    expect([...listed].map((li) => li.textContent)).toEqual([...new URLSearchParams(open.getAttribute("data-href").split("?")[1])].map(([k, v]) => `${k}=${v}`));
+    const summary = screen.getByTestId("handoff-summary");
+    expect([...summary.querySelectorAll("dt")].map((d) => `${d.textContent}=${d.nextElementSibling.textContent}`)).toEqual([...listed].map((li) => li.textContent));
     await u.click(screen.getByTestId("wtt-UC1"));
     await screen.findByTestId("turn-answer");
-    expect(within(screen.getByTestId("turn")).getByTestId("deeper-open").getAttribute("data-href")).toBe("../delegation-lab/?from=customer-agent&uc=UC1&vertical=banking");
+    expect(within(screen.getAllByTestId("turn")[1]).getByTestId("deeper-open").getAttribute("data-href")).toBe("../delegation-lab/?from=customer-agent&uc=UC1&vertical=banking&user=alex.morgan");
   });
 
   test("a Here + go deeper reply names the deeper lab; off the proxy it says to start it from the Shelf", async () => {
@@ -237,6 +266,7 @@ describe("hand-off and go deeper", () => {
     await u.click(screen.getByTestId("wtt-UC1"));
     await screen.findByTestId("turn-answer");
     const deeper = within(screen.getByTestId("turn")).getByTestId("go-deeper");
+    expect(deeper.textContent).not.toMatch(/user=/);
     expect(deeper.textContent).toMatch(/Go deeper in delegation-lab/);
     expect(deeper.textContent).toMatch(/Start delegation-lab from the Shelf/);
   });
@@ -246,7 +276,18 @@ describe("hand-off and go deeper", () => {
     expect(handoffHref("gateway-suite-lab", "UC-TOOL3", "retail", "/customer-agent/index.html")).toBe("../gateway-suite/?from=customer-agent&uc=UC-TOOL3&vertical=retail");
     expect(handoffHref("a2a-lab", "UC2", "banking", "/")).toBeNull();
     expect(handoffHref("a2a-lab", "UC2", "banking", "/other/customer-agent/")).toBeNull();
-    expect(handoffHref("cimd", "UC43", "banking", "/customer-agent/")).toBeNull();
+    expect(handoffHref("cimd", "UC43", "banking", "/customer-agent/")).toBe("../cimd-lab/?from=customer-agent&uc=UC43&vertical=banking");
+    expect(handoffHref("pingfederate", "UC-LOGIN-PF", "banking", "/customer-agent/")).toBeNull(); // no confirmed proxy route
+    expect(handoffHref("a2a-lab", "UC2", "banking", "/customer-agent/", "alex.morgan")).toBe("../a2a-lab/?from=customer-agent&uc=UC2&vertical=banking&user=alex.morgan");
+    expect(handoffHref("a2a-lab", "UC2", "banking", "/customer-agent/", "a b&c=d")).toBe("../a2a-lab/?from=customer-agent&uc=UC2&vertical=banking"); // a user that is not an id is left out
+    expect(handoffCarry("UC2", "banking", "a b")).toEqual([["from", "customer-agent"], ["uc", "UC2"], ["vertical", "banking"]]);
+    expect(handoffCarry("UC2&x", "banking", "alex.morgan")).toBeNull();
+    // doubled slashes: the prefix check folds them, and the link still resolves to the other app at the proxy root
+    for (const where of ["/customer-agent/", "/customer-agent/index.html", "/customer-agent//", "//customer-agent/", "/customer-agent//index.html"]) {
+      const href = handoffHref("a2a-lab", "UC2", "banking", where, "alex.morgan");
+      expect(href, where).not.toBeNull();
+      expect(new URL(href, `http://lab.example${where}`).pathname, where).toBe("/a2a-lab/");
+    }
     expect(handoffHref("__proto__", "UC2", "banking", "/customer-agent/")).toBeNull();
     expect(handoffHref("a2a-lab", "UC2&evil=1", "banking", "/customer-agent/")).toBeNull();
     expect(handoffHref("a2a-lab", "UC2", "//evil.example", "/customer-agent/")).toBeNull();
