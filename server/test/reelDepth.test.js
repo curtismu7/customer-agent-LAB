@@ -208,3 +208,16 @@ test('brain and said: the prompt hop carries what was typed, the agent names the
   // No said: the chip text, as before.
   assert.equal(go('UC1').hops.find((h) => h.kind === 'prompt').request.body.message, 'show my balance');
 });
+
+test('DELEGATES: where AI-DEMO2 runs the agent token and exchange, the lab exchanges before the first Authorize or gateway call', () => {
+  for (const id of REEL_TABLES.DELEGATES) {
+    const uc = MANIFEST.usecases.find((u) => u.id === id);
+    const kinds = runUseCase(uc, { cast: VERTICALS.banking, vertical: 'banking', seed: 'run' }).hops.filter((h) => h.verdict !== 'skip').map((h) => h.kind);
+    const ex = kinds.indexOf('token-exchange');
+    const first = kinds.findIndex((k) => k === 'authorize-decision' || k === 'gateway-check');
+    assert.ok(ex >= 0, `${id}: has a token exchange`);
+    // AI-DEMO2 shows the exchange only (no agent token) on UC14, UC15 and UC16; UC16 is the missing-act attack, which sends no actor token.
+    if (!['UC14', 'UC15', 'UC16'].includes(id)) assert.ok(kinds.indexOf('actor-token') >= 0 && kinds.indexOf('actor-token') < ex, `${id}: the agent token comes before the exchange`);
+    if (first >= 0) assert.ok(ex < first, `${id}: the exchange comes before ${kinds[first]}`);
+  }
+});
