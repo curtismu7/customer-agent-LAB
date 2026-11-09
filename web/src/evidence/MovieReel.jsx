@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { actorOf, laneVar, readPref, stepKey, txt, verdictWord, writePref } from "./lanes";
+import { actorOf, laneVar, readPref, stepKey, txt, verdictWord, withSkipped, writePref } from "./lanes";
 import "./evidence.css";
 
 // The movie reel: one frame per hop (number, lane, short title, ONE fact, status word), ported from AI-DEMO2's
@@ -21,8 +21,9 @@ export default function MovieReel({ hops = [], selected = null, onSelect }) {
   useEffect(() => writePref(K.density, density), [density]);
   useEffect(() => writePref(K.speed, speed), [speed]);
 
+  // Hops that did not run collapse behind "+N hops not in this run"; expanded, they follow every hop that ran, faint.
   const skipped = hops.filter((h) => h.verdict === "skip");
-  const shown = useMemo(() => (showSkipped ? hops : hops.filter((h) => h.verdict !== "skip")), [hops, showSkipped]);
+  const shown = useMemo(() => withSkipped(hops, showSkipped), [hops, showSkipped]);
   const ns = shown.map((h) => h.n);
   const atEnd = ns.length > 0 && selected === ns[ns.length - 1];
 

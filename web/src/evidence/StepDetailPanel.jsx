@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Tag } from "./Tag";
-import { actorOf, readPref, STAGE_STATE, txt, verdictState, verdictWord, writePref } from "./lanes";
+import { actorOf, readPref, STAGE_STATE, txt, verdictState, verdictWord, withSkipped, writePref } from "./lanes";
 import "./evidence.css";
 
 // One hop's full detail, ported from AI-DEMO2's StepDetailPanel and ordered claim before evidence: what happened, the
@@ -85,10 +85,12 @@ export default function StepDetailPanel({ hops = [], selected = null, onSelect, 
   const toggleRfc = () => setRfc((on) => { writePref(RFC_KEY, on ? "0" : "1"); return !on; });
   const stepZoom = (d) => setZoom((z) => { const n = Math.min(Z_MAX, Math.max(Z_MIN, z + d)); writePref(ZOOM_KEY, n); return n; });
 
-  const at = hops.findIndex((h) => h.n === selected);
-  const h = hops[at];
+  const h = hops.find((x) => x.n === selected);
   if (!h) return null;
-  const prev = hops[at - 1], next = hops[at + 1];
+  // Prev / Next stay among the hops that ran; from a hop that did not run (only reachable once they are shown) they walk the full list.
+  const order = withSkipped(hops, h.verdict === "skip");
+  const at = order.indexOf(h);
+  const prev = order[at - 1], next = order[at + 1];
   const from = actorOf(h.from), to = actorOf(h.to);
   const stages = Array.isArray(h.stages) ? h.stages : [];
   const stopAt = stages.findIndex((s) => s.result === "fail");

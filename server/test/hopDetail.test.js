@@ -1,4 +1,4 @@
-// Vendored from AI-DEMO-Standalone shared/hop-detail/hopDetail.test.mjs @ 84222bf (paths adjusted).
+// Vendored from AI-DEMO-Standalone shared/hop-detail/hopDetail.test.mjs @ 9b8785a (paths adjusted).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -123,4 +123,19 @@ test('validateHop catches unknown kinds, bad stages and leftover JWTs', () => {
   const leaked = { ...enrichHop(raw(), catalog), response: { body: jwt } };
   assert.ok(validateHop(leaked, catalog).some((p) => /JWT/.test(p)));
   assert.deepEqual(validateHop(enrichHop(raw(), catalog), catalog), []);
+});
+
+test('reel depth: the AI-DEMO2 frame and not-in-path kinds have catalog entries', () => {
+  for (const k of ['website', 'prompt', 'agent-receive', 'tools-list-challenge', 'tools-list', 'llm-plan', 'tools-call-challenge', 'api-call', 'agent-reply', 'step-up', 'vault-key-inject', 'api-key-swap', 'database-query']) {
+    assert.ok(Object.hasOwn(catalog.kinds, k), k);
+  }
+});
+
+test('a skip hop (listed, did not run) validates with no request or response and says so in its fact', () => {
+  const h = enrichHop({ n: 20, kind: 'vault-key-inject', label: 'Vault key', from: 'gateway', to: 'credentials', verdict: 'skip', note: 'OAuth bearer path: no API key is used', request: { method: 'NONE', url: '' } }, catalog);
+  assert.deepEqual(validateHop(h, catalog), []);
+  assert.equal(h.fact, 'not in this path', 'a skip hop never claims the catalog fact of a hop that ran');
+  const bare = enrichHop({ n: 21, kind: 'database-query', label: 'Database', from: 'api', to: 'database', verdict: 'skip' }, catalog);
+  assert.deepEqual(validateHop(bare, catalog), []);
+  assert.deepEqual(bare.request, {}); assert.deepEqual(bare.response, {});
 });

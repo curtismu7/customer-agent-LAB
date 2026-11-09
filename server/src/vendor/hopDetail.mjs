@@ -1,4 +1,4 @@
-// Vendored from AI-DEMO-Standalone shared/hop-detail/hopDetail.mjs @ 84222bf. Edit the shared copy first, then re-copy.
+// Vendored from AI-DEMO-Standalone shared/hop-detail/hopDetail.mjs @ 9b8785a. Edit the shared copy first, then re-copy.
 // hop-detail (shared, vendored): enrich a raw engine hop into demo-hop/1 using the hop catalog.
 // Copy this file into an app as-is; see README.md in AI-DEMO-Standalone/shared/hop-detail. No dependencies.
 
@@ -92,7 +92,8 @@ export function factFor(hop, entry) {
   if (hop.verdict === 'deny') return 'denied';
   if (hop.verdict === 'held') return 'held';
   if (hop.verdict === 'obligation') return 'needs approval';
-  return entry?.fact ?? (hop.verdict === 'skip' ? 'not in this path' : 'done');
+  if (hop.verdict === 'skip') return 'not in this path'; // a hop that did not run never claims the catalog's "what happened" fact
+  return entry?.fact ?? 'done';
 }
 
 /**
