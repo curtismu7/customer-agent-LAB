@@ -1,4 +1,4 @@
-// Vendored from AI-DEMO-Standalone shared/floating-dialog @ 86db9be; edit there, not here.
+// Vendored from AI-DEMO-Standalone shared/floating-dialog @ 808a563; edit there, not here.
 // FloatingDialog: the one modal / floating panel for standalone apps (owner 2026-11-09). Port of AI-DEMO2's
 // DraggableModal (demo_api_ui/src/components/DraggableModal.jsx): drag by the title bar, 8-direction resize, pop-out to a
 // real browser window with its own React root (so state stays live in this page), close button + Escape, optional
@@ -18,6 +18,10 @@ const TABBABLE = 'a[href], button:not([disabled]), input:not([disabled]):not([ty
 
 let seq = 0;
 const singletons = new Map();
+// Unique per page load: a reload restarts `seq`, and window.open('', name) with an old name would reuse an orphaned popup.
+const PAGE_ID = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+// Focus the popped-out dialog once, when it first mounts (a stable function, so re-renders do not steal focus).
+const focusOnce = (el) => { if (el && !el.__fdFocused) { el.__fdFocused = true; el.focus(); } };
 
 function useNarrow() {
   const [mq] = useState(() => (typeof window !== "undefined" && typeof window.matchMedia === "function" ? window.matchMedia(NARROW_QUERY) : null));
@@ -57,25 +61,38 @@ export function PopOutPortal({ win, children, rootId = "fd-root" }) {
   return null;
 }
 
-// A same-origin blank window, with this page's stylesheets and theme copied in, and an empty root for PopOutPortal.
-function openPopoutWindow({ name, title, w, h, left, top }) {
-  let win = null;
-  try { win = window.open("", name, `popup,width=${w},height=${h},left=${left},top=${top}`); } catch { win = null; }
-  if (!win) return null;
-  const doc = win.document;
-  doc.title = title;
+function copyTheme(doc) {
   const theme = document.documentElement.getAttribute("data-theme");
   if (theme) doc.documentElement.setAttribute("data-theme", theme);
   else doc.documentElement.removeAttribute("data-theme");
+}
+
+// Fill a popup's document: this page's stylesheets and theme, and one empty root for PopOutPortal. Anything a
+// previous build left (a reused window) is removed first, so there is never a second root or duplicate styles.
+function buildPopoutDocument(win, title) {
+  const doc = win.document;
+  for (const old of doc.head.querySelectorAll("[data-fd-copy]")) old.remove();
+  doc.body.replaceChildren();
+  doc.title = title;
+  copyTheme(doc);
   for (const el of document.querySelectorAll('link[rel="stylesheet"], style')) {
     const copy = doc.importNode(el, true);
     if (el.tagName === "LINK") copy.setAttribute("href", el.href);
+    copy.setAttribute("data-fd-copy", "");
     doc.head.appendChild(copy);
   }
   doc.body.className = "fd-popout-document";
   const root = doc.createElement("div");
   root.id = "fd-root";
   doc.body.appendChild(root);
+}
+
+// A same-origin blank window (never a URL), built for PopOutPortal. Null when the browser blocks it.
+function openPopoutWindow({ name, title, w, h, left, top }) {
+  let win = null;
+  try { win = window.open("", name, `popup,width=${w},height=${h},left=${left},top=${top}`); } catch { win = null; }
+  if (!win) return null;
+  buildPopoutDocument(win, title);
   return win;
 }
 
@@ -90,7 +107,7 @@ function openPopoutWindow({ name, title, w, h, left, top }) {
  *   footer          undefined = a Close button; null = no footer; node = that node in the footer bar
  *   defaultWidth    number (520); defaultHeight number | null (600; null = fit the content until resized)
  *   defaultX, defaultY  number | null (null = from placement)
- *   placement       'center' | 'right'
+ *   placement       'center' | 'right': where it first opens (it can then be moved like any other)
  *   storageKey      string | null: remember position and size in localStorage
  *   minWidth, minHeight  (320, 240)
  *   zIndex          number (1000)
@@ -131,6 +148,7 @@ export default function FloatingDialog({
 }) {
   const [id] = useState(() => `fd${(seq += 1)}`);
   const [popWin, setPopWin] = useState(null);
+  const [popGen, setPopGen] = useState(0); // bumps when the popup document had to be rebuilt
   const [blocked, setBlocked] = useState(false);
   const panelRef = useRef(null);
   const closeRef = useRef(null);
@@ -181,19 +199,39 @@ export default function FloatingDialog({
     return () => { if (singletons.get(singletonKey) === id) singletons.delete(singletonKey); };
   }, [singletonKey, isOpen, onClose, id]);
 
-  // ---- pop-out window lifecycle: notice when it closes (the dialog comes back in-page), close it when we unmount
+  // ---- pop-out window lifecycle. Notice when it closes (the dialog comes back in-page); close it when this page
+  // unloads or navigates (no orphan); Escape anywhere in it closes; mirror theme changes; and if the browser replaced
+  // the blank document after we built it (async about:blank), build it again.
+  const closeFromPopoutRef = useRef(null);
   useEffect(() => {
     if (!popWin) return undefined;
     const gone = () => setPopWin(null);
-    popWin.addEventListener?.("pagehide", gone);
-    popWin.addEventListener?.("beforeunload", gone);
+    const rebuildIfNeeded = () => {
+      if (popWin.closed) { gone(); return; }
+      if (!popWin.document.getElementById("fd-root")) { buildPopoutDocument(popWin, label); setPopGen((g) => g + 1); }
+    };
+    const onPopHide = () => { if (popWin.closed) gone(); else setTimeout(rebuildIfNeeded, 50); };
+    const onKey = (e) => { if (e.key === "Escape") closeFromPopoutRef.current?.(); };
+    const doc = popWin.document;
+    const closePopup = () => { if (!popWin.closed) popWin.close(); };
+    popWin.addEventListener?.("pagehide", onPopHide);
+    popWin.addEventListener?.("load", rebuildIfNeeded);
+    doc.addEventListener("keydown", onKey);
+    window.addEventListener("pagehide", closePopup);
+    window.addEventListener("beforeunload", closePopup);
+    const themeWatch = typeof MutationObserver === "function" ? new MutationObserver(() => { if (!popWin.closed) copyTheme(popWin.document); }) : null;
+    themeWatch?.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
     const poll = setInterval(() => { if (popWin.closed) gone(); }, 500);
     return () => {
       clearInterval(poll);
-      popWin.removeEventListener?.("pagehide", gone);
-      popWin.removeEventListener?.("beforeunload", gone);
+      themeWatch?.disconnect();
+      popWin.removeEventListener?.("pagehide", onPopHide);
+      popWin.removeEventListener?.("load", rebuildIfNeeded);
+      doc.removeEventListener("keydown", onKey);
+      window.removeEventListener("pagehide", closePopup);
+      window.removeEventListener("beforeunload", closePopup);
     };
-  }, [popWin]);
+  }, [popWin, popGen]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => () => { if (popWin && !popWin.closed) popWin.close(); }, [popWin]);
   useEffect(() => { if (!isOpen && popWin && !popWin.closed) popWin.close(); }, [isOpen, popWin]);
 
@@ -201,7 +239,7 @@ export default function FloatingDialog({
     if (poppedOut) { popWin.focus(); return; }
     const h = size.h ?? panelRef.current?.getBoundingClientRect().height ?? 400;
     const win = openPopoutWindow({
-      name: `fd_${id}`, title: label, w: Math.round(size.w + 40), h: Math.round(h + 60),
+      name: `fd_${PAGE_ID}_${id}`, title: label, w: Math.round(size.w + 40), h: Math.round(h + 60),
       left: Math.round((window.screenX || 0) + pos.x), top: Math.round((window.screenY || 0) + pos.y),
     });
     if (!win) { setBlocked(true); return; }
@@ -209,6 +247,7 @@ export default function FloatingDialog({
     setPopWin(win);
   };
   const closeFromPopout = () => { if (popWin && !popWin.closed) popWin.close(); onClose?.(); };
+  closeFromPopoutRef.current = onClose ? closeFromPopout : null;
 
   if (!isOpen || typeof document === "undefined") return null;
 
@@ -219,7 +258,7 @@ export default function FloatingDialog({
   if (poppedOut) {
     const popContent = (
       <div className={`fd-popout-layout${className ? ` ${className}` : ""}`} style={style} role="dialog" aria-label={label}
-        onKeyDown={(e) => { if (e.key === "Escape" && onClose) { e.stopPropagation(); closeFromPopout(); } }}>
+        tabIndex={-1} ref={focusOnce}>
         <div className="fd-titlebar fd-titlebar--static">
           <span className="fd-title">{title}</span>
           {onClose && <button type="button" className="fd-btn" aria-label={closeAriaLabel} title="Close" onClick={closeFromPopout}>×</button>}
@@ -232,7 +271,7 @@ export default function FloatingDialog({
     );
     return createPortal(
       <>
-        <PopOutPortal win={popWin}>{popContent}</PopOutPortal>
+        <PopOutPortal key={popGen} win={popWin}>{popContent}</PopOutPortal>
         <div className="fd-placeholder" role="status" data-testid="fd-placeholder" style={{ zIndex }}>
           <span className="fd-placeholder__text">{label} is open in a separate window</span>
           <button type="button" className="fd-mini" onClick={() => popWin.focus()}>Focus</button>
@@ -250,20 +289,15 @@ export default function FloatingDialog({
     if (items.length === 0) { e.preventDefault(); return; }
     const first = items[0];
     const last = items[items.length - 1];
-    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
-    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    const at = document.activeElement;
+    // focus on the panel itself (tabIndex -1) or somewhere outside it: pull it in at the right end
+    if (!items.includes(at)) { e.preventDefault(); (e.shiftKey ? last : first).focus(); }
+    else if (e.shiftKey && at === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && at === last) { e.preventDefault(); first.focus(); }
   };
 
-  const right = placement === "right";
-  const panelStyle = {
-    ...style,
-    left: right ? "auto" : pos.x,
-    right: right ? 0 : "auto",
-    top: right ? 0 : pos.y,
-    width: size.w,
-    height: right ? "100vh" : size.h == null ? "auto" : size.h,
-    zIndex,
-  };
+  // placement only chooses where it opens (initialPosition); after that position and size rule, so drag and keys work
+  const panelStyle = { ...style, left: pos.x, top: pos.y, width: size.w, height: size.h == null ? "auto" : size.h, zIndex };
   const hintId = `${id}-hint`;
 
   return createPortal(

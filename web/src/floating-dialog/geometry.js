@@ -1,4 +1,4 @@
-// Vendored from AI-DEMO-Standalone shared/floating-dialog @ 86db9be; edit there, not here.
+// Vendored from AI-DEMO-Standalone shared/floating-dialog @ 808a563; edit there, not here.
 // Pure position and size maths for FloatingDialog (no React, no DOM), so the parent repo's node --test can check it.
 // Ported from AI-DEMO2's useDraggablePanel (clampPosToViewport and the 8-direction resize), without the app-zoom step:
 // standalone apps do not zoom the page.
@@ -17,6 +17,16 @@ export function clampToViewport(p, size, vp) {
   const maxX = Math.max(MARGIN, vp.w - w - MARGIN);
   const maxY = Math.max(MARGIN, vp.h - h - MARGIN);
   return { x: Math.min(Math.max(p.x, MARGIN), maxX), y: Math.min(Math.max(p.y, MARGIN), maxY) };
+}
+
+// A restored or keyboard-resized size: finite numbers only, at least the minimum, at most the viewport (minus the
+// margins). h null means "fit the content" and stays null. Returns null when the size is not usable at all.
+export function clampSize(size, min, vp) {
+  if (!size || !Number.isFinite(size.w)) return null;
+  if (size.h != null && !Number.isFinite(size.h)) return null;
+  const maxW = vp && vp.w ? Math.max(min.w, vp.w - 2 * MARGIN) : Infinity;
+  const maxH = vp && vp.h ? Math.max(min.h, vp.h - 2 * MARGIN) : Infinity;
+  return { w: Math.min(Math.max(size.w, min.w), maxW), h: size.h == null ? null : Math.min(Math.max(size.h, min.h), maxH) };
 }
 
 // Resize from any edge or corner. `start` is { x, y, w, h } when the resize began, dx/dy the pointer travel.

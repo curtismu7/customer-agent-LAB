@@ -1,4 +1,4 @@
-// Vendored from AI-DEMO-Standalone shared/floating-dialog @ 86db9be; edit there, not here.
+// Vendored from AI-DEMO-Standalone shared/floating-dialog @ 808a563; edit there, not here.
 // FloatingDialog tests (vitest + Testing Library + jsdom). Ported from AI-DEMO2's DraggableModal.test.jsx,
 // DraggableModal.focus.test.jsx and useDraggablePanel.test.js, plus the keyboard, narrow-screen and blocked-popup paths.
 import { useState } from "react";
@@ -10,8 +10,7 @@ import FloatingDialog from "./FloatingDialog";
 const ptr = (el, type, x, y) => act(() => { el.dispatchEvent(new MouseEvent(type, { button: 0, clientX: x, clientY: y, bubbles: true, cancelable: true })); });
 const px = (v) => Number.parseFloat(v);
 
-function fakeWindow() {
-  const doc = document.implementation.createHTMLDocument("");
+function fakeWindow(doc = document.implementation.createHTMLDocument("")) {
   Object.defineProperty(doc, "defaultView", { value: window });
   const listeners = {};
   return {
@@ -73,9 +72,12 @@ describe("layout", () => {
     expect(document.querySelector(".fd-footer").textContent).toBe("custom");
   });
 
-  test("placement right anchors to the right edge, full height", () => {
-    render(<FloatingDialog isOpen onClose={() => {}} title="P" placement="right"><p>b</p></FloatingDialog>);
-    expect(screen.getByRole("dialog")).toHaveStyle({ left: "auto", right: "0px", top: "0px", height: "100vh" });
+  test("placement right only chooses where it opens; drag and keys still move it", () => {
+    render(<FloatingDialog isOpen onClose={() => {}} title="P" placement="right" defaultWidth={400} defaultHeight={300}><p>b</p></FloatingDialog>);
+    const d = screen.getByRole("dialog");
+    expect([px(d.style.left), px(d.style.top)]).toEqual([1280 - 400 - 8, 8]);
+    fireEvent.keyDown(screen.getByTestId("fd-titlebar"), { key: "ArrowLeft", shiftKey: true });
+    expect(px(d.style.left)).toBe(1280 - 400 - 8 - 50);
   });
 
   test("nothing renders when closed", () => {
@@ -153,6 +155,18 @@ describe("keyboard", () => {
     expect(px(d.style.width)).toBe(380);
   });
 
+  test("Alt + arrow keys cannot grow it past the right or bottom edge of the window", () => {
+    render(<Harness />);
+    fireEvent.click(screen.getByText("opener"));
+    const d = screen.getByRole("dialog");
+    const bar = screen.getByTestId("fd-titlebar");
+    for (let i = 0; i < 40; i += 1) {
+      fireEvent.keyDown(bar, { key: "ArrowRight", altKey: true, shiftKey: true });
+      fireEvent.keyDown(bar, { key: "ArrowDown", altKey: true, shiftKey: true });
+    }
+    expect([px(d.style.width), px(d.style.height)]).toEqual([1280 - 100 - 8, 900 - 100 - 8]);
+  });
+
   test("arrow keys on a button inside the title bar do not move the dialog", () => {
     render(<Harness />);
     fireEvent.click(screen.getByText("opener"));
@@ -195,6 +209,19 @@ describe("focus and closing", () => {
     expect(document.activeElement).toBe(items[items.length - 1]);
   });
 
+  test("Tab and Shift+Tab from the panel itself (or from outside) are pulled in, never out", () => {
+    render(<Harness />);
+    fireEvent.click(screen.getByText("opener"));
+    const d = screen.getByRole("dialog");
+    const items = [...d.querySelectorAll("button, [tabindex='0']")];
+    d.focus();
+    fireEvent.keyDown(d, { key: "Tab", shiftKey: true });
+    expect(document.activeElement).toBe(items[items.length - 1]);
+    d.focus();
+    fireEvent.keyDown(d, { key: "Tab" });
+    expect(document.activeElement).toBe(items[0]);
+  });
+
   test("a non-modal panel closes on Escape only while focus is inside it", () => {
     const onClose = vi.fn();
     render(<><button type="button">outside</button><FloatingDialog isOpen noBackdrop onClose={onClose} title="P"><p>b</p></FloatingDialog></>);
@@ -227,6 +254,23 @@ describe("persistence", () => {
     render(<Harness props={{ storageKey: "fd.test" }} />);
     fireEvent.click(screen.getByText("opener"));
     expect(px(screen.getByRole("dialog").style.left)).toBe(1280 - 400 - 8);
+  });
+
+  test("a restored position is clamped on every side, and a restored size to min..window", () => {
+    const open = (saved) => {
+      localStorage.setItem("fd.c", JSON.stringify(saved));
+      const r = render(<Harness props={{ storageKey: "fd.c", minWidth: 300, minHeight: 200 }} />);
+      fireEvent.click(screen.getByText("opener"));
+      const d = screen.getByRole("dialog");
+      const out = [px(d.style.left), px(d.style.top), px(d.style.width), px(d.style.height)];
+      r.unmount();
+      return out;
+    };
+    expect(open({ pos: { x: 5000, y: 5000 }, size: { w: 400, h: 300 } })).toEqual([1280 - 400 - 8, 900 - 300 - 8, 400, 300]); // right + bottom
+    expect(open({ pos: { x: 100, y: -400 }, size: { w: 400, h: 300 } })).toEqual([100, 8, 400, 300]); // top
+    expect(open({ pos: { x: 100, y: 100 }, size: { w: 10, h: 5 } })).toEqual([100, 100, 300, 200]); // below min
+    expect(open({ pos: { x: 0, y: 0 }, size: { w: 9000, h: 9000 } })).toEqual([8, 8, 1280 - 16, 900 - 16]); // above window
+    expect(open({ pos: { x: 0, y: 0 }, size: { w: 400, h: "tall" } })).toEqual([8, 8, 400, 300]); // invalid size: defaults
   });
 
   test("storage that throws (private window) does not break the dialog", () => {
@@ -331,6 +375,95 @@ describe("pop-out", () => {
     expect(screen.getByRole("dialog", { name: "Counter" })).toBeTruthy();
     expect(screen.getByTestId("fd-blocked").textContent).toContain("blocked the pop-out window");
     expect(alert).not.toHaveBeenCalled();
+  });
+
+  test("Escape in the popup closes it straight away, before anything there is clicked; the popped-out dialog has focus", () => {
+    const win = fakeWindow();
+    vi.spyOn(window, "open").mockReturnValue(win);
+    render(<Harness />);
+    fireEvent.click(screen.getByText("opener"));
+    // jsdom cannot move focus in a document with no window of its own, so check focus() was called on the dialog
+    const focus = vi.spyOn(HTMLElement.prototype, "focus");
+    fireEvent.click(screen.getByRole("button", { name: "Pop out to a new window" }));
+    expect(focus.mock.contexts).toContain(win.document.querySelector(".fd-popout-layout"));
+    act(() => { win.document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); });
+    expect(win.close).toHaveBeenCalled();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.queryByTestId("fd-placeholder")).toBeNull();
+  });
+
+  test("the popup closes when this page unloads or navigates (no orphan)", () => {
+    for (const type of ["pagehide", "beforeunload"]) {
+      const win = fakeWindow();
+      vi.spyOn(window, "open").mockReturnValue(win);
+      const r = render(<Counter />);
+      fireEvent.click(screen.getByRole("button", { name: "Pop out to a new window" }));
+      act(() => { window.dispatchEvent(new Event(type)); });
+      expect(win.close).toHaveBeenCalled();
+      r.unmount();
+      vi.restoreAllMocks();
+    }
+  });
+
+  test("the popup closes when the dialog unmounts, and when isOpen turns false", () => {
+    const a = fakeWindow();
+    vi.spyOn(window, "open").mockReturnValue(a);
+    const r = render(<Counter />);
+    fireEvent.click(screen.getByRole("button", { name: "Pop out to a new window" }));
+    r.unmount();
+    expect(a.close).toHaveBeenCalled();
+    const b = fakeWindow();
+    window.open.mockReturnValue(b);
+    const { rerender } = render(<FloatingDialog isOpen onClose={() => {}} title="P"><p>b</p></FloatingDialog>);
+    fireEvent.click(screen.getByRole("button", { name: "Pop out to a new window" }));
+    rerender(<FloatingDialog isOpen={false} onClose={() => {}} title="P"><p>b</p></FloatingDialog>);
+    expect(b.close).toHaveBeenCalled();
+  });
+
+  test("the window name is unique per page load, and a reused window is cleared before it is built", () => {
+    const win = fakeWindow();
+    const doc = win.document;
+    // what an orphan from an earlier page load would hold
+    const oldStyle = doc.createElement("style"); oldStyle.setAttribute("data-fd-copy", ""); oldStyle.textContent = ".old{}"; doc.head.appendChild(oldStyle);
+    const oldRoot = doc.createElement("div"); oldRoot.id = "fd-root"; doc.body.appendChild(oldRoot);
+    const st = document.createElement("style"); st.textContent = ".probe2{}"; document.head.appendChild(st);
+    const open = vi.spyOn(window, "open").mockReturnValue(win);
+    render(<Counter />);
+    fireEvent.click(screen.getByRole("button", { name: "Pop out to a new window" }));
+    expect(open.mock.calls[0][1]).toMatch(/^fd_[0-9a-z]{6,}_fd\d+$/);
+    expect(doc.querySelectorAll("#fd-root")).toHaveLength(1);
+    expect([...doc.head.querySelectorAll("style")].filter((x) => x.textContent.includes(".old"))).toHaveLength(0);
+    expect([...doc.head.querySelectorAll("style")].filter((x) => x.textContent.includes(".probe2"))).toHaveLength(1);
+    st.remove();
+  });
+
+  test("a theme change in this page reaches the open popup", async () => {
+    document.documentElement.setAttribute("data-theme", "light");
+    const win = fakeWindow();
+    vi.spyOn(window, "open").mockReturnValue(win);
+    render(<Counter />);
+    fireEvent.click(screen.getByRole("button", { name: "Pop out to a new window" }));
+    expect(win.document.documentElement.getAttribute("data-theme")).toBe("light");
+    await act(async () => { document.documentElement.setAttribute("data-theme", "dark"); await Promise.resolve(); });
+    expect(win.document.documentElement.getAttribute("data-theme")).toBe("dark");
+    await act(async () => { document.documentElement.removeAttribute("data-theme"); await Promise.resolve(); });
+    expect(win.document.documentElement.hasAttribute("data-theme")).toBe(false);
+  });
+
+  test("if the browser replaces the blank document after it was built, it is built again and the content re-rendered", async () => {
+    const win = fakeWindow();
+    vi.spyOn(window, "open").mockReturnValue(win);
+    render(<Counter />);
+    fireEvent.click(screen.getByRole("button", { name: "Pop out to a new window" }));
+    // the async about:blank swap: a fresh document with no root, then load
+    const fresh = document.implementation.createHTMLDocument("");
+    Object.defineProperty(fresh, "defaultView", { value: window });
+    win.document = fresh;
+    await act(async () => { (win.listeners.load || []).forEach((f) => f()); await new Promise((r) => { setTimeout(r, 0); }); });
+    expect(fresh.querySelectorAll("#fd-root")).toHaveLength(1);
+    expect(within(fresh.body).getByRole("dialog", { name: "Counter" })).toBeTruthy();
+    act(() => { within(fresh.body).getByText("add").click(); });
+    expect(within(fresh.body).getByTestId("count").textContent).toBe("1");
   });
 
   test("disablePopOut hides the button", () => {

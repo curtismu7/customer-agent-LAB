@@ -1,9 +1,9 @@
-// Vendored from AI-DEMO-Standalone shared/floating-dialog @ 86db9be; edit there, not here.
+// Vendored from AI-DEMO-Standalone shared/floating-dialog @ 808a563; edit there, not here.
 // Drag + resize state for a fixed-position panel. Port of AI-DEMO2's useDraggablePanel (demo_api_ui/src/hooks), with a
 // keyboard path added and the app-zoom step removed. Live pointer dragging is unclamped (a panel may go onto a second
 // monitor); a position restored from storage, or moved with the keyboard, is clamped back into the viewport.
 import { useCallback, useEffect, useRef, useState } from "react";
-import { clampToViewport, keyboardStep, resizeRect } from "./geometry.js";
+import { MARGIN, clampSize, clampToViewport, keyboardStep, resizeRect } from "./geometry.js";
 
 const viewport = () => (typeof window === "undefined" ? null : { w: window.innerWidth, h: window.innerHeight });
 
@@ -24,17 +24,16 @@ function readStored(storageKey) {
 export function useFloatingPanel(initialPos, initialSize, options = {}) {
   const { storageKey = null, minW = 280, minH = 180, disabled = false, panelRef } = options;
 
-  const [pos, setPos] = useState(() => {
+  // A saved size is validated and clamped to min..viewport; a saved position is clamped so that size fits.
+  const [restored] = useState(() => {
     const s = readStored(storageKey);
-    if (s?.pos && Number.isFinite(s.pos.x) && Number.isFinite(s.pos.y)) {
-      return clampToViewport(s.pos, s.size || initialSize, viewport());
-    }
-    return typeof initialPos === "function" ? initialPos() : initialPos;
+    const vp = viewport();
+    const sz = clampSize(s?.size, { w: minW, h: minH }, vp) || initialSize;
+    const p = s?.pos && Number.isFinite(s.pos.x) && Number.isFinite(s.pos.y) ? clampToViewport(s.pos, sz, vp) : null;
+    return { size: sz, pos: p };
   });
-  const [size, setSize] = useState(() => {
-    const s = readStored(storageKey);
-    return s?.size && Number.isFinite(s.size.w) ? s.size : initialSize;
-  });
+  const [pos, setPos] = useState(() => restored.pos || (typeof initialPos === "function" ? initialPos() : initialPos));
+  const [size, setSize] = useState(restored.size);
 
   // Handlers read the latest values through refs, so a drag never works from a stale closure.
   const posRef = useRef(pos);
@@ -122,7 +121,11 @@ export function useFloatingPanel(initialPos, initialSize, options = {}) {
     } else {
       const sz = measuredSize();
       const r = resizeRect({ ...posRef.current, ...sz }, "se", step.dx, step.dy, { w: minW, h: minH });
-      sizeRef.current = { w: r.w, h: r.h };
+      // the keyboard cannot grow it past the right or bottom edge of the window
+      const vp = viewport();
+      const maxW = vp ? Math.max(minW, vp.w - posRef.current.x - MARGIN) : Infinity;
+      const maxH = vp ? Math.max(minH, vp.h - posRef.current.y - MARGIN) : Infinity;
+      sizeRef.current = { w: Math.min(r.w, maxW), h: Math.min(r.h, maxH) };
       setSize(sizeRef.current);
     }
     save();

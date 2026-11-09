@@ -264,6 +264,13 @@ try {
         check(await pop.evaluate(() => getComputedStyle(document.querySelector('.fd-popout-layout')).display === 'flex'), `${tag}: the popped-out window has the page's stylesheets`);
         await pop.close(); await card.waitFor();
         check((await t('fd-placeholder').count()) === 0, `${tag}: closing the window brings the card back into the page`);
+        const [pop2] = await Promise.all([page.waitForEvent('popup'), card.getByRole('button', { name: 'Pop out to a new window' }).click()]);
+        await pop2.getByRole('dialog', { name: 'Gateway actor details' }).waitFor();
+        check(await pop2.evaluate(() => document.activeElement?.classList.contains('fd-popout-layout')), `${tag}: the popped-out card has focus`);
+        const closed = pop2.waitForEvent('close', { timeout: 5000 }).catch(() => {});
+        await pop2.keyboard.press('Escape').catch(() => {}); await closed; // the window closes mid-press
+        check(pop2.isClosed() && (await page.getByRole('dialog').count()) === 0 && (await t('fd-placeholder').count()) === 0, `${tag}: Escape in the popup, with nothing clicked there, closes it and the card`);
+        await t('actor-gateway').click(); await card.waitFor();
       }
       await page.keyboard.press('Escape');
       check((await page.getByRole('dialog').count()) === 0, `${tag}: Escape closes the actor card`);
