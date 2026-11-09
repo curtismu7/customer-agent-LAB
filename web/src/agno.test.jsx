@@ -302,7 +302,9 @@ describe("hand-off and go deeper", () => {
     expect(handoffHref("cimd", "UC43", "banking", "/customer-agent/")).toBe("../cimd-lab/?from=customer-agent&uc=UC43&vertical=banking");
     expect(handoffHref("pingfederate", "UC-LOGIN-PF", "banking", "/customer-agent/")).toBe("../pingfederate-lab/?from=customer-agent&uc=UC-LOGIN-PF&vertical=banking"); // owner confirmed 2026-11-09
     expect(handoffHref("id-jag-standalone", "UC40", "banking", "/customer-agent/")).toBe("../id-jag-kit/?from=customer-agent&uc=UC40&vertical=banking");
-    expect(handoffHref("muse", "UC48", "banking", "/customer-agent/")).toBeNull(); // no proxy route yet
+    expect(handoffHref("muse", "UC48", "banking", "/customer-agent/")).toBe("../muse/?from=customer-agent&uc=UC48&vertical=banking"); // routed 2026-11-09
+    expect(handoffHref("pingone-signin", "UC-LOGIN", "banking", "/customer-agent/")).toBe("../pingone-signin-lab/?from=customer-agent&uc=UC-LOGIN&vertical=banking");
+    expect(handoffHref("nowhere-lab", "UC1", "banking", "/customer-agent/")).toBeNull(); // not on the list
     expect(handoffHref("a2a-lab", "UC2", "banking", "/customer-agent/", "alex.morgan")).toBe("../a2a-lab/?from=customer-agent&uc=UC2&vertical=banking&user=alex.morgan");
     expect(handoffHref("a2a-lab", "UC2", "banking", "/customer-agent/", "a b&c=d")).toBe("../a2a-lab/?from=customer-agent&uc=UC2&vertical=banking"); // a user that is not an id is left out
     expect(handoffCarry("UC2", "banking", "a b")).toEqual([["from", "customer-agent"], ["uc", "UC2"], ["vertical", "banking"]]);
