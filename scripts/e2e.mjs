@@ -22,7 +22,7 @@ let failures = 0; let checks = 0;
 const check = (ok, what) => { checks += 1; console.log(`${ok ? 'PASS' : 'FAIL'}  ${what}`); if (!ok) failures += 1; };
 
 const port = Number(process.env.E2E_PORT) || 5690;
-if (port < 5603 || port > 5699) { console.error('E2E_PORT must be inside 5603-5699'); process.exit(2); }
+if (port < 5603 || port > 5697) { console.error('E2E_PORT must be inside 5603-5697 (the live and hosted instances take the next two ports)'); process.exit(2); }
 const base = `http://127.0.0.1:${port}`;
 if (!fs.existsSync(path.join(root, 'web', 'dist', 'index.html'))) { console.error('Run `npm run build` first.'); process.exit(2); }
 const env = { ...process.env, PORT: String(port), ALLOW_MOCK_SIGNIN: '1', IDP: 'mock' };
@@ -59,6 +59,17 @@ const liveServer = spawn(process.execPath, ['server/src/index.js'], { cwd: root,
 let liveUp = false;
 for (let i = 0; i < 160 && !liveUp; i++) { try { liveUp = (await fetch(`${liveBase}/api/health`)).ok; } catch { await sleep(250); } }
 if (!liveUp) { server.kill(); liveServer.kill(); console.error('live server did not start'); process.exit(2); }
+
+// The hosted build (CAL_DEPLOY_MODE=hosted): a third instance, mock only. Its Real button opens the Meta Muse dialog and never asks the server.
+const hostedPort = port + 2;
+const hostedBase = `http://127.0.0.1:${hostedPort}`;
+const MUSE_TEST_URL = 'https://connector.lab.example/mcp';
+const hostedEnv = { ...process.env, PORT: String(hostedPort), CAL_DEPLOY_MODE: 'hosted', CAL_LAB_MODE: 'mock', ALLOW_MOCK_SIGNIN: '1', IDP: 'mock', CAL_MUSE_CONNECTOR_URL: MUSE_TEST_URL };
+delete hostedEnv.CALAB_BIND; delete hostedEnv.CAL_ALLOW_LIVE; delete hostedEnv.CAL_BRAIN_URL;
+const hostedServer = spawn(process.execPath, ['server/src/index.js'], { cwd: root, env: hostedEnv, stdio: 'inherit' });
+let hostedUp = false;
+for (let i = 0; i < 160 && !hostedUp; i++) { try { hostedUp = (await fetch(`${hostedBase}/api/health`)).ok; } catch { await sleep(250); } }
+if (!hostedUp) { server.kill(); liveServer.kill(); hostedServer.kill(); console.error('hosted server did not start'); process.exit(2); }
 
 const healthOf = async (b) => (await (await fetch(`${b}/api/health`)).json()).runtime;
 check((await healthOf(liveBase)) === 'live' && (await healthOf(base)) === 'offline', 'health: the live instance reports runtime live, the mock one offline');
@@ -362,6 +373,44 @@ try {
       await ctx.close();
     }
   }
-} finally { if (browser) await browser.close(); server.kill(); liveServer.kill(); await fake.close(); fs.rmSync(settingsDir, { recursive: true, force: true }); }
+
+  // ---- The hosted build: Real opens the Meta Muse dialog (no /api/mode call, no error, the page stays Mock) --------------------------------
+  for (const [width, height, name] of [[1280, 900, 'desktop'], [375, 800, 'phone']]) {
+    for (const scheme of ['light', 'dark']) {
+      const tag = `hosted-${name}-${scheme}`;
+      const ctx = await browser.newContext({ viewport: { width, height }, colorScheme: scheme });
+      const page = await ctx.newPage();
+      const external = []; const errors = []; const modeWrites = [];
+      page.on('request', (r) => {
+        if (!r.url().startsWith(hostedBase) && !/^(data|blob):/.test(r.url())) external.push(r.url());
+        if (new URL(r.url()).pathname === '/api/mode' && r.method() !== 'GET') modeWrites.push(`${r.method()} ${r.url()}`);
+      });
+      page.on('pageerror', (e) => errors.push(e.message));
+      page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+      const t = (id) => page.getByTestId(id);
+      const overflow = () => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+      await page.goto(`${hostedBase}/`);
+      await t('uc-UC1').waitFor();
+      await page.waitForFunction(() => document.querySelector('[data-testid="mode-live"]').getAttribute('aria-haspopup') === 'dialog');
+      await t('mode-live').click();
+      const dlg = page.getByRole('dialog', { name: 'Run it for real in Meta Muse' });
+      await dlg.waitFor();
+      check((await t('muse-url').innerText()) === MUSE_TEST_URL, `${tag}: the dialog shows the connector URL from /api/info`);
+      const link = dlg.getByRole('link', { name: 'Open muse.ai' });
+      check((await link.getAttribute('href')) === 'https://muse.ai' && (await link.getAttribute('target')) === '_blank' && (await link.getAttribute('rel')) === 'noopener noreferrer', `${tag}: the dialog links to https://muse.ai in a new tab (noopener noreferrer)`);
+      check(await dlg.evaluate((d) => d.contains(document.activeElement)), `${tag}: focus moved into the dialog`);
+      const box = await dlg.boundingBox();
+      check(box.x >= 0 && box.x + box.width <= width + 1 && (await overflow()) <= 0, `${tag}: the dialog fits the ${width}px viewport`);
+      if (tag === 'hosted-phone-dark' || tag === 'hosted-desktop-light') await page.screenshot({ path: path.join(shots, `${tag}.png`), fullPage: false });
+      await page.keyboard.press('Escape');
+      await dlg.waitFor({ state: 'detached' });
+      check(modeWrites.length === 0, `${tag}: Real made no /api/mode write (${modeWrites.join(' | ')})`);
+      check((await t('mode-msg').count()) === 0 && (await t('mode').innerText()).includes('Mode: mock') && (await t('mode-mock').getAttribute('aria-pressed')) === 'true', `${tag}: no error shown and the page stays Mock after Escape`);
+      check(external.length === 0, `${tag}: the browser made no request to another origin (${external.length})`);
+      check(errors.length === 0, `${tag}: no console error (${errors.slice(0, 2).join(' | ')})`);
+      await ctx.close();
+    }
+  }
+} finally { if (browser) await browser.close(); server.kill(); liveServer.kill(); hostedServer.kill(); await fake.close(); fs.rmSync(settingsDir, { recursive: true, force: true }); }
 console.log(`\n${checks - failures} of ${checks} checks passed`);
 process.exit(failures ? 1 : 0);

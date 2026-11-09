@@ -9,7 +9,7 @@ import express from 'express';
 import { hostCheck, sameOriginWrites, liveRefusal, mockSignInRefusal, allowedExtraHosts, trustedProxyHeaders } from './safety.js';
 import { createHealth } from './health.js';
 import { DEFAULT_VERTICAL, isFullVertical, isKnownVertical, isPersona, loadCast, verticalList, PERSONAS } from './cast.js';
-import { defaultMode, isHosted, modeOf, MODES } from './config.js';
+import { defaultMode, isHosted, modeOf, MODES, museConnectorUrlFrom } from './config.js';
 import { HOSTED_BANNER } from './data.js';
 import { buildStory } from './story.js';
 import { DIAGRAM_NAMES, buildDiagram } from './diagramData.js';
@@ -41,6 +41,7 @@ const view = (uc, cast) => ({ ...uc, tool: uc.primaryTool ? toolFor(cast, uc.pri
 export function createApp({
   health = createHealth(), configFile = CONFIG, env = process.env, bind = '127.0.0.1', workspaces = createWorkspaces({ defaultMode: defaultMode() }), webDist = WEB_DIST, live = createLive(), brain = createBrain(),
 } = {}) {
+  const museConnectorUrl = museConnectorUrlFrom(env); // hosted only (null locally); refuses a non-https or loopback value
   const app = express();
   app.disable('x-powered-by');
   app.use((req, res, next) => hostCheck(req, res, next, allowedExtraHosts(env)));
@@ -95,6 +96,7 @@ export function createApp({
     res.json({
       mode: defaultMode(), modes: MODES, simulated: true,
       hosted: isHosted(env), hostedBanner: isHosted(env) ? HOSTED_BANNER : null, // the hosted build (mock only) and the banner the page shows for it
+      ...(museConnectorUrl ? { museConnectorUrl } : {}), // hosted only: the Meta Muse connector URL the Real dialog shows
       total: MANIFEST.meta.total, counts: MANIFEST.meta.counts, sourceRef: MANIFEST.source, personas: PERSONAS, verticals: verticalList(),
       source: workspaces.peek('default').mode === 'live' ? 'real' : 'mock', // rule 19: the default workspace's current source
       realAvailable, // rule 19: whether Real (this app's live PingOne path) is configured

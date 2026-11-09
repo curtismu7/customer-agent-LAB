@@ -13,6 +13,24 @@ export function deployModeFrom(env = process.env) {
   return m;
 }
 export const isHosted = (env = process.env) => env.CAL_DEPLOY_MODE === 'hosted';
+// The hosted build's Real button opens a dialog that sends the visitor to Meta Muse with this MCP connector URL (Agent Connect, then Agent Gateway,
+// which asks PingOne Authorize before the MCP server is called). The one place the URL lives: CAL_MUSE_CONNECTOR_URL, with this default, hosted only.
+// It must be https and must not point at loopback. A local build has none (null): its Real button keeps the local live path.
+export const DEFAULT_MUSE_CONNECTOR_URL = 'https://agent-connect.ai-demo.ping-devops.com/mcp';
+export function museConnectorUrlFrom(env = process.env) {
+  if (!isHosted(env)) return null;
+  const raw = env.CAL_MUSE_CONNECTOR_URL;
+  const v = raw === undefined || raw === '' ? DEFAULT_MUSE_CONNECTOR_URL : raw;
+  let u;
+  try { u = new URL(v); } catch { throw new Error('CAL_MUSE_CONNECTOR_URL is not a URL'); }
+  if (u.protocol !== 'https:') throw new Error('CAL_MUSE_CONNECTOR_URL must be https');
+  if (u.username || u.password) throw new Error('CAL_MUSE_CONNECTOR_URL must not carry credentials');
+  const h = u.hostname.toLowerCase().replace(/^\[|\]$/g, '');
+  if (h === 'localhost' || h.endsWith('.localhost') || h === '::1' || h === '::' || h === '0.0.0.0' || /^127\./.test(h) || /^::ffff:127\./.test(h)) {
+    throw new Error('CAL_MUSE_CONNECTOR_URL must not point at loopback');
+  }
+  return u.href;
+}
 export function modeFrom(env = process.env) {
   const raw = env.CAL_LAB_MODE;
   const m = raw === undefined || raw === '' ? 'mock' : raw;
