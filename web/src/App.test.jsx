@@ -237,19 +237,25 @@ describe("extra pages (opens)", () => {
     await u.click(screen.getByTestId("uc-UC5"));
     await runIt(u);
     expect(within(screen.getByTestId("nav")).getAllByRole("tab")).toHaveLength(4);
+    expect(screen.queryByTestId("nav-more")).toBeNull();
     await search(u, "");
     await u.click(screen.getByTestId("uc-UC1"));
     await runIt(u);
-    expect(within(screen.getByTestId("nav")).getAllByRole("tab").map((t) => t.textContent)).toEqual(["Agent", "Run history", "Diagram", "Talk track", "Consent and step-up"]);
-    expect(screen.getByTestId("nav-page-consent").getAttribute("data-extra")).toBe("true");
+    // the tabs stay the agent's four areas; the extra page joins the one More menu beside them (the shell bar stays one row)
+    expect(within(screen.getByTestId("nav")).getAllByRole("tab").map((t) => t.textContent)).toEqual(["Agent", "Run history", "Diagram", "Talk track"]);
+    const more = screen.getByTestId("nav-more");
+    expect([...more.options].map((o) => o.textContent)).toEqual(["More (1)", "Consent and step-up"]);
+    expect(screen.getByTestId("nav-page-consent").value).toBe("page-consent");
   });
 
   test("the extra page shows the hops that belong to it, the product page as a label, and goes away on Reset", async () => {
     await boot();
     const u = await pick("UC1");
     await runIt(u);
-    await u.click(screen.getByTestId("nav-page-consent"));
+    await u.selectOptions(screen.getByTestId("nav-more"), "page-consent");
     const page = screen.getByTestId("extra-consent");
+    expect(screen.getByRole("tabpanel").getAttribute("aria-labelledby")).toBe("tab-more");
+    expect(screen.getByTestId("nav-more").value).toBe("page-consent");
     expect(page.textContent).toMatch(/Opened by UC1/);
     expect(page.textContent).toMatch(/chat chip: "show my balance"/);
     expect(within(page).getAllByTestId("hop").map((h) => h.textContent)).toEqual([expect.stringContaining("Hop 1 sign-in"), expect.stringContaining("Hop 2 consent")]);
@@ -274,7 +280,7 @@ describe("extra pages (opens)", () => {
     await search(u, "inspector");
     await u.click(screen.getByTestId("uc-UC-LEARN2"));
     await runIt(u);
-    await u.click(screen.getByTestId("nav-page-learning-link"));
+    await u.selectOptions(screen.getByTestId("nav-more"), "page-learning-link");
     expect(screen.getByTestId("extra-linkout").textContent).toMatch(/pingone-mcp-inspector/);
     expect(document.querySelectorAll("a[href]")).toHaveLength(0);
   });
@@ -494,7 +500,10 @@ describe("fix pass 2026-11-01", () => {
     const u = await pick("UC1");
     await runIt(u);
     for (const id of ["agent", "page-consent", "diagram"]) {
-      await u.click(screen.getByTestId(`nav-${id}`));
+      if (id.startsWith("page-")) await u.selectOptions(screen.getByTestId("nav-more"), id);
+      else await u.click(screen.getByTestId(`nav-${id}`));
+      const more = screen.getByTestId("nav-more").getAttribute("aria-controls");
+      if (id.startsWith("page-")) expect(document.getElementById(more)).not.toBeNull(); else expect(more).toBeNull();
       for (const tab of within(screen.getByTestId("nav")).getAllByRole("tab")) {
         const c = tab.getAttribute("aria-controls");
         if (tab.getAttribute("aria-selected") === "true") expect(document.getElementById(c)).not.toBeNull();

@@ -94,7 +94,8 @@ test('docs never use the word "door"', () => {
 
 test('the lab ships no k8s manifests (deferred by the owner, 2026-10-31) and no bare MODE', () => {
   assert.ok(!fs.existsSync(path.join(root, 'k8s'))); assert.ok(!fs.existsSync(path.join(root, 'deploy')));
-  for (const f of fs.readdirSync(path.join(root, 'server/src'))) assert.ok(!/process\.env\.MODE\b/.test(read(`server/src/${f}`)), f);
+  const files = (dir) => fs.readdirSync(path.join(root, dir), { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? files(`${dir}/${e.name}`) : [`${dir}/${e.name}`]));
+  for (const f of files('server/src')) assert.ok(!/process\.env\.MODE\b/.test(read(f)), f);
 });
 
 test('the Dockerfile copies only what the server needs and runs as a non-root user; the data file is copied', () => {
@@ -132,7 +133,7 @@ test('step 2: the app CSS follows the CSS standard (tokens only, no theme media 
 test('step 2: the web source has no outbound URL, no eval/Function, no raw HTML injection and no colour literal in components', () => {
   const dir = path.join(root, 'web/src');
   const files = [];
-  const walk = (d) => { for (const e of fs.readdirSync(d, { withFileTypes: true })) { const f = path.join(d, e.name); if (e.isDirectory()) walk(f); else if (/\.(jsx?|css)$/.test(e.name) && !/\.test\./.test(e.name) && e.name !== 'standalone-ui.css' && e.name !== 'testFixtures.js' && e.name !== 'testSetup.js') files.push(f); } };
+  const walk = (d) => { for (const e of fs.readdirSync(d, { withFileTypes: true })) { const f = path.join(d, e.name); if (e.isDirectory()) walk(f); else if (/\.(jsx?|css)$/.test(e.name) && !/\.test\./.test(e.name) && e.name !== 'standalone-ui.css' && e.name !== 'testFixtures.js' && e.name !== 'testSetup.js' && f !== path.join(dir, 'evidence/fixtures.js')) files.push(f); } };
   walk(dir);
   assert.ok(files.length >= 10);
   for (const f of files) {
@@ -183,4 +184,22 @@ test('step 3: the README says how step 3 was read, that live is identity-provide
   const r = read('README.md');
   for (const w of ['smallest complete reading', 'identity provider only', 'VERIFIED against a real PingOne environment by the owner on 2026-11-05', 'two real calls', 'Docker is Mock only', 'never copied into the process environment', 'LIVE_REFUSED', 'live_not_configured']) assert.ok(r.includes(w), w);
   assert.ok(!/live mode is not built|not built yet \(step 3\)|step 3 is not started/i.test(r));
+});
+
+test('step 1 (Agno layout): layout.css follows the CSS standard like app.css (tokens only, no theme query, no force, no italics, 600/900 only, short selectors)', () => {
+  const css = read('web/src/layout.css');
+  assert.ok(!/#[0-9a-fA-F]{3,8}\b|rgba?\(|hsla?\(/.test(css), 'no colour literal');
+  assert.ok(!/prefers-color-scheme/.test(css)); assert.ok(!/!important/.test(css)); assert.ok(!/font-style:\s*italic/.test(css)); assert.ok(!/purple|violet/i.test(css));
+  const widths = [...css.matchAll(/\((?:max|min)-width:\s*(\d+)px\)/g)].map((m) => Number(m[1]));
+  assert.ok(widths.length > 0 && widths.every((n) => n === 600 || n === 900), widths.join());
+  for (const sel of css.split('{').map((b) => b.split('}').pop().trim()).filter((x) => x && !x.startsWith('@') && !x.startsWith('/*'))) {
+    assert.ok(!/(^|[ ,])(div|span|p|button|input|select)\./.test(sel), `element-qualified class: ${sel.slice(0, 50)}`);
+    assert.ok(sel.split(',').every((one) => one.trim().split(/\s+/).length <= 3), `more than three parts: ${sel.slice(0, 60)}`);
+  }
+  assert.match(read('web/src/App.jsx'), /import "\.\/layout\.css"/);
+});
+
+test('step 1: the data files the agent page reads ship in the image (data/ is copied whole)', () => {
+  for (const f of ['data/handoff.json', 'data/prompts.json']) assert.ok(fs.existsSync(path.join(root, f)), f);
+  assert.match(read('Dockerfile'), /COPY data data/);
 });
