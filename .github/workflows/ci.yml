@@ -32,6 +32,29 @@ jobs:
       # The vendored shared stylesheet must match the hash pinned when it was last re-vendored.
       - run: bash scripts/check-ui-standard.sh
 
+  # The browser run (scripts/e2e.mjs): starts the lab on a loopback port and drives every page in headless Chromium. No outbound requests.
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 26
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run build
+      - run: npm run e2e
+        env:
+          E2E_SHOTS: ${{ runner.temp }}/e2e-screenshots
+      - name: Screenshots (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-screenshots
+          path: ${{ runner.temp }}/e2e-screenshots
+          retention-days: 7
+
   doctor:
     runs-on: ubuntu-latest
     steps:
