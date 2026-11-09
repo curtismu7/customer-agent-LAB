@@ -79,3 +79,6 @@ export function newTraceparent() {
   const h = (a) => [...a].map((b) => b.toString(16).padStart(2, "0")).join("");
   return `00-${h(bytes.slice(0, 16))}-${h(bytes.slice(16))}-01`;
 }
+
+// The hosted build (mock only): the note beside its disabled Real button.
+export const HOSTED_REAL_NOTE = "Mock only on the hosted copy. Run the lab locally for Real.";

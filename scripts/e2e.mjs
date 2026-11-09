@@ -60,11 +60,10 @@ let liveUp = false;
 for (let i = 0; i < 160 && !liveUp; i++) { try { liveUp = (await fetch(`${liveBase}/api/health`)).ok; } catch { await sleep(250); } }
 if (!liveUp) { server.kill(); liveServer.kill(); console.error('live server did not start'); process.exit(2); }
 
-// The hosted build (CAL_DEPLOY_MODE=hosted): a third instance, mock only. Its Real button opens the Meta Muse dialog and never asks the server.
+// The hosted build (CAL_DEPLOY_MODE=hosted): a third instance, mock only. Its Real button is disabled with a note and never asks the server.
 const hostedPort = port + 2;
 const hostedBase = `http://127.0.0.1:${hostedPort}`;
-const MUSE_TEST_URL = 'https://connector.lab.example/mcp';
-const hostedEnv = { ...process.env, PORT: String(hostedPort), CAL_DEPLOY_MODE: 'hosted', CAL_LAB_MODE: 'mock', ALLOW_MOCK_SIGNIN: '1', IDP: 'mock', CAL_MUSE_CONNECTOR_URL: MUSE_TEST_URL };
+const hostedEnv = { ...process.env, PORT: String(hostedPort), CAL_DEPLOY_MODE: 'hosted', CAL_LAB_MODE: 'mock', ALLOW_MOCK_SIGNIN: '1', IDP: 'mock' };
 delete hostedEnv.CALAB_BIND; delete hostedEnv.CAL_ALLOW_LIVE; delete hostedEnv.CAL_BRAIN_URL;
 const hostedServer = spawn(process.execPath, ['server/src/index.js'], { cwd: root, env: hostedEnv, stdio: 'inherit' });
 let hostedUp = false;
@@ -374,16 +373,16 @@ try {
     }
   }
 
-  // ---- The hosted build: Real opens the Meta Muse dialog (no /api/mode call, no error, the page stays Mock) --------------------------------
+  // ---- The hosted build: Real is disabled with a note (a click or Enter makes no /api/mode request, no error, the page stays Mock) ----------
   for (const [width, height, name] of [[1280, 900, 'desktop'], [375, 800, 'phone']]) {
     for (const scheme of ['light', 'dark']) {
       const tag = `hosted-${name}-${scheme}`;
       const ctx = await browser.newContext({ viewport: { width, height }, colorScheme: scheme });
       const page = await ctx.newPage();
-      const external = []; const errors = []; const modeWrites = [];
+      const external = []; const errors = []; let watch = false; const modeCalls = [];
       page.on('request', (r) => {
         if (!r.url().startsWith(hostedBase) && !/^(data|blob):/.test(r.url())) external.push(r.url());
-        if (new URL(r.url()).pathname === '/api/mode' && r.method() !== 'GET') modeWrites.push(`${r.method()} ${r.url()}`);
+        if (watch && new URL(r.url()).pathname === '/api/mode') modeCalls.push(`${r.method()} ${r.url()}`);
       });
       page.on('pageerror', (e) => errors.push(e.message));
       page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
@@ -391,21 +390,22 @@ try {
       const overflow = () => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
       await page.goto(`${hostedBase}/`);
       await t('uc-UC1').waitFor();
-      await page.waitForFunction(() => document.querySelector('[data-testid="mode-live"]').getAttribute('aria-haspopup') === 'dialog');
-      await t('mode-live').click();
-      const dlg = page.getByRole('dialog', { name: 'Run it for real in Meta Muse' });
-      await dlg.waitFor();
-      check((await t('muse-url').innerText()) === MUSE_TEST_URL, `${tag}: the dialog shows the connector URL from /api/info`);
-      const link = dlg.getByRole('link', { name: 'Open muse.ai' });
-      check((await link.getAttribute('href')) === 'https://muse.ai' && (await link.getAttribute('target')) === '_blank' && (await link.getAttribute('rel')) === 'noopener noreferrer', `${tag}: the dialog links to https://muse.ai in a new tab (noopener noreferrer)`);
-      check(await dlg.evaluate((d) => d.contains(document.activeElement)), `${tag}: focus moved into the dialog`);
-      const box = await dlg.boundingBox();
-      check(box.x >= 0 && box.x + box.width <= width + 1 && (await overflow()) <= 0, `${tag}: the dialog fits the ${width}px viewport`);
+      await page.waitForFunction(() => document.querySelector('[data-testid="mode-live"]').disabled === true);
+      await t('mode').filter({ hasText: 'Mode: mock' }).waitFor({ state: 'attached' });
+      const real = t('mode-live');
+      check((await real.getAttribute('aria-disabled')) === 'true' && await real.isDisabled(), `${tag}: Real is disabled (disabled and aria-disabled)`);
+      check(await t('real-hosted-note').isVisible() && (await t('real-hosted-note').innerText()) === 'Mock only on the hosted copy. Run the lab locally for Real.', `${tag}: the note beside Real is shown`);
+      watch = true;
+      await real.click({ force: true });
+      await real.dispatchEvent('click');
+      await real.focus();
+      check(!(await real.evaluate((b) => b === document.activeElement)), `${tag}: Real cannot take keyboard focus`);
+      await page.keyboard.press('Enter');
+      await page.waitForTimeout(400);
+      check(modeCalls.length === 0, `${tag}: a click and Enter on Real made no /api/mode request (${modeCalls.join(' | ')})`);
+      check((await t('mode-msg').count()) === 0 && (await t('mode').innerText()).includes('Mode: mock') && (await t('mode-mock').getAttribute('aria-pressed')) === 'true', `${tag}: no error shown and the page stays Mock`);
+      check((await overflow()) <= 0, `${tag}: the shell bar with the note fits the ${width}px viewport`);
       if (tag === 'hosted-phone-dark' || tag === 'hosted-desktop-light') await page.screenshot({ path: path.join(shots, `${tag}.png`), fullPage: false });
-      await page.keyboard.press('Escape');
-      await dlg.waitFor({ state: 'detached' });
-      check(modeWrites.length === 0, `${tag}: Real made no /api/mode write (${modeWrites.join(' | ')})`);
-      check((await t('mode-msg').count()) === 0 && (await t('mode').innerText()).includes('Mode: mock') && (await t('mode-mock').getAttribute('aria-pressed')) === 'true', `${tag}: no error shown and the page stays Mock after Escape`);
       check(external.length === 0, `${tag}: the browser made no request to another origin (${external.length})`);
       check(errors.length === 0, `${tag}: no console error (${errors.slice(0, 2).join(' | ')})`);
       await ctx.close();

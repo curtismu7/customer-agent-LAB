@@ -1,11 +1,12 @@
 import { useEffect, useRef } from "react";
 import { DIAGRAMS, TEXT_SIZES, VIEWS, VIEW_LABEL } from "../quickConfig";
+import { HOSTED_REAL_NOTE } from "../lib";
 
 const Seg = ({ label, children }) => <div className="seg seg--fill" role="group" aria-label={label}>{children}</div>;
 
 // The Quick Config panel. Mode is the server's (rule 19): the buttons call the same POST /api/mode as the header toggle, and a refused Real
 // shows the server's own reason. Everything else is a display choice kept for this workspace in the browser.
-export default function QuickConfig({ id, mode, liveReason, onMode, config, brainInfo = null, onBrain = () => {}, onRouting = () => {}, onView, onText, onPresenter, onReset, onClose }) {
+export default function QuickConfig({ id, mode, liveReason, hostedOnly = false, onMode, config, brainInfo = null, onBrain = () => {}, onRouting = () => {}, onView, onText, onPresenter, onReset, onClose }) {
   const closeRef = useRef(null);
   useEffect(() => { closeRef.current?.focus(); }, []);
   const at = TEXT_SIZES.indexOf(config.text);
@@ -23,8 +24,11 @@ export default function QuickConfig({ id, mode, liveReason, onMode, config, brai
           <p className="kicker" id="qc-mode">Mode</p>
           <Seg label="Mode">
             <button type="button" aria-pressed={mode === "mock"} onClick={() => onMode("mock")} data-testid="qc-mode-mock">Mock</button>
-            <button type="button" aria-pressed={mode === "live"} onClick={() => onMode("live")} data-testid="qc-mode-real" title={liveReason || "Real: two real calls to your PingOne environment"}>Real</button>
+            {hostedOnly
+              ? <button type="button" aria-pressed="false" disabled aria-disabled="true" aria-describedby="qc-real-hosted-note" data-testid="qc-mode-real">Real</button>
+              : <button type="button" aria-pressed={mode === "live"} onClick={() => onMode("live")} data-testid="qc-mode-real" title={liveReason || "Real: two real calls to your PingOne environment"}>Real</button>}
           </Seg>
+          {hostedOnly && <p className="muted" id="qc-real-hosted-note" data-testid="qc-real-hosted-note">{HOSTED_REAL_NOTE}</p>}
           <p className="muted">Real is the PingOne token path, owner only. When it is off the server answers 409 and says why; it never falls back to Mock silently.</p>
         </div>
         <div className="qc__item">

@@ -297,66 +297,63 @@ describe("extra pages (opens)", () => {
 });
 
 describe("mode toggle", () => {
-  const MUSE_URL = "https://connector.lab.example/mcp";
-  const bootHosted = async (extra = {}) => {
-    api = mockApi({ info: { hosted: true, hostedBanner: "HOSTED AND SIMULATED: test.", museConnectorUrl: MUSE_URL, ...extra } });
+  const NOTE = "Mock only on the hosted copy. Run the lab locally for Real.";
+  const bootHosted = async () => {
+    api = mockApi({ info: { hosted: true, hostedBanner: "HOSTED AND SIMULATED: test." } });
     vi.stubGlobal("fetch", api);
     render(<App />);
     await screen.findByTestId("uc-UC1");
-    await waitFor(() => expect(screen.getByTestId("mode-live").getAttribute("aria-haspopup")).toBe("dialog"));
+    await waitFor(() => expect(screen.getByTestId("mode-live").disabled).toBe(true));
   };
   const modePosts = () => api.calls.filter((c) => c.path === "/api/mode" && c.method === "POST");
 
-  test("hosted: Real opens the Meta Muse dialog with the connector URL and the muse.ai link, makes no /api/mode call, and the page stays Mock", async () => {
+  test("hosted: Real is disabled with the note beside it; a click or Enter makes no /api/mode call and shows no error", async () => {
     await bootHosted();
     const u = userEvent.setup();
     const real = screen.getByTestId("mode-live");
+    expect(real.hasAttribute("disabled")).toBe(true);
+    expect(real.getAttribute("aria-disabled")).toBe("true");
+    const note = screen.getByTestId("real-hosted-note");
+    expect(note.textContent).toBe(NOTE);
+    expect(real.getAttribute("aria-describedby")).toBe(note.id);
     await u.click(real);
-    const dlg = await screen.findByRole("dialog", { name: /Run it for real in Meta Muse/ });
-    expect(within(dlg).getByTestId("muse-url").textContent).toBe(MUSE_URL);
-    const link = within(dlg).getByRole("link", { name: "Open muse.ai" });
-    expect(link.getAttribute("href")).toBe("https://muse.ai");
-    expect(link.getAttribute("target")).toBe("_blank");
-    expect(link.getAttribute("rel")).toBe("noopener noreferrer");
-    expect(dlg.textContent).toMatch(/Agent Connect, then Agent Gateway, which asks PingOne Authorize/);
-    expect(dlg.contains(document.activeElement)).toBe(true); // focus moved into the dialog
+    fireEvent.click(real);
+    real.focus();
+    expect(document.activeElement).not.toBe(real); // a disabled button cannot take focus, so the keyboard cannot reach it
+    await u.keyboard("{Enter}");
+    fireEvent.keyDown(real, { key: "Enter" });
+    await u.tab(); await u.keyboard("{Enter}");
     expect(modePosts()).toHaveLength(0);
-    expect(screen.queryByTestId("mode-msg")).toBeNull(); // no error shown
-    await u.keyboard("{Escape}");
-    await waitFor(() => expect(screen.queryByTestId("muse-dialog")).toBeNull());
-    expect(document.activeElement).toBe(real); // focus back on Real
-    expect(modePosts()).toHaveLength(0);
+    expect(screen.queryByTestId("mode-msg")).toBeNull();
+    expect(screen.queryByRole("dialog")).toBeNull();
     expect(screen.getByTestId("mode-mock").getAttribute("aria-pressed")).toBe("true");
     expect(screen.getByTestId("mode").textContent).toMatch(/Mode: mock/);
   });
 
-  test("hosted: Copy writes the URL to the clipboard, and selects it when the clipboard is not there", async () => {
+  test("hosted: the Quick Config Real is disabled the same way, with the same note", async () => {
     await bootHosted();
     const u = userEvent.setup();
-    const writeText = vi.fn(() => Promise.resolve());
-    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
-    await u.click(screen.getByTestId("mode-live"));
-    await u.click(await screen.findByTestId("muse-copy"));
-    expect(writeText).toHaveBeenCalledWith(MUSE_URL);
-    await waitFor(() => expect(screen.getByTestId("muse-copy-msg").textContent).toBe("Copied."));
-    Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true });
-    await u.click(screen.getByTestId("muse-copy"));
-    await waitFor(() => expect(screen.getByTestId("muse-copy-msg").textContent).toMatch(/Selected/));
-    expect(window.getSelection().toString()).toBe(MUSE_URL);
-    await u.click(within(screen.getByTestId("muse-dialog")).getAllByRole("button", { name: "Close" })[0]);
-    await waitFor(() => expect(screen.queryByTestId("muse-dialog")).toBeNull());
+    await u.click(screen.getByTestId("qc-open"));
+    const real = await screen.findByTestId("qc-mode-real");
+    expect(real.hasAttribute("disabled")).toBe(true);
+    expect(real.getAttribute("aria-disabled")).toBe("true");
+    expect(screen.getByTestId("qc-real-hosted-note").textContent).toBe(NOTE);
+    await u.click(real);
+    fireEvent.click(real);
     expect(modePosts()).toHaveLength(0);
+    expect(screen.queryByTestId("mode-msg")).toBeNull();
   });
 
-  test("local: Real still asks the server (POST /api/mode, source real) and opens no dialog", async () => {
+  test("local: Real is unchanged (enabled, no note, asks the server with POST /api/mode source real)", async () => {
     await boot();
     const u = userEvent.setup();
-    expect(screen.getByTestId("mode-live").getAttribute("aria-haspopup")).toBeNull();
-    await u.click(screen.getByTestId("mode-live"));
+    const real = screen.getByTestId("mode-live");
+    expect(real.disabled).toBe(false);
+    expect(real.hasAttribute("aria-disabled")).toBe(false);
+    expect(screen.queryByTestId("real-hosted-note")).toBeNull();
+    await u.click(real);
     await screen.findByTestId("mode-msg");
     expect(modePosts().map((c) => c.body)).toEqual([{ source: "real" }]);
-    expect(screen.queryByTestId("muse-dialog")).toBeNull();
-    expect(screen.queryByRole("dialog")).toBeNull();
   });
 
   test("Live is refused with the server's own message and the page stays in Mock", async () => {
