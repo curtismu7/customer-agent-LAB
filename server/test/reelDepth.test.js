@@ -216,8 +216,10 @@ test('DELEGATES: where AI-DEMO2 runs the agent token and exchange, the lab excha
     const ex = kinds.indexOf('token-exchange');
     const first = kinds.findIndex((k) => k === 'authorize-decision' || k === 'gateway-check');
     assert.ok(ex >= 0, `${id}: has a token exchange`);
-    // AI-DEMO2 shows the exchange only (no agent token) on UC14, UC15 and UC16; UC16 is the missing-act attack, which sends no actor token.
-    if (!['UC14', 'UC15', 'UC16'].includes(id)) assert.ok(kinds.indexOf('actor-token') >= 0 && kinds.indexOf('actor-token') < ex, `${id}: the agent token comes before the exchange`);
+    // UC16 is the missing-act attack: it sends no actor token (as in AI-DEMO2). AI-DEMO2 also draws UC14 and UC15 with the exchange only; the lab
+    // mints the agent token there too, because its exchange carries an actor and dropping it would change how those attacks are refused.
+    if (id === 'UC16') assert.ok(!kinds.includes('actor-token'), 'UC16: no actor token');
+    else assert.ok(kinds.indexOf('actor-token') >= 0 && kinds.indexOf('actor-token') < ex, `${id}: the agent token comes before the exchange`);
     if (first >= 0) assert.ok(ex < first, `${id}: the exchange comes before ${kinds[first]}`);
   }
 });
