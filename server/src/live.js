@@ -13,6 +13,8 @@
 import { chainOf } from './flow.js';
 import { isLoopbackHost } from './safety.js';
 import { formatTraceparent, newTrace } from './trace.js';
+import { enrichHop } from './vendor/hopDetail.mjs';
+import HOP_CATALOG from './vendor/hop-catalog.json' with { type: 'json' };
 
 export const TIMEOUT_MS = 8_000;
 export const MAX_BODY_BYTES = 64 * 1024;
@@ -155,7 +157,8 @@ export function createLive({ config = liveConfig({}, {}), fetchImpl = (...a) => 
       return {
         schema: 'customer-agent-run/1', mode: 'live', kind: 'live', useCase: { id: uc.id, track: uc.track, title: uc.title, maturity: uc.maturity, flag: uc.flag }, vertical,
         expectedOutcome: uc.expectedOutcome, live: { status: 'idp-only', message: NOT_RUN_REASON }, labSimulated: false, computed: false, persona: null, outcome, matchesExpected: null,
-        hops, tokens, traceId: trace.traceId, traceparent: formatTraceparent(trace.traceId, rootSpan), notRun: { reason: NOT_RUN_REASON, steps: chainOf(uc) },
+        // demo-hop/1 with tokens hidden: a live run is Real mode, so nothing token-shaped reaches the page (the token list keeps its own masked view).
+        hops: hops.map((h) => enrichHop(h, HOP_CATALOG, undefined, { tokens: 'redact' })), tokens, traceId: trace.traceId, traceparent: formatTraceparent(trace.traceId, rootSpan), notRun: { reason: NOT_RUN_REASON, steps: chainOf(uc) },
         narration: outcome === 'LIVE_OK' ? `Live, identity provider only: the discovery document and the agent's client-credentials token came from your PingOne environment. "${uc.title}" was not run past that point.`
           : `Live, identity provider only: ${outcome === 'LIVE_UNREACHABLE' ? 'the identity provider did not answer' : 'the identity provider refused a call'}. "${uc.title}" was not run.`,
       };

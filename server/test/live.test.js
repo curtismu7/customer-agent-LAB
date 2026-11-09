@@ -129,3 +129,14 @@ test('hostToAllow: the netguard is told the PingOne host only when live is confi
   assert.equal(hostToAllow(createLive({ config: liveConfig(settingsFor(), { CAL_LIVE_TEST_BASE: `http://127.0.0.1:5999/${ENV_ID}` }) }), null), null, 'a loopback fake needs no allowance');
   assert.equal(hostToAllow(createLive({ config: liveConfig({ ...settingsFor(), PINGONE_REGION: 'eu' }, {}) }), null), 'auth.pingone.eu');
 });
+
+test('review fix: live hops are demo-hop/1 with tokens hidden (Real mode), the Basic credential stays write-only', async () => {
+  const { validateHop } = await import('../src/vendor/hopDetail.mjs');
+  const { default: CATALOG } = await import('../src/vendor/hop-catalog.json', { with: { type: 'json' } });
+  await withFake({}, async (fake, live) => {
+    const run = await live.run(uc, { vertical: 'banking', traceparent: TP });
+    for (const h of run.hops) assert.deepEqual(validateHop(h, CATALOG), [], h.kind);
+    assert.equal(run.hops[1].request.headers.authorization, 'Basic [write-only]');
+    assert.equal(run.hops[1].response.body.access_token, '[redacted]');
+  });
+});

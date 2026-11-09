@@ -44,3 +44,10 @@ test('mock runs never show a client secret, even with tokens raw', () => {
     assert.doesNotMatch(text, /"client_secret":"(?!\[write-only\])/, uc.id);
   }
 });
+
+test('review fix: the exchange claim diff compares against the token actually minted (iss is kept, not shown as removed)', () => {
+  const uc = MANIFEST.usecases.find((u) => u.id === 'UC1');
+  const ex = runUseCase(uc, { cast: VERTICALS.banking, vertical: 'banking', seed: 'run' }).hops.find((h) => h.kind === 'token-exchange');
+  assert.ok(ex.claimDiff.after.iss, 'after carries iss');
+  assert.ok(!ex.claimDiff.changed.includes('iss'));
+});

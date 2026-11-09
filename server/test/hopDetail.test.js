@@ -1,4 +1,4 @@
-// Vendored from AI-DEMO-Standalone shared/hop-detail/hopDetail.test.mjs @ 2b36a2f (paths adjusted).
+// Vendored from AI-DEMO-Standalone shared/hop-detail/hopDetail.test.mjs @ 84222bf (paths adjusted).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -53,6 +53,48 @@ test('obligation verdict is valid and gets its own fact', () => {
   const h = enrichHop(raw({ kind: 'authorize-decision', verdict: 'obligation' }), catalog);
   assert.equal(h.fact, 'needs approval');
   assert.deepEqual(validateHop(h, catalog), []);
+});
+
+test('review fixes: secrets are write-only in every shape, in both modes', () => {
+  for (const mode of ['raw', 'redact']) {
+    assert.equal(redact({ authorization: 'Basic Y2xpZW50OnMzY3JldA==' }, '', mode).authorization, 'Basic [write-only]');
+    assert.equal(redact('{"client_secret":"s3cret"}', '', mode), '{"client_secret":"[write-only]"}');
+    for (const key of ['clientSecret', 'client-secret', 'x-api-key', 'api_key', 'private_key', 'Password']) assert.equal(redact({ [key]: 'v' }, '', mode)[key], '[write-only]', key);
+    assert.match(redact('client_secret=abc&scope=x', '', mode), /client_secret=\[write-only\]&scope=x/);
+  }
+});
+
+test('review fixes: Real mode hides tokens in fragments, header pairs and JSON-string bodies', () => {
+  assert.equal(redact('https://app.example/cb#access_token=opaque123&state=s'), 'https://app.example/cb#access_token=[redacted]&state=s');
+  assert.deepEqual(redact([['Authorization', 'Bearer opaque']]), [['Authorization', 'Bearer [redacted-jwt]']]);
+  assert.equal(redact(JSON.stringify({ access_token: 'opaque' })), '{"access_token":"[redacted]"}');
+  assert.equal(redact('https://customer.gateway-lab.integration.example/x'), 'https://customer.gateway-lab.integration.example/x');
+});
+
+test('review fixes: deep, cyclic and prototype-shaped input does not throw', () => {
+  let deep = {}; const top = deep; for (let i = 0; i < 20000; i++) { deep.a = {}; deep = deep.a; }
+  assert.doesNotThrow(() => redact(top));
+  const cyc = { a: 1 }; cyc.self = cyc;
+  assert.equal(redact(cyc).self, '[cycle]');
+  const out = redact(JSON.parse('{"__proto__":{"polluted":1}}'));
+  assert.equal(({}).polluted, undefined);
+  assert.equal(Object.getPrototypeOf(out), Object.prototype);
+  for (const kind of ['constructor', '__proto__', 'toString']) assert.ok(validateHop({ n: 1, kind, from: 'a', to: 'b', title: 't', narrative: 'n', fact: 'f', spec: { none: true, why: 'w', failure: 'f' } }, catalog).some((p) => /no catalog entry/.test(p)), kind);
+  assert.equal(enrichHop({ n: 1, kind: '__proto__', from: 'a', to: 'b' }, catalog).spec, undefined);
+});
+
+test('review fixes: validateHop reports bad stages and kv instead of throwing', () => {
+  const base = enrichHop(raw(), catalog);
+  assert.ok(validateHop({ ...base, stages: { a: 1 } }, catalog).includes('stages must be a list'));
+  assert.ok(validateHop({ ...base, stages: [null] }, catalog).some((p) => /stage \?/.test(p)));
+  assert.ok(validateHop({ ...base, kv: [['only-one']] }, catalog).some((p) => /kv/.test(p)));
+});
+
+test('review fixes: enrichHop keeps kv, and spec refs must be https (mutation guards)', () => {
+  assert.deepEqual(enrichHop(raw(), catalog, { kv: [['grant_type', 'token-exchange']] }).kv, [['grant_type', 'token-exchange']]);
+  const h = enrichHop(raw(), catalog);
+  const bad = { ...h, spec: { ...h.spec, refs: [{ label: 'x', url: 'http://www.rfc-editor.org/rfc/rfc8693' }] } };
+  assert.ok(validateHop(bad, catalog).some((p) => /https url/.test(p)));
 });
 
 test('redact does not mutate the engine hop', () => {

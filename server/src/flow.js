@@ -124,7 +124,7 @@ function exchange(ctx, { subject, actorTok, actChain, audience, scope, key = 'to
     body: { grant_type: 'urn:ietf:params:oauth:grant-type:token-exchange', subject_token: subject.raw, subject_token_type: 'urn:ietf:params:oauth:token-type:access_token', ...(actorTok ? { actor_token: actorTok.raw, actor_token_type: 'urn:ietf:params:oauth:token-type:access_token' } : {}), audience: aud, scope: claims.scope },
     resBody: { access_token: t.raw, issued_token_type: 'urn:ietf:params:oauth:token-type:access_token', token_type: 'Bearer', expires_in: TTL, scope: claims.scope },
     note: actChain ? `act claim names the agent: ${JSON.stringify(actChain)}` : 'no actor token was sent, so the token has no act claim',
-    detail: { before: subject.claims, after: claims, kv: [['grant_type', 'token-exchange'], ['subject_token_type', 'access_token'], ...(actorTok ? [['actor_token_type', 'access_token']] : [])] },
+    detail: { before: subject.claims, after: t.claims, kv: [['grant_type', 'token-exchange'], ['subject_token_type', 'access_token'], ...(actorTok ? [['actor_token_type', 'access_token']] : [])] },
   });
 }
 

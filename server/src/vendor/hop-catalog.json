@@ -18,9 +18,9 @@
             "url": "https://www.rfc-editor.org/rfc/rfc7636#section-4"
           }
         ],
-        "mandate": "The browser gets a one-time code on the front channel and the back end redeems it for tokens on the back channel. PKCE ties the two legs together so a stolen code is useless to anyone else.",
-        "why": "The back end is a confidential client and keeps the user token on the server. The browser only holds a session cookie, so no access token ever shows up in devtools.",
-        "failure": "Letting the user token reach the browser. Any script that runs on the page can then lift the subject token, and every delegation check later in the chain proves nothing."
+        "mandate": "OAuth issues the user token only after the user authenticates; how the credentials are collected is up to the authorization server. This lab signs in with a pi.flow: the page drives the sign-in in place, with no redirect, and the code is still redeemed with PKCE.",
+        "why": "The lab hands the user token to the page so you can follow it through every hop. A production app keeps it in the back end and gives the browser only a session cookie.",
+        "failure": "Keeping the user token in browser storage in a real app. Any script on the page can then lift the subject token, and every delegation check later in the chain proves nothing."
       }
     },
     "consent": {
@@ -160,7 +160,7 @@
             "url": "https://www.rfc-editor.org/rfc/rfc8693#section-4.1"
           }
         ],
-        "mandate": "No RFC governs the decision; it is attribute-based access control. The enforcement point sends subject, actor, action, resource and context to a decision point and obeys PERMIT, DENY or a step-up.",
+        "mandate": "No RFC defines the decision itself; it is attribute-based access control. The enforcement point sends subject, actor, action, resource and context to a decision point and obeys PERMIT, DENY or a step-up. The act claim (RFC 8693 §4.1) is one of the attributes it reads.",
         "why": "Policy runs before the tool, in one place a security team can change without redeploying the agent. Each verdict has a decision id, so it can be audited.",
         "failure": "Assuming a DENY came from your rule. A DENY proves the engine answered, not which rule fired; check the decision id against the rule you expected."
       }
@@ -223,7 +223,7 @@
             "url": "https://www.rfc-editor.org/rfc/rfc6750#section-3.1"
           }
         ],
-        "mandate": "A refused call returns an error code (for example insufficient_scope or invalid_token) and never reaches the resource.",
+        "mandate": "A refused call never reaches the resource. A bad or expired token gets 401 invalid_token; a valid token without the needed scope gets 403 insufficient_scope.",
         "why": "The refusal happens before the tool, so no tool code runs and nothing is half done.",
         "failure": "Reading an expected refusal as an outage. In a deny use case the refusal is the control working."
       }
@@ -297,7 +297,7 @@
             "url": "https://a2a-protocol.org/latest/specification/"
           }
         ],
-        "mandate": "message/send carries the task to the other agent as an A2A message.",
+        "mandate": "message/send (A2A 0.3; earlier drafts called it tasks/send) carries the task to the other agent as an A2A message.",
         "why": "The job moves to the specialist with the delegated token attached, so the specialist acts within the narrowed scope.",
         "failure": "Putting the customer data in the message without a token. The specialist then has data but no proof it may act on it."
       }
@@ -533,6 +533,48 @@
         "none": true,
         "why": "This use case is a learning page; the lab opens it and the product shows its own demo.",
         "failure": "Presenting a guide as a computed result. Nothing here was decided by the engine."
+      }
+    },
+    "live-discovery": {
+      "title": "Discovery",
+      "fact": "metadata read",
+      "spec": {
+        "refs": [
+          {
+            "label": "RFC 8414 §3",
+            "title": "Authorization server metadata",
+            "url": "https://www.rfc-editor.org/rfc/rfc8414#section-3"
+          },
+          {
+            "label": "OIDC Discovery 1.0",
+            "title": "Provider configuration",
+            "url": "https://openid.net/specs/openid-connect-discovery-1_0.html"
+          }
+        ],
+        "mandate": "An authorization server publishes its metadata (issuer, endpoints, supported grants) at a well-known URL, and a client reads it instead of hard-coding them.",
+        "why": "Whether this environment supports token exchange is read from grant_types_supported, not assumed.",
+        "failure": "Hard-coding endpoints or assuming a grant is supported. The demo then fails later with a confusing error instead of saying the feature is off."
+      }
+    },
+    "live-actor-token": {
+      "title": "Agent token (live)",
+      "fact": "live token, masked",
+      "spec": {
+        "refs": [
+          {
+            "label": "RFC 6749 §4.4",
+            "title": "Client credentials grant",
+            "url": "https://www.rfc-editor.org/rfc/rfc6749#section-4.4"
+          },
+          {
+            "label": "RFC 9068 §2.2",
+            "title": "JWT access token data",
+            "url": "https://www.rfc-editor.org/rfc/rfc9068#section-2.2"
+          }
+        ],
+        "mandate": "Client credentials issue a token for the client itself, with no user in it. The JWT access token profile names that machine principal in client_id and sub.",
+        "why": "The agent needs its own provable identity, so the next exchange has a real actor_token to present. Without it there is no evidence of who acted, only that a call arrived.",
+        "failure": "Using the user token as the agent identity. The user and the agent collapse into one party, and the act claim made next proves nothing."
       }
     }
   }
