@@ -1,0 +1,13 @@
+# TLS for the app's own host, issued by cert-manager through the ClusterIssuer the owner names (CLUSTER_ISSUER; no default).
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: customer-agent-lab
+  labels: { app: customer-agent-lab }
+spec:
+  secretName: customer-agent-lab-tls
+  dnsNames:
+    - __SE_HOST__
+  issuerRef:
+    kind: ClusterIssuer
+    name: __CLUSTER_ISSUER__

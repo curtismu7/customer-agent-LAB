@@ -1,0 +1,22 @@
+# The page and the API on the app's own host. Same class and limits as the other hosted labs; the certificate comes from certificate.yaml.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: customer-agent-lab
+  labels: { app: customer-agent-lab }
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "16k"
+    nginx.ingress.kubernetes.io/limit-rps: "20"
+    nginx.ingress.kubernetes.io/limit-burst-multiplier: "3"
+    nginx.ingress.kubernetes.io/limit-connections: "30"
+spec:
+  ingressClassName: __INGRESS_CLASS__
+  tls:
+    - hosts: [__SE_HOST__]
+      secretName: customer-agent-lab-tls
+  rules:
+    - host: __SE_HOST__
+      http:
+        paths:
+          - { path: /, pathType: Prefix, backend: { service: { name: customer-agent-lab, port: { name: http } } } }

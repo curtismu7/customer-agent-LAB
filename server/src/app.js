@@ -9,7 +9,8 @@ import express from 'express';
 import { hostCheck, sameOriginWrites, liveRefusal, mockSignInRefusal, allowedExtraHosts, trustedProxyHeaders } from './safety.js';
 import { createHealth } from './health.js';
 import { DEFAULT_VERTICAL, isFullVertical, isKnownVertical, isPersona, loadCast, verticalList, PERSONAS } from './cast.js';
-import { defaultMode, modeOf, MODES } from './config.js';
+import { defaultMode, isHosted, modeOf, MODES } from './config.js';
+import { HOSTED_BANNER } from './data.js';
 import { buildStory } from './story.js';
 import { DIAGRAM_NAMES, buildDiagram } from './diagramData.js';
 import { InputError, refuse } from './errors.js';
@@ -92,7 +93,9 @@ export function createApp({
     noStore(res);
     const realAvailable = liveRefusal(guardCtx(req)) === null;
     res.json({
-      mode: defaultMode(), modes: MODES, simulated: true, total: MANIFEST.meta.total, counts: MANIFEST.meta.counts, sourceRef: MANIFEST.source, personas: PERSONAS, verticals: verticalList(),
+      mode: defaultMode(), modes: MODES, simulated: true,
+      hosted: isHosted(env), hostedBanner: isHosted(env) ? HOSTED_BANNER : null, // the hosted build (mock only) and the banner the page shows for it
+      total: MANIFEST.meta.total, counts: MANIFEST.meta.counts, sourceRef: MANIFEST.source, personas: PERSONAS, verticals: verticalList(),
       source: workspaces.peek('default').mode === 'live' ? 'real' : 'mock', // rule 19: the default workspace's current source
       realAvailable, // rule 19: whether Real (this app's live PingOne path) is configured
       guards: { mockSignIn: mockSignInRefusal(mockCtx(req)) === null ? 'allowed' : 'refused', live: liveRefusal(guardCtx(req)) === null ? 'allowed' : 'refused' },
@@ -141,7 +144,7 @@ export function createApp({
   // Without ?check=1 it only says whether a model is configured and calls nothing; the page checks only after the visitor picks llama.cpp.
   api.get('/brain', async (req, res) => {
     noStore(res);
-    const s = req.query.check === '1' ? await brain.status() : { available: null, reason: brain.configured() ? null : (brain.invalid() ? 'invalid' : 'off') };
+    const s = req.query.check === '1' ? await brain.status() : { available: null, reason: brain.configured() ? null : brain.offReason() };
     res.json({ schema: 'customer-agent-brain/1', configured: brain.configured(), available: s.available, label: brain.label(), reason: s.reason, message: s.reason ? REASONS[s.reason] : null });
   });
   api.post('/brain/pick', jsonWrites, async (req, res, next) => {
@@ -286,8 +289,19 @@ export function createApp({
   api.use((_req, res) => res.status(404).json({ error: 'not_found' }));
   app.use('/api', api);
   if (fs.existsSync(path.join(webDist, 'index.html'))) {
-    app.use(express.static(webDist));
-    app.get(/^\/(?!api\/).*/, (_req, res) => res.sendFile(path.join(webDist, 'index.html')));
+    if (isHosted(env)) {
+      // Hosted: the served HTML already carries the hosted banner inside #root (fixed text, React replaces it on load), so the page says it is
+      // hosted and simulated before any script runs and to a reader without scripts.
+      const html = fs.readFileSync(path.join(webDist, 'index.html'), 'utf8')
+        .replace('<div id="root"></div>', `<div id="root"><p class="banner" role="note" data-state="hosted" data-testid="banner">${HOSTED_BANNER.replace(/'/g, '&#39;')}</p></div>`);
+      const page = (_req, res) => { res.set('Cache-Control', 'no-store'); res.type('html').send(html); };
+      app.get(['/', '/index.html'], page);
+      app.use(express.static(webDist, { index: false }));
+      app.get(/^\/(?!api\/).*/, page);
+    } else {
+      app.use(express.static(webDist));
+      app.get(/^\/(?!api\/).*/, (_req, res) => res.sendFile(path.join(webDist, 'index.html')));
+    }
   }
   // The last two handlers catch everything that is left, for every method and every path: Express's default answers ("Cannot POST /<path>", or an
   // HTML stack trace with file paths) would echo the path the visitor typed, which may be a token. Fixed JSON, no path.

@@ -132,6 +132,13 @@ HOST_PORT=5603 docker compose up --build -d
 
 Open http://127.0.0.1:5603/ (the health answer is at http://127.0.0.1:5603/api/health). The port is published on `127.0.0.1` only (a test pins it); the container runs as a non-root user, read-only, with every capability dropped. Use OrbStack, never Docker Desktop.
 
+Hosted build (owner exception, 2026-11-09): the same image with `CAL_DEPLOY_MODE=hosted` runs on the SE k8s cluster, mock only. Live is refused, the llama.cpp brain is off (`CAL_BRAIN_URL` is ignored), no settings file is read, and the banner says "hosted and simulated". Each browser tab keeps its own workspace, so one visitor's runs and Reset never touch another's. The image is built for linux/arm64 by `.github/workflows/image.yml` and pushed to GHCR from main as `sha-<commit>`. Manifests and the deploy script are in `deploy/k8s/`:
+
+```
+KUBE_CONTEXT=<ctx> NAMESPACE=<ns> IMAGE=ghcr.io/<owner>/customer-agent-lab:sha-<commit> SE_HOST=<host> CLUSTER_ISSUER=<issuer> INGRESS_CLASS=<class> deploy/k8s/deploy.sh --dry-run
+OWNER_APPROVED=1 ... deploy/k8s/deploy.sh   # applies, then checks health, the banner and a mock run through the public host
+```
+
 ## Tests
 
 `npm test` runs the server tests (`node --test test/*.test.js`, a glob) and the script tests. The web tests are vitest (`npm test -w web`). `npm run e2e` drives the built app in a real Chromium (Playwright; set `E2E_CHROMIUM` to a Chromium executable if `npx playwright install chromium` has not been run) on E2E_PORT, default 5690.
@@ -158,5 +165,5 @@ Owner: the Ping demo-lab owner. Licence: MIT (see `LICENSE`). Report problems as
 - The lab does not register itself on the local shelf (`~/Development/demo-shelf/.data/demos.local.json`, git-ignored, outside this repo): the entry in `docs/shelf-entry.json` passes the shelf's own validator; merging it and running `npm run doctor` there is the owner's step.
 - CI does not run conformance: the gate lives in demo-kit-base, which is not shipped into this repo or onto GitHub-hosted runners, and a job that skips itself would be a green check with nothing behind it. Run `node <demo-kit-base>/scripts/conformance.mjs . --new` by hand until base-sync ships it (the rulebook wants new apps to call it in CI; that is an owner decision).
 - The e2e script is not in CI (CI has no browser step); it is run by hand.
-- The SE k8s mock build is deferred by the owner (2026-10-31); there are no k8s manifests.
+- The hosted build on the SE k8s cluster is mock only (see Docker above); Real stays a local-only feature.
 - Repo creation needed the owner's approval; the repo moved to the `curtismu7` org (2026-11-04).

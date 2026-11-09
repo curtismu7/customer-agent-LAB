@@ -6,6 +6,9 @@
 //  5. Ports are 5600-5699 and never one of the forbidden ones.
 //  6. Every key-looking string is an obviously fake sk-MOCK- value.
 //  7. Rule 11 guards (mockSignInRefusal, liveRefusal) at the bottom.
+//  8. The hosted build (CAL_DEPLOY_MODE=hosted): live is refused outright, and the mock sign-in is allowed behind the cluster's ingress.
+
+import { isHosted } from './config.js';
 
 export function isLoopbackHost(host) {
   const h = String(host).toLowerCase().replace(/^\[|\]$/g, '');
@@ -133,9 +136,12 @@ function networkRefusal({ env, bind, headers }) {
   return null;
 }
 
+// In the hosted build the proxy and bind checks do not apply: the pod is reached only through the cluster's ingress (so every request carries
+// proxy headers), live is refused, and everything a visitor sees is simulated and labelled so (the hosted banner). IDP and ALLOW_MOCK_SIGNIN still hold.
 export function mockSignInRefusal({ env, bind, headers }) {
   if ((env.IDP ?? 'mock') !== 'mock') return 'Mock sign-in is off: IDP is not mock.';
   if (env.ALLOW_MOCK_SIGNIN !== '1') return 'Mock sign-in is off. Start the lab with ALLOW_MOCK_SIGNIN=1 to allow it on this machine.';
+  if (isHosted(env)) return null;
   const net = networkRefusal({ env, bind, headers });
   return net ? `Mock sign-in: ${net.charAt(0).toLowerCase()}${net.slice(1)}` : null;
 }
@@ -143,7 +149,9 @@ export function mockSignInRefusal({ env, bind, headers }) {
 // Live mode may be selected (the toggle) only when ALL of the following hold, and every live run asks again (CAL_LAB_MODE=live only sets the opening mode and does not check them): the owner opted in (CAL_ALLOW_LIVE=1, lab-invented key), IDP=pingone (the one live provider
 // this lab can reach; mock turns live off and any other value is not supported), no proxy headers, and a loopback bind (or CAL_PUBLISH=loopback).
 export const LIVE_IDP = 'pingone';
+export const HOSTED_LIVE_REFUSAL = 'Live mode is not available in the hosted build: it is mock only. Run the lab locally for Real.';
 export function liveRefusal({ env, bind, headers }) {
+  if (isHosted(env)) return HOSTED_LIVE_REFUSAL;
   if (env.CAL_ALLOW_LIVE !== '1') return 'Live mode is off. The owner enables it on this machine with CAL_ALLOW_LIVE=1.';
   if ((env.IDP ?? 'mock') === 'mock') return 'Live mode needs IDP set to a live provider (it is mock).';
   if (env.IDP !== LIVE_IDP) return `Live mode supports IDP=${LIVE_IDP} only.`;

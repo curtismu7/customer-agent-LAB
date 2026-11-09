@@ -1,0 +1,64 @@
+# The hosted build: the SAME image as local Docker, with CAL_DEPLOY_MODE=hosted (mock only: live, the llama.cpp brain and the settings file are refused or
+# ignored; the page shows the "hosted and simulated" banner). One replica: workspaces live in the pod's memory, so a second replica would split a
+# visitor's runs between pods. The double-underscore placeholders are rendered by deploy.sh; no namespace here (deploy.sh takes NAMESPACE).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: customer-agent-lab
+  labels: { app: customer-agent-lab }
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels: { app: customer-agent-lab }
+  template:
+    metadata:
+      labels: { app: customer-agent-lab }
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile: { type: RuntimeDefault }
+      terminationGracePeriodSeconds: 15
+      containers:
+        - name: app
+          image: __IMAGE__
+          imagePullPolicy: IfNotPresent
+          ports:
+            - { name: http, containerPort: 5600, protocol: TCP }
+          env:
+            - { name: CAL_DEPLOY_MODE, value: hosted }
+            - { name: CAL_LAB_MODE, value: mock }
+            - { name: PORT, value: "5600" }
+            # Inside the pod the server listens on all interfaces (the Service and the ingress are the only way in).
+            - { name: CALAB_BIND, value: 0.0.0.0 }
+            - { name: ALLOW_MOCK_SIGNIN, value: "1" }
+            - { name: IDP, value: mock }
+            # The Host check admits loopback (the probes) and this one name (the ingress).
+            - { name: LAB_ALLOWED_HOSTS, value: __SE_HOST__ }
+            # Ignored in the hosted build; set empty so nothing inherited can switch it on.
+            - { name: CAL_BRAIN_URL, value: "" }
+            - { name: CAL_ALLOW_LIVE, value: "0" }
+            - { name: SHELF_URL, value: "" }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          resources:
+            requests: { cpu: 50m, memory: 96Mi }
+            limits: { cpu: 500m, memory: 256Mi }
+          # The kubelet sends the pod IP as Host by default, which the Host check refuses; a loopback Host passes it.
+          readinessProbe:
+            httpGet: { path: /api/health, port: http, httpHeaders: [{ name: Host, value: "127.0.0.1:5600" }] }
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /api/health, port: http, httpHeaders: [{ name: Host, value: "127.0.0.1:5600" }] }
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - name: tmp
+          emptyDir: { sizeLimit: 16Mi }

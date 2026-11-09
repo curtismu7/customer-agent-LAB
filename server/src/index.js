@@ -2,7 +2,7 @@ import { installNetguard } from './netguard.js';
 import { startHttpServer, createApp } from './app.js';
 import { allPassed, runChecks } from './doctor.js';
 import { assertBindAllowed, bindHost, liveRefusal, resolvePort } from './safety.js';
-import { defaultMode, modeFrom } from './config.js';
+import { defaultMode, deployModeFrom, modeFrom } from './config.js';
 import { applySharedSettings, readLiveSettings, settingsPath } from './settings.js';
 import { createLive, hostToAllow, liveConfig } from './live.js';
 import { createHealth } from './health.js';
@@ -11,8 +11,10 @@ import { allowBrainHost, brainConfig, createBrain } from './brain.js';
 
 const guard = installNetguard(); // before anything else can open a socket
 
+// The hosted build (CAL_DEPLOY_MODE=hosted, the mock-only SE k8s pod) reads no settings file and no live settings: it is mock only.
+const hosted = deployModeFrom(process.env) === 'hosted'; // refuses anything but local or hosted
 // The one shared settings file (rulebook): ~/Development/.env, or STANDALONE_ENV. Optional; only this lab's own key is taken; never printed.
-applySharedSettings();
+if (!hosted) applySharedSettings();
 
 const checks = await runChecks();
 if (!allPassed(checks)) {
@@ -23,7 +25,7 @@ const mode = modeFrom(process.env); // refuses anything but mock or live
 const host = assertBindAllowed(bindHost(), process.env);
 // Live mode (step 3, owner opt-in): the worker client and environment come from the shared file and stay in live.js (never in process.env). The netguard
 // then allows the one PingOne host; with no opt-in, no configuration or a loopback test base it allows nothing and the lab reaches no network.
-const live = createLive({ config: liveConfig(readLiveSettings(settingsPath()), process.env) });
+const live = hosted ? createLive() : createLive({ config: liveConfig(readLiveSettings(settingsPath()), process.env) });
 const liveRefused = liveRefusal({ env: process.env, bind: host, headers: {} });
 const liveOn = live.configured() && liveRefused === null;
 const liveHost = hostToAllow(live, liveRefused);
@@ -35,5 +37,5 @@ allowBrainHost(guard, brainCfg);
 const brain = createBrain({ config: brainCfg });
 const app = createApp({ bind: host, workspaces: createWorkspaces({ defaultMode: defaultMode() }), live, brain, health: createHealth({ runtime: () => (liveOn ? 'live' : 'offline') }) });
 const { url } = await startHttpServer({ port: resolvePort(), host, app });
-console.log(`[customer-agent-lab] lab at ${url} (opens in ${mode} mode; loopback; ${liveOn ? `live is on: outbound only to ${live.origin()}` : 'no outbound network'}${brain.configured() ? `; brain: ${brain.label()}` : ''})`);
+console.log(`[customer-agent-lab] lab at ${url} (opens in ${mode} mode; ${hosted ? 'hosted build, mock only' : 'loopback'}; ${liveOn ? `live is on: outbound only to ${live.origin()}` : 'no outbound network'}${brain.configured() ? `; brain: ${brain.label()}` : ''})`);
 console.log(`[customer-agent-lab] health: ${url}api/health`);

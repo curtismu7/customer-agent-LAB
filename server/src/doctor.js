@@ -10,7 +10,7 @@ import { buildStory, } from './story.js';
 import { LABELS, EXTRA_TOKENS, rawStory } from './data.js';
 import { findCredentials } from './credentials.js';
 import { maskDeep, SHAPE_IDS } from './mask.js';
-import { modeFrom } from './config.js';
+import { deployModeFrom, modeFrom } from './config.js';
 import { MANIFEST, TRACKS } from './manifest.js';
 import { KNOWN_STEPS, chainOf, runUseCase } from './flow.js';
 import { signMockJwt, verifyMockJwt } from './mockjwt.js';
@@ -28,6 +28,8 @@ export async function runChecks({ env = process.env } = {}) {
 
   const major = Number(process.versions.node.split('.')[0]);
   add('node', major >= 26 ? 'pass' : 'fail', `v${process.versions.node} (need >= 26)`);
+  try { add('deploy', 'pass', deployModeFrom(env) === 'hosted' ? 'hosted build (CAL_DEPLOY_MODE=hosted): mock only; live, the llama.cpp brain and the settings file are refused or ignored' : 'local (a clone or local Docker)'); }
+  catch (e) { add('deploy', 'fail', e.message); }
   try { add('mode', 'pass', `${modeFrom(env)} is the opening mode (mock is the default). Opening in live does not check or switch on the live guard: selecting Live and every live run still need the owner's opt-in (CAL_ALLOW_LIVE=1, IDP=pingone)`); }
   catch (e) { add('mode', 'fail', e.message); }
   try { add('bind', 'pass', `${assertBindAllowed(bindHost(env), env)}${env.CALAB_BIND ? ' (CALAB_BIND opt-in)' : ' (loopback)'}`); }
