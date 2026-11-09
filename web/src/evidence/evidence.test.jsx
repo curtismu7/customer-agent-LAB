@@ -212,8 +212,9 @@ describe("step detail", () => {
     render(<StepDetailPanel hops={UC1_RUN} selected={4} onSelect={() => {}} />);
     const col = screen.getByTestId("rfc-column");
     for (const h of ["Why it works this way", "What the specification requires", "Common failure mode"]) expect(within(col).getByRole("heading", { name: h })).toBeTruthy();
-    const refs = within(col).getAllByRole("listitem").map((li) => li.textContent);
+    const refs = within(col).getAllByRole("listitem").map((li) => li.firstChild.textContent);
     expect(refs).toEqual(["RFC 8693 §2.1", "RFC 8693 §4.1"]);
+    for (const li of within(col).getAllByRole("listitem")) expect(li.querySelector(".ev-ref-url").textContent).toMatch(/https:\/\//);
     expect(col.querySelector("a")).toBeNull();
   });
 
@@ -298,5 +299,39 @@ describe("the screens show what the server sent", () => {
     const raw = hop.response.body.leaked;
     render(<StepDetailPanel hops={UC1_DENY_RUN} selected={6} onSelect={() => {}} />);
     expect(screen.getByLabelText("Step 6 response").textContent).toContain(`"leaked": "${raw}"`);
+  });
+});
+
+describe("review fixes", () => {
+  test("closing the actor card returns focus to the tile that opened it", () => {
+    render(<Harness hops={UC1_RUN} />);
+    const tile = screen.getByTestId("actor-gateway");
+    tile.focus();
+    fireEvent.click(tile);
+    expect(document.activeElement.getAttribute("aria-label")).toBe("Close Gateway details");
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+    expect(document.activeElement).toBe(screen.getByTestId("actor-gateway"));
+  });
+
+  test("inherited object keys are not actors", () => {
+    for (const id of ["__proto__", "constructor", "toString"]) {
+      const a = actorOf(id);
+      expect(a.lane).toBe("neutral");
+      expect(a.label).toBe(id);
+    }
+  });
+
+  test("lifeline boxes stay clickable but are not extra tab stops", () => {
+    render(<Harness hops={UC1_RUN} />);
+    const boxes = screen.getAllByRole("button", { name: /actor details \((top|bottom)\)/ });
+    expect(boxes.length).toBeGreaterThan(0);
+    for (const b of boxes) expect(b.getAttribute("tabindex")).toBe("-1");
+  });
+
+  test("spec references show their URL as text, reachable without hover", () => {
+    const ex = UC1_RUN.find((h) => h.spec?.refs?.length);
+    render(<StepDetailPanel hops={UC1_RUN} selected={ex.n} onSelect={() => {}} />);
+    const list = screen.getByRole("list", { name: "Specification references" });
+    expect(list.textContent).toContain(ex.spec.refs[0].url);
   });
 });

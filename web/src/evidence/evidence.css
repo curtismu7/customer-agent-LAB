@@ -1,25 +1,8 @@
-/* Evidence screens (sequence view, movie reel, step detail, actor card). Layout only, from shared tokens, plus ONE named
-   block of colour literals: the lane palette below. No theme media query: light-dark() follows the color-scheme the
-   shared stylesheet sets for light, dark and the system setting, so the app's theme picker switches the lanes too.
+/* Evidence screens (sequence view, movie reel, step detail, actor card). Layout only, from shared tokens (lane colours included).
    Breakpoints 600px and 900px only. No italics. */
 
-/* ===== Lane palette (AI-DEMO2 SequenceReelDiagram hue families; no purple). light value, dark value. ===== */
+/* Lane colours are the shared --lane-* tokens (standalone-ui.css, "Evidence lanes"). */
 .ev-root {
-  --lane-browser: light-dark(#2a78d6, #4a9eff);
-  --lane-page: light-dark(#5f98df, #7db8ff);
-  --lane-hitl: light-dark(#5f98df, #7db8ff);
-  --lane-agent: light-dark(#eb6834, #ff6b4a);
-  --lane-a2a: light-dark(#f1946d, #ff9a80);
-  --lane-mcp: light-dark(#1baf7a, #2ed9a3);
-  --lane-gateway: light-dark(#5fc8a1, #6ee3bd);
-  --lane-privilege: light-dark(#13805a, #3fcf94);
-  --lane-credentials: light-dark(#8fd7bc, #97ead0);
-  --lane-idp: light-dark(#eda100, #ffa500);
-  --lane-mcp-as: light-dark(#f2bd4d, #ffc04d);
-  --lane-authorize: light-dark(#f2bd4d, #ffc04d);
-  --lane-bff: light-dark(#e87ba4, #ff5599);
-  --lane-registry: light-dark(#efa3c0, #ff88bb);
-  --lane-neutral: var(--muted);
   --ev-scale: 1;
 }
 
@@ -154,3 +137,6 @@
   .sq-actors { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .sdp { padding: 10px; }
 }
+
+/* Spec reference URL: visible text (no links in this app), selectable on touch and by keyboard users. */
+.ev-ref-url { font-family: var(--font-mono); font-size: 0.72em; color: var(--muted); overflow-wrap: anywhere; }

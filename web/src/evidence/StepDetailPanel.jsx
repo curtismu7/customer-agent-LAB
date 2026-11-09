@@ -70,7 +70,7 @@ function RfcColumn({ spec }) {
         {refs.length > 0 && (
           <ul className="sdp__refs" aria-label="Specification references">
             {/* Plain labels, not links: this lab never links out (repo rule); the address is in the tooltip. */}
-            {refs.map((r) => <li key={`${r.label}-${r.url}`} className="ev-pill" title={txt([r.title, r.url].filter(Boolean).join(" — "))}>{txt(r.label)}</li>)}
+            {refs.map((r) => <li key={`${r.label}-${r.url}`} className="ev-pill" title={txt(r.title || "")}>{txt(r.label)}{r.url ? <span className="ev-ref-url"> {txt(r.url)}</span> : null}</li>)}
           </ul>
         )}
       </>)}

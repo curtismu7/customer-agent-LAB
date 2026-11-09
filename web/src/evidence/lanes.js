@@ -3,7 +3,7 @@ import { visible } from "../safeText";
 // Actors of the demo-hop/1 format (shared/hop-detail/README.md): label, initials, lane token (evidence.css), and the
 // teaching text an actor card shows. An id this table does not know falls back to the neutral lane.
 export const ACTORS = {
-  browser: { label: "Browser", initials: "BR", lane: "browser", role: "The customer's browser. It signs in and gives consent, and holds only a session cookie.", sees: "the sign-in page, the consent screen and its own session cookie", never: "any access token" },
+  browser: { label: "Browser", initials: "BR", lane: "browser", role: "The customer's browser. It signs in with a pi.flow (no redirect) and gives consent. This lab hands it the user token so you can follow it; a production app keeps tokens in the back end.", sees: "the sign-in, the consent screen and, in this lab, the user token", never: "the agent's token or any secret" },
   page: { label: "Page", initials: "PG", lane: "page", role: "The web page the agent is embedded in.", sees: "what the customer types and the agent's replies", never: "tokens or secrets" },
   agent: { label: "Agent", initials: "AG", lane: "agent", role: "The AI agent. It plans the call and asks the back end to run a tool for the customer.", sees: "the customer's request and the tool result", never: "the customer's password or token" },
   bff: { label: "BFF", initials: "BF", lane: "bff", role: "The back end for the front end. A confidential client that keeps the tokens on the server and asks for the exchange.", sees: "the user token, the agent token and the exchanged token", never: "the customer's password" },
@@ -20,7 +20,7 @@ export const ACTORS = {
 };
 
 export function actorOf(id) {
-  const a = ACTORS[id];
+  const a = Object.hasOwn(ACTORS, id) ? ACTORS[id] : null;
   if (a) return { id, ...a };
   const label = String(id || "?");
   return { id: label, label, initials: label.replace(/[^A-Za-z0-9]/g, "").slice(0, 2).toUpperCase() || "?", lane: "neutral", role: "An actor this lab does not describe.", sees: "not described", never: "not described" };

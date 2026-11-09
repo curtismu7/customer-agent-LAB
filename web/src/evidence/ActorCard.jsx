@@ -5,7 +5,13 @@ import { actorOf, laneVar, touches, txt } from "./lanes";
 // tile or a lifeline box in the sequence view. Escape or the close button dismisses it.
 export default function ActorCard({ actorId, hops = [], onSelect, onClose }) {
   const closeRef = useRef(null);
-  useEffect(() => { closeRef.current?.focus(); }, [actorId]);
+  // Focus moves into the card; when it closes, focus goes back to whatever opened it (tile or lifeline box).
+  useEffect(() => {
+    if (!actorId) return undefined;
+    const opener = typeof document !== "undefined" ? document.activeElement : null;
+    closeRef.current?.focus();
+    return () => { if (opener && opener.isConnected && typeof opener.focus === "function") opener.focus(); };
+  }, [actorId]);
   if (!actorId) return null;
   const a = actorOf(actorId);
   const mine = hops.filter((h) => touches(h, actorId));
