@@ -1,5 +1,6 @@
 // Resume: the chat, the selected use case, the vertical and the persona are kept in sessionStorage per workspace, so a visitor who hands a use
-// case off to another app (same tab) and comes Back finds the conversation where it was.
+// case off to another app (same tab) and comes Back finds the conversation where it was. They are restored only on a load with a valid
+// ?returned=<known app>&uc=<id>; a plain load or reload starts fresh. Reset clears the stored chat.
 //
 // What is stored (the safe option): ids and the text the page already shows. Each turn keeps what was said, the use case id, the vertical, how it
 // was chosen, its status, the brain note and, for a finished run, only its outcome word (for example PERMIT). The run itself (its tokens, hops,

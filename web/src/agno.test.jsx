@@ -602,10 +602,30 @@ describe("resume after a hand-off", () => {
     expect(A.calls.filter((c) => c.method === "POST" && c.path.startsWith("/api/run/"))).toHaveLength(0); // nothing re-ran by itself
   });
 
-  test("an unknown returned app adds no note; Reset clears the stored chat", async () => {
+  test("a plain reload starts fresh; a second Back for the same return adds no second note", async () => {
+    await boot();
+    const u = userEvent.setup();
+    await u.click(screen.getByTestId("wtt-UC1"));
+    await screen.findByTestId("turn-answer");
+    cleanup(); await boot(); // plain reload: no ?returned
+    expect(screen.queryAllByTestId("turn")).toHaveLength(0);
+    await u.click(screen.getByTestId("wtt-UC1"));
+    await screen.findByTestId("turn-answer");
+    for (let i = 0; i < 2; i++) { cleanup(); window.history.replaceState(null, "", "/?returned=a2a-lab&uc=UC1"); await boot(); }
+    expect(screen.getAllByTestId("turn")).toHaveLength(1);
+    expect(screen.getAllByTestId("turn-note")).toHaveLength(1);
+  });
+
+  test("an unknown returned app restores nothing and adds no note; Reset clears the stored chat", async () => {
+    await boot();
+    const u0 = userEvent.setup();
+    await u0.click(screen.getByTestId("wtt-UC1"));
+    await screen.findByTestId("turn-answer");
+    cleanup();
     window.history.replaceState(null, "", "/?returned=evil-app&uc=UC1");
     await boot();
     expect(screen.queryByTestId("turn-note")).toBeNull();
+    expect(screen.queryAllByTestId("turn")).toHaveLength(0);
     expect(window.location.search).toBe("");
     const u = userEvent.setup();
     await u.click(screen.getByTestId("wtt-UC1"));

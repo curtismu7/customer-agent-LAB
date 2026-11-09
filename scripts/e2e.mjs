@@ -298,9 +298,9 @@ try {
       check((await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)) <= 0, `${tag}: the agent page does not scroll sideways`);
 
       // resume: the tab leaves for the other app and comes Back with ?returned=: the chat is restored (words and outcomes, no run), a note says so, the query is gone
-      const before = await page.getByTestId('turn').count();
+      const turnsBefore = await page.getByTestId('turn').count();
       await page.goto(`${base}/?returned=a2a-lab&uc=UC2.6`); await t('turn-note').waitFor();
-      check((await page.getByTestId('turn').count()) === before && (await t('turn-note').innerText()) === 'Back from a2a-lab (UC2.6)' && (await page.evaluate(() => window.location.search)) === '', `${tag}: Back from a2a-lab restores ${before} turns, adds the note and cleans the address bar`);
+      check((await page.getByTestId('turn').count()) === turnsBefore && (await t('turn-note').innerText()) === 'Back from a2a-lab (UC2.6)' && (await page.evaluate(() => window.location.search)) === '', `${tag}: Back from a2a-lab restores ${turnsBefore} turns, adds the note and cleans the address bar`);
       check((await t('turn-restored').first().innerText()).includes('run it again') && (await page.getByTestId('turn-tokens').count()) === 0 && !(await page.evaluate(() => Object.values(sessionStorage).join(''))).includes('eyJ'), `${tag}: restored runs say run it again; no token on the page or in sessionStorage`);
 
       await t('full-sequence').click(); await t('page-sequence').waitFor();

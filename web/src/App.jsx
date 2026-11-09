@@ -45,8 +45,10 @@ const resultKey = (id, vertical, persona, mode) => `${id}|${vertical}|${persona}
 const focusHop = (run) => (run?.hops || []).find((h) => h.decision || (h.verdict && h.verdict !== "ok" && h.verdict !== "skip"))?.n ?? null;
 
 export default function App() {
-  // Resume (rule: sessionStorage per workspace, ids and shown text only; see resume.js): read once, before the first render.
-  const [resumed] = useState(() => loadResume(workspaceId()));
+  // Resume (sessionStorage per workspace, ids and shown text only; see resume.js), read once before the first render, and ONLY when the page
+  // loads with a valid ?returned=<known app>&uc=<id> (Back from a hand-off). A plain load or reload starts fresh, as before.
+  const [back] = useState(() => takeReturn());
+  const [resumed] = useState(() => (back ? loadResume(workspaceId()) : null));
   const [info, setInfo] = useState(null);
   const [story, setStory] = useState(null);
   const [mode, setMode] = useState(null);
@@ -78,17 +80,14 @@ export default function App() {
   const runSeq = useRef(0);
   const turnSeq = useRef(resumed?.turns.length || 0);
   useEffect(() => { saveResume(workspaceId(), { turns, selectedId, vertical, persona }); }, [turns, selectedId, vertical, persona]);
-  // Back from a hand-off (?returned=<app>&uc=<id>): the chat above is already restored; add a short note, select the use case, clean the address bar.
-  const returnDone = useRef(false);
+  // Back from a hand-off: the chat above is already restored and the address bar cleaned (takeReturn); select the use case and add a short
+  // note, unless the last turn is already that same note.
   useEffect(() => {
-    if (returnDone.current) return;
-    returnDone.current = true;
-    const r = takeReturn();
-    if (!r) return;
-    setSelectedId(r.uc);
-    const id = ++turnSeq.current;
-    setTurns((ts) => [...ts, { id, status: "note", said: `Back from ${r.app} (${r.uc})` }]);
-  }, []);
+    if (!back) return;
+    setSelectedId(back.uc);
+    const said = `Back from ${back.app} (${back.uc})`;
+    setTurns((ts) => (ts.length && ts[ts.length - 1].status === "note" && ts[ts.length - 1].said === said ? ts : [...ts, { id: ++turnSeq.current, status: "note", said }]));
+  }, [back]);
 
   const presenter = cfg.presenter;
   const setPresenter = useCallback((f) => setCfg((c) => ({ ...c, presenter: typeof f === "function" ? f(c.presenter) : f })), []);
