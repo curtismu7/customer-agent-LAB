@@ -48,12 +48,13 @@ test('banking prompts are the catalog chip text verbatim', () => {
   }
 });
 
-test('every shown prompt runs its use case here: in its vertical the engine computes it and reaches the catalog outcome', () => {
+test('every shown prompt runs here or hands off; either way, in its vertical the engine (or Preview here) reaches the catalog outcome', () => {
   for (const [vertical, list] of Object.entries(PROMPTS.verticals)) {
-    assert.ok(list.length >= 8, vertical);
+    assert.ok(list.filter((e) => routeOf(e.uc).route !== 'Hand off').length >= 8, `${vertical}: at least eight prompts run here`);
+    assert.ok(list.filter((e) => routeOf(e.uc).route === 'Hand off').length >= 1, `${vertical}: at least one prompt opens its own app`);
     for (const e of list) {
       const uc = findUseCase(e.uc);
-      assert.ok(['Here', 'Here + go deeper'].includes(routeOf(uc.id).route), `${vertical} ${e.uc} runs here`);
+      assert.ok(['Here', 'Here + go deeper', 'Hand off'].includes(routeOf(uc.id).route), `${vertical} ${e.uc} runs here or hands off (never a guide)`);
       const r = runUseCase(uc, { cast: loadCast(null, vertical), vertical, seed: 'prompts' });
       assert.equal(r.kind, 'flow', `${vertical} ${e.uc}`);
       assert.equal(r.outcome, uc.expectedOutcome, `${vertical} ${e.uc}`);
@@ -99,4 +100,39 @@ test('GET /api/usecases carries each use case route', async () => {
     assert.equal(all.length, 87);
     for (const u of all) assert.deepEqual(u.route, HANDOFF.routes[u.id], u.id);
   });
+});
+
+// docs/use-case-routing.md is the owner's routing table (copied unchanged); it is the source of truth for data/handoff.json. Every row must match.
+const TABLE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../docs/use-case-routing.md');
+function parseRoutingTable(md) {
+  const rows = {};
+  let cols = null;
+  for (const line of md.split('\n')) {
+    if (!line.startsWith('|')) { cols = null; continue; }
+    const cells = line.slice(1, line.lastIndexOf('|')).split('|').map((c) => c.trim());
+    if (cells[0] === 'UC') { cols = cells; continue; }
+    if (!cols || /^-+$/.test(cells[0])) continue;
+    const at = (name) => cells[cols.indexOf(name)];
+    assert.ok(!Object.hasOwn(rows, cells[0]), `${cells[0]} appears twice in the routing table`);
+    rows[cells[0]] = { route: at('Route'), app: at('App') || null, basis: at('Basis') || null };
+  }
+  return rows;
+}
+const sameRoutes = (table, routes) => {
+  const ids = Object.keys(table).sort();
+  assert.deepEqual(Object.keys(routes).sort(), ids, 'the same ids');
+  for (const id of ids) assert.deepEqual(routes[id], table[id], `${id}: handoff.json equals the routing table row (route, app, basis)`);
+};
+
+test('docs/use-case-routing.md: all 87 rows equal data/handoff.json (route, app, basis); swapping two rows in the data fails', () => {
+  const table = parseRoutingTable(fs.readFileSync(TABLE, 'utf8'));
+  assert.equal(Object.keys(table).length, 87);
+  assert.deepEqual(Object.keys(table).sort(), MANIFEST.usecases.map((u) => u.id).sort());
+  sameRoutes(table, raw('handoff.json').routes);
+  // mutation: swap the routes of a Hand off row and a Here row
+  const swapped = structuredClone(raw('handoff.json').routes);
+  [swapped.UC2, swapped.UC3] = [swapped.UC3, swapped.UC2];
+  assert.throws(() => sameRoutes(table, swapped), /UC2/);
+  const moved = structuredClone(raw('handoff.json').routes); moved.UC47.app = 'a2a-lab';
+  assert.throws(() => sameRoutes(table, moved), /UC47/);
 });

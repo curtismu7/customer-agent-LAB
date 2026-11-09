@@ -1,6 +1,6 @@
 {
  "schema": "customer-agent-prompts/1",
- "about": "What to type, per vertical. Each entry is one prompt and the use case it runs. Banking text is the catalog's own chip text (data/usecases.json trigger.text, verbatim; a test pins it). Healthcare and retail wording is lab-written for the same use cases (lab-invented, a test proves each one runs its use case). Stub verticals have no demo pack yet, so no prompts.",
+ "about": "What to type, per vertical. Each entry is one prompt and the use case it runs. Banking text is the catalog's own chip text (data/usecases.json trigger.text, verbatim; a test pins it). Healthcare and retail wording is lab-written for the same use cases (lab-invented, a test proves each one runs its use case). Prompts whose use case routes Hand off (data/handoff.json) show under \"Opens its own app\": the chat answers them with the hand-off card, and Preview here runs them in the mock engine. Stub verticals have no demo pack yet, so no prompts.",
  "verticals": {
   "banking": [
    { "uc": "UC1", "text": "show my balance" },
@@ -12,7 +12,10 @@
    { "uc": "UC21", "text": "check my sensitive account details for tier access" },
    { "uc": "UC34", "text": "Check for unusual patterns in my recent activity" },
    { "uc": "UC35", "text": "Explain why my last blocked action was denied and walk me through the token chain" },
-   { "uc": "UC24", "text": "What branches are near me?" }
+   { "uc": "UC24", "text": "What branches are near me?" },
+   { "uc": "UC2", "text": "hand off to a specialist" },
+   { "uc": "UC2.6", "text": "simulate an agent identity mismatch" },
+   { "uc": "UC28", "text": "Can you waive the fee on my checking account?" }
   ],
   "healthcare": [
    { "uc": "UC1", "text": "show my coverage" },
@@ -24,7 +27,10 @@
    { "uc": "UC21", "text": "check my sensitive patient records for tier access" },
    { "uc": "UC34", "text": "Check for unusual patterns in my recent claims" },
    { "uc": "UC35", "text": "Explain why my last blocked request was denied and walk me through the token chain" },
-   { "uc": "UC24", "text": "What clinics are near me?" }
+   { "uc": "UC24", "text": "What clinics are near me?" },
+   { "uc": "UC2", "text": "hand this off to a care specialist" },
+   { "uc": "UC2.6", "text": "simulate a care agent identity mismatch" },
+   { "uc": "UC28", "text": "Can you waive the fee on my patient bill?" }
   ],
   "retail": [
    { "uc": "UC1", "text": "show my orders" },
@@ -36,7 +42,10 @@
    { "uc": "UC21", "text": "check my sensitive order history for tier access" },
    { "uc": "UC34", "text": "Check for unusual patterns in my recent orders" },
    { "uc": "UC35", "text": "Explain why my last blocked checkout was denied and walk me through the token chain" },
-   { "uc": "UC24", "text": "What stores are near me?" }
+   { "uc": "UC24", "text": "What stores are near me?" },
+   { "uc": "UC2", "text": "pass my order question to a specialist" },
+   { "uc": "UC2.6", "text": "simulate a shopping agent identity mismatch" },
+   { "uc": "UC28", "text": "Can you waive the restocking fee on my order?" }
   ]
  }
 }
