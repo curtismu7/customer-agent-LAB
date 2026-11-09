@@ -115,7 +115,7 @@ test('A2A: the act chain is nested and scope is carried through; the second exch
   const r = go('UC2');
   const final = r.tokens.filter((t) => /exchanged/.test(t.label)).at(-1);
   assert.deepEqual(final.claims.act, { sub: VERTICALS.banking.castAgent2, act: { sub: VERTICALS.banking.castAgent } });
-  assert.deepEqual(kinds(r).filter((k) => k.startsWith('a2a')), ['a2a-exchange-1', 'a2a-exchange-2']);
+  assert.deepEqual(kinds(r).filter((k) => k.startsWith('a2a')), ['a2a-exchange-1', 'a2a-exchange-2', 'a2a-agent-card', 'a2a-protocol-message']);
   assert.equal(go('UC2.5').outcome, 'DELEGATE_AND_EXECUTE');
   const six = go('UC2.6');
   assert.equal(six.outcome, 'PERMIT_THEN_DENY');
@@ -134,7 +134,9 @@ test('denials stop the chain: no tool is dispatched, the last hop is a refusal w
   const expected = { UC5: 403, UC6: 403, UC10: 403, UC11: 401, UC12: 401, UC13: 403, UC14: 403, UC15: 401, UC16: 401, UC16b: 403, UC18: 429, UC29: 503, UC31: 403, UC42: 403, UC9: 403 };
   for (const [id, status] of Object.entries(expected)) {
     const r = go(id);
-    assert.ok(!kinds(r).includes('tool-dispatched'), id);
+    // UC12: the first use of the DPoP-bound token is accepted and reaches the tool; only the replay is refused.
+    if (id === 'UC12') { const k = ranKinds(r); assert.equal(k.filter((x) => x === 'tool-dispatched').length, 1); assert.ok(k.indexOf('tool-dispatched') < k.lastIndexOf('gateway-check')); }
+    else assert.ok(!kinds(r).includes('tool-dispatched'), id);
     assert.equal(ran(r).at(-1).kind, 'tool-refused', id);
     assert.equal(ran(r).at(-1).response.status, status, id);
     assert.ok(!kinds(r).includes('agent-reply'), `${id}: a refused run has no reply`);
@@ -206,7 +208,7 @@ test('flag-gated use cases run in mock and say what live feature they need; UC15
 
 test('the enterprise-managed flag replaces consent with group policy; ID-JAG is issued then redeemed', () => {
   assert.ok(!kinds(go('UC25')).includes('consent'));
-  assert.deepEqual(ranKinds(go('UC40')), [...FRAME, 'enterprise-managed-mode', 'id-jag-issued', 'id-jag-redeemed', 'agent-reply']);
+  assert.deepEqual(ranKinds(go('UC40')), [...FRAME, 'enterprise-managed-mode', 'actor-token', 'id-jag-issued', 'id-jag-redeemed', 'agent-reply']);
   assert.equal(go('UC40').tokens.find((t) => /ID-JAG/.test(t.label)).header.typ, 'oauth-id-jag+jwt');
 });
 

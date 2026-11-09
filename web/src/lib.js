@@ -39,6 +39,10 @@ export const extraHops = (opens, hops) => {
   return hit.length ? hit : hops;
 };
 
+// Hop counts count the hops that ran; the not-in-path ones (verdict skip) are named as "+M not in this run" wherever a total is shown.
+export const ranCount = (hops) => (hops || []).filter((h) => h.verdict !== "skip").length;
+export const notRunText = (hops, sep = " · ") => { const m = (hops || []).length - ranCount(hops); return m > 0 ? `${sep}+${m} not in this run` : ""; };
+
 // An outcome word to a state. The word is always shown, so colour never carries the meaning alone.
 export function outcomeState(outcome) {
   const o = String(outcome || "");

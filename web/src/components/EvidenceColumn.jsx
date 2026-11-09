@@ -7,6 +7,7 @@ import TokenView from "./TokenView";
 import { DIAGRAMS, VIEWS, VIEW_LABEL } from "../quickConfig";
 import { appsOf, handoffCarry, routeOf } from "../handoff";
 import { Tag } from "./Bits";
+import { notRunText, ranCount } from "../lib";
 
 // The hand-off summary the evidence column shows while a Hand off use case is selected and has not been previewed.
 export function HandoffSummary({ uc, catalog, vertical, userId }) {
@@ -48,7 +49,7 @@ export default function EvidenceColumn({ run, selHop, onSelect, config, onTab, o
     <section className="evcol" aria-label="Evidence" data-testid="evidence-column">
       <header className="evcol__head">
         <h2 className="evcol__title">Evidence</h2>
-        <span className="muted">{run ? `${run.useCase?.id} · ${hops.length} hops${run.mode === "mock" ? " · MOCK engine" : run.mode === "live" ? " · LIVE" : ""}` : "nothing run yet"}</span>
+        <span className="muted" data-testid="evidence-count">{run ? `${run.useCase?.id} · ${ranCount(hops)} hops${notRunText(hops)}${run.mode === "mock" ? " · MOCK engine" : run.mode === "live" ? " · LIVE" : ""}` : "nothing run yet"}</span>
         <span className="spacer" />
         <button type="button" onClick={() => onFull("sequence")} data-testid="full-sequence" title="The sequence view on a page of its own">Full page</button>
       </header>

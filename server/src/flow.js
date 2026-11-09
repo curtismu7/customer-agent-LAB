@@ -28,7 +28,7 @@ export function isFlow(uc) {
 }
 export const chainOf = (uc) => (Array.isArray(situationOf(uc.id).chain) ? situationOf(uc.id).chain : uc.evidence.tokenChain);
 
-function makeCtx(uc, { cast, vertical, persona, traceparent, seed }) {
+function makeCtx(uc, { cast, vertical, persona, traceparent, seed, brain, said }) {
   const sit = situationOf(uc.id);
   const person = personaOf(cast, persona || sit.persona || 'standard');
   // A use case with no primary tool in the catalog is run against the vertical's everyday read tool (lab reading).
@@ -44,6 +44,8 @@ function makeCtx(uc, { cast, vertical, persona, traceparent, seed }) {
     agent: { id: cast.castAgent, label: cast.castAgent }, agents: [],
     user: null, exchanged: null, // the user token and the latest exchanged token (signed views)
   };
+  ctx.brain = brain === 'llama' ? 'llama' : 'scripted';
+  ctx.said = typeof said === 'string' ? said : undefined;
   ctx.rootSpan = trace.span();
   return ctx;
 }
@@ -205,11 +207,26 @@ function challenge(ctx, key, method) {
   });
 }
 
-const gatewayApplies = (ctx) => !ctx.halted && !ctx.gwDone && !ctx.sit.public && ctx.uc.needs.includes('gw');
+// Per use case facts from AI-DEMO2's reel (source: buildTraceSteps.js @ 370725e51, per-use-case paths extracted 2026-11-09 into the owner's
+// reel-spec; step names only). PLANS: the agent lists its tools and plans a call ('tools-list' and 'llm' done); UC-MUSE1/2 have no AI-DEMO2 reel
+// run but call a tool in this lab, so they plan too. CALLS_TOOL: the run reaches the MCP server ('mcp' done). NO_CALL_CHALLENGE: 'mcp' done
+// without 'tools-call-challenge'. API_KEY_PATH: 'vault-key-inject' and 'api-key-swap' done. A2A_PROTOCOL: 'a2a-agent-card' and
+// 'a2a-protocol-message' done.
+const PLANS = new Set(['UC1', 'UC2', 'UC2.5', 'UC2.6', 'UC3', 'UC4', 'UC6', 'UC7', 'UC8', 'UC9', 'UC17', 'UC19', 'UC20', 'UC21', 'UC22', 'UC24', 'UC25', 'UC27', 'UC28', 'UC30', 'UC31', 'UC33', 'UC34', 'UC35', 'UC37', 'UC38', 'UC39', 'UC40', 'UC41', 'UC42', 'UC44', 'UC45', 'UC48', 'UC-TOOL1', 'UC-MUSE1', 'UC-MUSE2']);
+const CALLS_TOOL = new Set(['UC1', 'UC3', 'UC4', 'UC14b', 'UC17', 'UC19', 'UC20', 'UC21', 'UC22', 'UC24', 'UC25', 'UC28', 'UC30', 'UC33', 'UC34', 'UC38', 'UC39', 'UC41', 'UC44', 'UC45', 'UC48', 'UC-TOOL1']);
+// UC40 is left out on purpose: AI-DEMO2 reaches the MCP server with the redeemed ID-JAG token, but that token has no act claim and this lab's
+// gateway refuses an agent-mediated call without one (DENY_401), which would change the computed outcome. Its chain stops at the redemption.
+const NO_CALL_CHALLENGE = new Set(['UC14b']);
+const API_KEY_PATH = new Set(['UC33']);
+const A2A_PROTOCOL = new Set(['UC2', 'UC2.5', 'UC2.6', 'UC37']);
+export const REEL_TABLES = { PLANS, CALLS_TOOL, NO_CALL_CHALLENGE, API_KEY_PATH, A2A_PROTOCOL };
+
+// A use case that reaches the MCP server in AI-DEMO2 goes through the gateway even when the lab's derived needs list leaves 'gw' out.
+const gatewayApplies = (ctx) => !ctx.halted && !ctx.gwDone && !ctx.sit.public && (ctx.uc.needs.includes('gw') || CALLS_TOOL.has(ctx.uc.id));
 // The authorized call: the tools/call challenge first (not on the gateway-stage attack chains, which AI-DEMO2 draws without it), then the gateway.
 function gatewayLeg(ctx) {
   if (!gatewayApplies(ctx)) return;
-  if (!GATEWAY_STAGE_EVENTS.has(ctx.event)) challenge(ctx, 'tools-call-challenge', 'tools/call');
+  if (!GATEWAY_STAGE_EVENTS.has(ctx.event) && !NO_CALL_CHALLENGE.has(ctx.uc.id)) challenge(ctx, 'tools-call-challenge', 'tools/call');
   gatewayCheck(ctx);
 }
 
@@ -233,7 +250,18 @@ function authorize(ctx) {
     detail: { decision: { outcome: dec.decision, by: 'authorize policy (mock)', reasons: [dec.reason].filter(Boolean) } },
   });
   if (dec.decision === 'DENY' || dec.decision === 'DENY_403') halt(ctx, dec.decision, 'authorize', 403, dec.reason);
-  else if (dec.decision !== 'PERMIT') { ctx.pending = dec.decision; ctx.obligation = dec.decision; }
+  else if (dec.decision !== 'PERMIT') { ctx.pending = dec.decision; ctx.obligation = dec.decision; stepUp(ctx, dec.decision); }
+}
+
+// AI-DEMO2's step-up step, drawn right after the decision that asked for it. The lab simulates the approval: nothing reaches a person or a device.
+const STEP_UP_HOW = { STEP_UP: 'a second factor (MFA)', HITL_REQUIRED: 'a person in the loop', CIBA: 'approval on another device (CIBA)' };
+function stepUp(ctx, obligation) {
+  hop(ctx, 'step-up', {
+    from: 'authorize', to: 'hitl', url: `${ctx.urls.bff}/api/step-up`, body: { obligation, action: ctx.tool },
+    status: obligation === 'STEP_UP' ? 428 : 202, verdict: obligation === 'HITL_REQUIRED' ? 'held' : 'obligation',
+    resBody: { obligation, needs: STEP_UP_HOW[obligation], approved: false, note: 'the lab simulates the approval: nothing is sent to a person or a device' },
+    note: obligation === 'CIBA' ? 'the CIBA hops that follow collect the approval' : 'the call waits here until the customer approves',
+  });
 }
 
 function held(ctx) {
@@ -251,7 +279,14 @@ function dispatch(ctx) {
   if (ctx.pending && ctx.pending !== 'CIBA') return held(ctx);
   gatewayLeg(ctx);
   if (ctx.halted) return refusal(ctx);
+  toolCall(ctx);
+}
+
+// The tool runs and its back end answers. Bearer path: tool-dispatched then api-call with the delegated token. API-key path (AI-DEMO2 order:
+// vault-key-inject and api-key-swap before the MCP step): the gateway fetches the route's key and swaps the bearer for it; no bearer api-call.
+function toolCall(ctx) {
   const publicCall = ctx.sit.public;
+  if (API_KEY_PATH.has(ctx.uc.id) && !publicCall) apiKeyPath(ctx);
   const bearer = publicCall ? {} : { authorization: `Bearer ${(ctx.exchanged || ctx.user).raw}` };
   const text = `mock result of ${ctx.tool} for ${ctx.cast.castAsset} data (synthetic)`;
   hop(ctx, 'tool-dispatched', {
@@ -260,6 +295,8 @@ function dispatch(ctx) {
     resBody: { result: { tool: ctx.tool, isError: false, content: [{ type: 'text', text }] } },
     note: publicCall ? 'public catalog call: no token, no authorize, no gateway check' : undefined,
   });
+  ctx.toolResult = text;
+  if (API_KEY_PATH.has(ctx.uc.id) && !publicCall) return;
   const write = ctx.role === 'write' || Boolean(ctx.sit.args);
   hop(ctx, 'api-call', {
     from: 'mcp', to: 'api', method: write ? 'POST' : 'GET', url: `${ctx.urls.api}/v1/${String(ctx.tool).replace(/_/g, '-')}`, headers: bearer,
@@ -267,7 +304,21 @@ function dispatch(ctx) {
     resBody: { tool: ctx.tool, data: `${ctx.cast.castAsset} data (synthetic)`, source: 'mock' },
     note: publicCall ? 'public data: the resource server needs no token' : 'the MCP server calls the resource server with the delegated token; the API checks it again',
   });
-  ctx.toolResult = text;
+}
+
+function apiKeyPath(ctx) {
+  const route = `/v1/${String(ctx.tool).replace(/_/g, '-')}`;
+  hop(ctx, 'vault-key-inject', {
+    from: 'gateway', to: 'credentials', method: 'GET', url: `https://vault.${ctx.cast.castHost}.example/routes${route}/key`,
+    resBody: { route, api_key: '[write-only]', note: 'the key stays on the server; it is never shown or logged' },
+    detail: { kv: [['vault bridge', 'mock vault (lab)'], ['service key', '[write-only]']] },
+  });
+  hop(ctx, 'api-key-swap', {
+    from: 'gateway', to: 'api', method: 'GET', url: `${ctx.urls.api}${route}`, headers: { 'x-api-key': '[write-only]', 'x-user-sub': ctx.person.sub },
+    resBody: { tool: ctx.tool, data: `${ctx.cast.castAsset} data (synthetic)`, source: 'mock' },
+    note: 'the OAuth bearer is stripped here; the service key and the user subject go to the back end',
+    detail: { kv: [['swap', 'OAuth bearer -> service API key'], ['outbound', 'backend call with X-API-Key'], ['Authorization', 'stripped']] },
+  });
 }
 
 function refusal(ctx) {
@@ -296,18 +347,23 @@ function frameBefore(ctx) {
   });
 }
 
+// What the visitor typed (`said`) appears on the prompt hop only; every other hop refers to it. The brain is the one the browser actually used.
+const routingOf = (ctx) => (ctx.brain === 'llama' ? `llama.cpp picked ${ctx.uc.id} (local model, mock run)` : 'Scripted intent match');
 function frameAfterSignIn(ctx) {
   const pub = ctx.sit.public;
-  const prompt = promptOf(ctx.uc);
+  const chip = promptOf(ctx.uc);
   hop(ctx, 'prompt', {
-    from: 'browser', to: 'bff', url: `${ctx.urls.bff}/api/agent/run`, headers: { 'content-type': 'application/json', cookie: sessionCookie(ctx) }, body: { message: prompt },
+    from: 'browser', to: 'bff', url: `${ctx.urls.bff}/api/agent/run`, headers: { 'content-type': 'application/json', cookie: sessionCookie(ctx) }, body: { message: ctx.said ?? chip },
     resBody: { accepted: true }, note: 'only the message and the session cookie; no Authorization header leaves the browser',
   });
   hop(ctx, 'agent-receive', {
-    from: 'bff', to: 'agent', url: `${ctx.urls.agent}/run`, body: { message: prompt },
-    resBody: { routing: 'Scripted intent match', matched: ctx.uc.id },
-    detail: { kv: [['routing', 'Scripted intent match'], ['matched use case', ctx.uc.id]] },
+    from: 'bff', to: 'agent', url: `${ctx.urls.agent}/run`, body: { message: '[the message on the prompt hop]' },
+    resBody: { routing: routingOf(ctx), matched: ctx.uc.id },
+    detail: { kv: [['routing', routingOf(ctx)], ['matched use case', ctx.uc.id]] },
   });
+  // Only a run whose agent plans a tool call lists its tools and plans (AI-DEMO2's 'tools-list' and 'llm' steps); the rest go straight to the chain.
+  if (!PLANS.has(ctx.uc.id)) return;
+  const content = ctx.said !== undefined ? '[the message on the prompt hop]' : chip;
   if (!pub) challenge(ctx, 'tools-list-challenge', 'tools/list');
   hop(ctx, 'tools-list', {
     from: 'agent', to: 'gateway', url: `${ctx.urls.gw}/mcp`, headers: pub ? {} : { authorization: `Bearer ${ctx.user.raw}` },
@@ -318,26 +374,34 @@ function frameAfterSignIn(ctx) {
   });
   hop(ctx, 'llm-plan', {
     from: 'agent', to: 'llm', url: `${ctx.urls.llm}/v1/chat/completions`,
-    body: { model: 'scripted-intent-match (mock)', messages: [{ role: 'user', content: prompt }], tools: [ctx.tool] },
+    body: { model: ctx.brain === 'llama' ? 'llama.cpp (local model; the run itself is mock)' : 'scripted-intent-match (mock)', messages: [{ role: 'user', content }], tools: [ctx.tool] },
     resBody: { tool_calls: [{ name: ctx.tool, arguments: ctx.sit.args || {} }] },
-    note: 'the model proposes, policy decides; it never sees a token',
+    note: `${routingOf(ctx)}. The model proposes, policy decides; it never sees a token`,
+    detail: { kv: [['brain', routingOf(ctx)]] },
   });
 }
 
 function reply(ctx) {
-  const text = ctx.toolResult ? `Here is what I found: ${ctx.toolResult}.` : `Done: ${ctx.uc.title}.`;
+  // From the tool result, else from the run's own narration and outcome: never a claim that something ran when nothing did.
+  const text = ctx.toolResult ? `Here is what I found: ${ctx.toolResult}.` : `No tool was called. ${narrate(ctx, finalOutcome(ctx))}`;
   hop(ctx, 'agent-reply', { from: 'agent', to: 'browser', url: `${ctx.urls.bff}/api/agent/run`, resBody: { reply: text } });
 }
 
 // AI-DEMO2's not-in-path steps (its SKIP_REASONS): listed after every hop that ran, verdict skip, no request and no trace span (they never ran).
 function skipped(ctx) {
+  // Each note is true for THIS run: it is chosen from the hops that ran.
   const ran = new Set(ctx.hops.map((h) => h.kind));
+  const decided = ran.has('authorize-decision');
+  const pushed = ctx.hops.some((h) => JSON.stringify(h.request?.body ?? '').includes('authorization_details'));
+  const tool = ran.has('tool-dispatched');
+  const stepNote = decided ? 'No step-up: the policy decision asked for no extra approval.'
+    : ctx.halted ? 'No step-up: the run was refused before any policy decision ran.' : 'No step-up: no policy decision ran on this path.';
   const list = [
-    ['step-up', 'authorize', 'hitl', !ctx.obligation, 'No step-up: the policy asked for no extra approval on this run.'],
-    ['intent-binding-verified', 'bff', 'authorize', !ran.has('intent-binding-verified'), 'No intent binding: no authorization_details were pushed for this call.'],
-    ['vault-key-inject', 'gateway', 'credentials', true, 'No vault key: this run uses the OAuth bearer path (or stopped before the gateway).'],
-    ['api-key-swap', 'gateway', 'api', true, 'No API-key swap: the delegated bearer is what reaches the resource server.'],
-    ['database-query', 'api', 'database', true, 'No database hop: the tool result names no SQL data source.'],
+    ['step-up', 'authorize', 'hitl', !ran.has('step-up'), stepNote],
+    ['intent-binding-verified', 'bff', 'authorize', !ran.has('intent-binding-verified'), pushed ? 'No separate intent-binding check ran in this path.' : 'No intent binding: no authorization_details were pushed for this call.'],
+    ['vault-key-inject', 'gateway', 'credentials', !ran.has('vault-key-inject'), tool ? 'No vault key: this call used the OAuth bearer path.' : 'No vault key: no tool call reached the gateway route on this run.'],
+    ['api-key-swap', 'gateway', 'api', !ran.has('api-key-swap'), tool ? 'No API-key swap: the delegated bearer is what reached the resource server.' : 'No API-key swap: no tool call reached the back end on this run.'],
+    ['database-query', 'api', 'database', true, tool ? 'No database hop: the tool result names no SQL data source.' : 'No database hop: no tool ran on this run.'],
   ];
   for (const [kind, from, to, take, note] of list) {
     if (!take) continue;
@@ -353,7 +417,9 @@ const STEPS = {
   'a2a-agent1-actor': (ctx) => { ctx.agent = { id: ctx.cast.castAgent, label: ctx.cast.castAgent }; actorToken(ctx, ctx.cast.castAgent, 'first agent'); },
   'a2a-exchange1': (ctx) => { needConsent(ctx); a2aExchange(ctx, 1); },
   'a2a-agent2-actor': (ctx) => { actorToken(ctx, ctx.cast.castAgent2, 'specialist'); },
-  'a2a-exchange2': (ctx) => a2aExchange(ctx, 2),
+  // AI-DEMO2 draws the A2A handoff (agent card, protocol message) after the second exchange. The lab's authorize / gateway / tool leg that follows
+  // in these chains is kept: AI-DEMO2's reel path marks the specialist's own tool call as inferred.
+  'a2a-exchange2': (ctx) => { a2aExchange(ctx, 2); if (A2A_PROTOCOL.has(ctx.uc.id) && !chainOf(ctx.uc).includes('a2a-agent-card')) { STEPS['a2a-agent-card'](ctx); STEPS['a2a-protocol-message'](ctx); } },
   'a2a-mismatch-probe': (ctx) => {
     if (ctx.halted) return;
     const dec = decide({ role: ctx.role, tool: ctx.uc.primaryTool, sub: ctx.person.sub, groups: ctx.person.groups, actor: { registered: false } });
@@ -373,7 +439,7 @@ const STEPS = {
   'hitl-receipt': (ctx) => { if (!ctx.halted) hop(ctx, 'hitl-receipt', { from: 'bff', to: 'hitl', url: `${ctx.urls.bff}/api/hitl/receipt`, status: 404, verdict: 'held', resBody: { receipt: null, state: 'pending', note: 'no verified approval receipt yet; the human has not approved' } }); },
   'sim-exchange-ok': exchangeOnce,
   'sim-gateway-deny': (ctx) => { if (!ctx.halted) gatewayCheck(ctx, { again: ctx.seenProofs.size > 0 }); if (ctx.halted) refusal(ctx); },
-  'sim-replay-start': (ctx) => { exchangeOnce(ctx); gatewayCheck(ctx); },
+  'sim-replay-start': (ctx) => { exchangeOnce(ctx); if (gatewayCheck(ctx)) toolCall(ctx); }, // the first use is accepted and reaches the tool; the replay is refused
   'sim-rar-armed': (ctx) => hop(ctx, 'sim-rar-armed', { from: 'bff', to: 'idp', url: `${ctx.urls.idp}/par`, body: { response_type: 'code', authorization_details: [{ type: 'payment', maxAmount: ctx.sit.rar.maxAmount }] }, resBody: { request_uri: `urn:mock:par:${sha(ctx.trace.traceId, 10)}`, expires_in: 60 } }),
   'sim-rar-grant': (ctx) => { exchangeOnce(ctx); },
   'intent-binding-verified': (ctx) => { const dec = decide({ role: null, amount: ctx.amount, rar: ctx.sit.rar, actor: { registered: true } }); hop(ctx, 'intent-binding-verified', { from: 'gateway', to: 'authorize', url: 'https://authorize.mock.example/decision', body: { amount: ctx.amount, authorization_details: [{ type: 'payment', maxAmount: ctx.sit.rar.maxAmount }] }, resBody: { decision: dec.decision, reason: dec.reason }, verdict: dec.decision === 'PERMIT' ? 'ok' : 'deny' }); if (dec.decision !== 'PERMIT') halt(ctx, dec.decision, 'authorize', 403, dec.reason); },
@@ -382,7 +448,7 @@ const STEPS = {
   'privilege-gateway-leg': (ctx) => hop(ctx, 'privilege-gateway-leg', { from: 'bff', to: 'privilege', url: 'https://privilege.mock.example/gateway', headers: { authorization: `Bearer ${(ctx.exchanged || ctx.user).raw}` }, resBody: { accepted: true } }),
   'credential-swap': (ctx) => { const t = mint(ctx, 'operator credential (MOCK)', { sub: 'operator-service-mock', aud: ctx.urls.mcp, scope: ctx.scope }, 'at+jwt'); hop(ctx, 'credential-swap', { from: 'privilege', to: 'mcp', url: `${ctx.urls.mcp}/mcp`, headers: { authorization: `Bearer ${t.raw}` }, resBody: { swapped: true, note: 'the caller bearer is swapped for the operator credential before the call leaves' } }); },
   'enterprise-managed-mode': (ctx) => hop(ctx, 'enterprise-managed-mode', { from: 'bff', to: 'idp', url: `${ctx.urls.idp}/group-policy`, body: { sub: ctx.person.sub, group: ctx.cast.castGroup }, resBody: { allowed: true, note: 'group policy decides issuance; no per-server consent screen' } }),
-  'id-jag-issued': (ctx) => { const t = mint(ctx, 'ID-JAG (MOCK)', { sub: ctx.person.sub, aud: ctx.urls.mcp, scope: ctx.scope, jti: sha(`${ctx.trace.traceId}:idjag`, 16) }, 'oauth-id-jag+jwt'); ctx.idjag = t; hop(ctx, 'id-jag-issued', { from: 'bff', to: 'idp', url: `${ctx.urls.idp}/token`, body: { grant_type: 'urn:ietf:params:oauth:grant-type:token-exchange', requested_token_type: 'urn:ietf:params:oauth:token-type:id-jag', subject_token: ctx.user.raw }, resBody: { access_token: t.raw, issued_token_type: 'urn:ietf:params:oauth:token-type:id-jag' } }); },
+  'id-jag-issued': (ctx) => { if (!ctx.agents.length) actorToken(ctx, ctx.agent.id, 'agent'); /* AI-DEMO2: the agent token comes before the ID-JAG */ const t = mint(ctx, 'ID-JAG (MOCK)', { sub: ctx.person.sub, aud: ctx.urls.mcp, scope: ctx.scope, jti: sha(`${ctx.trace.traceId}:idjag`, 16) }, 'oauth-id-jag+jwt'); ctx.idjag = t; hop(ctx, 'id-jag-issued', { from: 'bff', to: 'idp', url: `${ctx.urls.idp}/token`, body: { grant_type: 'urn:ietf:params:oauth:grant-type:token-exchange', requested_token_type: 'urn:ietf:params:oauth:token-type:id-jag', subject_token: ctx.user.raw }, resBody: { access_token: t.raw, issued_token_type: 'urn:ietf:params:oauth:token-type:id-jag' } }); },
   'id-jag-redeemed': (ctx) => { const t = mint(ctx, 'MCP access token (MOCK)', { sub: ctx.person.sub, aud: ctx.urls.mcp, scope: ctx.scope }, 'at+jwt'); ctx.exchanged = t; ctx.exchangedClaims = t.claims; hop(ctx, 'id-jag-redeemed', { from: 'bff', to: 'mcp-as', url: `${ctx.urls.mcp}/token`, body: { grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion: ctx.idjag.raw }, resBody: { access_token: t.raw, token_type: 'Bearer', note: 'single-use assertion; scoped to this one server' } }); },
   'verified-trust-issuance': (ctx) => { const t = mint(ctx, 'signed agent assertion (MOCK)', { sub: ctx.cast.castAgent, act_for: ctx.person.sub, vct: 'agent-assertion' }, 'vc+sd-jwt'); hop(ctx, 'verified-trust-issuance', { from: 'agent', to: 'credentials', url: 'https://credentials.mock.example/issue', body: { agent: ctx.cast.castAgent, user: ctx.person.sub }, resBody: { credential: t.raw } }); },
   'personal-agent-lookup': (ctx) => hop(ctx, 'personal-agent-lookup', { from: 'bff', to: 'registry', method: 'GET', url: `${ctx.urls.registry}/agents/${encodeURIComponent(ctx.cast.castAgent)}`, resBody: { id: ctx.cast.castAgent, registered: true, owner: ctx.person.sub } }),
@@ -427,8 +493,9 @@ export function runUseCase(uc, input) {
   }
   // Gateway-only events (rate limit, validation outage) on a chain that never reaches a dispatch step still meet the gateway.
   if (!ctx.halted && !ctx.gwDone && ctx.event && ctx.uc.needs.includes('gw')) gatewayCheck(ctx);
-  // A permitted chain with no dispatch step still meets the gateway (it used to inside authorize; now after it, in AI-DEMO2's order).
-  if (!ctx.pending && ctx.authorized) gatewayLeg(ctx);
+  // A chain with no dispatch step whose use case reaches the MCP server in AI-DEMO2 runs the dispatch leg now (Authorize when needed, the
+  // tools/call challenge, the gateway, the tool and its back end). Nothing else meets the gateway after the chain: a forwarded call always has a tool.
+  if (!ctx.halted && !ctx.pending && CALLS_TOOL.has(uc.id) && !ctx.hops.some((h) => h.kind === 'tool-dispatched')) dispatch(ctx);
   if (ctx.halted) refusal(ctx);
   else if (ctx.pending && ctx.pending !== 'CIBA') held(ctx);
   else if (!ctx.pending) reply(ctx); // AI-DEMO2 cuts at the first error and a held run stops at the hold: only a finished run replies

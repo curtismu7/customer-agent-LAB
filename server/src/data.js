@@ -42,7 +42,7 @@ export const LABELS = {
   guided: 'Guided page: the lab opens it; the product shows its own demo',
   website: 'The browser loads {{castBrand}}: an HttpOnly session cookie, no token',
   prompt: 'The customer types a request: only the message goes to the BFF',
-  'agent-receive': '{{castAgent}} receives the request (Scripted intent match)',
+  'agent-receive': '{{castAgent}} receives the request and matches it to a use case',
   'tools-list-challenge': 'tools/list with no token: the gateway answers 401 and names its metadata',
   'tools-list': 'tools/list with a token: the gateway returns the tools this caller may use',
   'llm-plan': 'Agent: intent match and tool choice (the model proposes, policy decides)',

@@ -358,3 +358,23 @@ test('rule 19: POST /api/mode switches source; Real is 409 while the live guards
     const back = await post(url, '/api/mode', { source: 'mock' }); assert.equal(back.status, 200); assert.equal((await back.json()).source, 'mock');
   }, { env: { CAL_ALLOW_LIVE: '1', IDP: 'pingone' } });
 });
+
+test('reel depth: the run API takes brain and said; bad types are refused; a hostile said stays inert data on the prompt hop only', async () => {
+  await withServer(async (url) => {
+    for (const body of [{ brain: 'gpt' }, { brain: 1 }, { said: 5 }, { said: ['x'] }, { said: 'x'.repeat(401) }, { said: null }]) {
+      const r = await run(url, 'UC1', body);
+      assert.equal(r.status, 400, JSON.stringify(body).slice(0, 40)); assert.match(r.body.error, /^bad_(brain|said)$/);
+    }
+    const said = '<script>alert(1)</script>\u0000\u0007\u001b[2J show my balance';
+    const r = await run(url, 'UC1', { said, brain: 'llama' });
+    assert.equal(r.status, 200); assert.equal(r.body.run.outcome, 'PERMIT');
+    const hops = r.body.run.hops;
+    assert.equal(hops.find((h) => h.kind === 'prompt').request.body.message, '<script>alert(1)</script> [2J show my balance', 'JSON data: control characters become spaces, the markup stays text');
+    assert.deepEqual(hops.filter((h) => JSON.stringify(h).includes('<script>')).map((h) => h.kind), ['prompt']);
+    const { narration, tokens } = r.body.run;
+    assert.ok(!JSON.stringify({ narration, tokens }).includes('<script>'));
+    assert.equal(hops.find((h) => h.kind === 'agent-receive').response.body.routing, 'llama.cpp picked UC1 (local model, mock run)');
+    const ok = await run(url, 'UC1', { said: 'x'.repeat(400), brain: 'scripted' });
+    assert.equal(ok.status, 200);
+  });
+});

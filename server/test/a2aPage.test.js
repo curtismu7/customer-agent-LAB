@@ -12,5 +12,5 @@ test('the A2A use cases open the Agent to agent page, and UC2 still runs both de
   const uc = MANIFEST.usecases.find((u) => u.id === 'UC2');
   const run = runUseCase(uc, { cast: VERTICALS.banking, vertical: 'banking', seed: 'run' });
   assert.equal(run.outcome, 'PERMIT');
-  assert.deepEqual(run.hops.filter((h) => h.kind.startsWith('a2a-')).map((h) => h.kind), ['a2a-exchange-1', 'a2a-exchange-2']);
+  assert.deepEqual(run.hops.filter((h) => h.kind.startsWith('a2a-')).map((h) => h.kind), ['a2a-exchange-1', 'a2a-exchange-2', 'a2a-agent-card', 'a2a-protocol-message']);
 });

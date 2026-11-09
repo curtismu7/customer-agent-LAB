@@ -17,7 +17,7 @@ test('typing every credential shape into every field, query, path, header and un
       const keep = async (label, r) => texts.push(`${label} ${r.status} ${await r.text()} ${[...r.headers.values()].join(' ')}`);
       const bodies = [
         ['POST', '/api/run/UC1', { vertical: v }], ['POST', '/api/run/UC1', { persona: v }], ['POST', '/api/run/UC1', { mode: v }], ['POST', '/api/run/UC1', { [v]: v }],
-        ['POST', '/api/run/UC1', { vertical: 'banking', persona: 'standard', note: v }], ['POST', `/api/run/${e(v)}`, {}], ['POST', `/api/run/${e(v)}`, { vertical: v }],
+        ['POST', '/api/run/UC1', { vertical: 'banking', persona: 'standard', note: v }], ['POST', '/api/run/UC1', { said: v }], ['POST', '/api/run/UC1', { said: `show my balance ${v}`, brain: 'llama' }], ['POST', '/api/run/UC1', { brain: v }], ['POST', `/api/run/${e(v)}`, {}], ['POST', `/api/run/${e(v)}`, { vertical: v }],
         ['POST', '/api/run/UC6', { vertical: [v] }], ['POST', '/api/run/UC6', { persona: { a: v } }],
         ['PUT', '/api/mode', { mode: v }], ['PUT', '/api/mode', { [v]: v }], ['POST', '/api/reset', { [v]: v }], ['POST', '/api/reset', { reset: v }],
       ];

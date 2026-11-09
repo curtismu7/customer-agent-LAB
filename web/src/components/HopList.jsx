@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { verdictState } from "../lib";
+import { notRunText, ranCount, verdictState } from "../lib";
 import { Json, LiveTag, MockTag, Tag } from "./Bits";
 
 // The ordered hops of a run. Each hop shows the raw request and response and its own traceparent (rule 14).
@@ -8,7 +8,7 @@ export default function HopList({ hops, traceparent, title = "Hops" }) {
   return (
     <section className="hops" aria-label={title} data-testid="hops">
       <div className="hops__bar">
-        <h3 className="panel__sub">{title} ({hops.length})</h3>
+        <h3 className="panel__sub" data-testid="hops-count">{title} ({ranCount(hops)}{notRunText(hops, ", ")})</h3>
         <button type="button" onClick={() => setAllOpen((v) => !v)} data-testid="hops-toggle">{allOpen ? "Collapse all hops" : "Open all hops"}</button>
       </div>
       {traceparent && <p className="muted">Run traceparent: <code data-testid="run-traceparent">{traceparent}</code></p>}

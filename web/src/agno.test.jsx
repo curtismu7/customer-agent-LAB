@@ -111,7 +111,7 @@ describe("What to type and the Scripted brain", () => {
     const turn = await screen.findByTestId("turn");
     await within(turn).findByTestId("turn-answer");
     expect(posts("UC1")).toHaveLength(1);
-    expect(posts("UC1")[0].body).toEqual({ vertical: "banking", persona: "standard" });
+    expect(posts("UC1")[0].body).toEqual({ vertical: "banking", persona: "standard", said: "show my balance", brain: "scripted" });
     expect(within(turn).getByTestId("turn-said").textContent).toBe("show my balance");
     expect(within(turn).getByTestId("turn-reasoning").textContent).toMatch(/Matched your words to UC1 Delegated access/);
     expect(within(turn).getByTestId("turn-tokens").textContent).toMatch(/sub alex\.morgan/);
@@ -133,6 +133,22 @@ describe("What to type and the Scripted brain", () => {
     expect(A.calls.filter((c) => c.method === "POST" && c.path.startsWith("/api/run/"))).toHaveLength(1);
     expect(document.querySelector("img")).toBeNull();
     expect(screen.getAllByTestId("turn-said")[1].textContent).toMatch(/^<img src=x/);
+  });
+
+  test("hops not in this run get no pill and no count: the turn and the evidence header say +M not in this run", async () => {
+    const base = runBody().run.hops;
+    const skips = ["step-up", "vault-key-inject"].map((kind, i) => ({ ...base[0], n: base.length + i + 1, kind, label: kind, verdict: "skip", traceparent: undefined, request: {}, response: {} }));
+    await boot({ runAnswer: (id) => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(runBody(id, { hops: [...base, ...skips] })) }) });
+    const u = userEvent.setup();
+    await u.click(screen.getByTestId("wtt-UC1"));
+    const turn = await screen.findByTestId("turn");
+    await within(turn).findByTestId("turn-answer");
+    const pills = within(turn).getByTestId("turn-pills");
+    expect(within(pills).getAllByRole("button")).toHaveLength(base.length);
+    for (const k of skips) expect(within(pills).queryByTestId(`pill-${k.n}`)).toBeNull();
+    expect(within(turn).getByTestId("turn-not-run").textContent).toBe("+2 not in this run");
+    expect(within(turn).getByTestId("turn-reasoning").textContent).toMatch(new RegExp(`Ran ${base.length} hops in the mock engine`));
+    expect(screen.getByTestId("evidence-count").textContent).toMatch(new RegExp(`· ${base.length} hops · \\+2 not in this run`));
   });
 
   test("a step-up outcome is an approval card that says the hold is simulated, and the header says Waiting for you", async () => {
@@ -362,6 +378,7 @@ describe("the llama.cpp brain (Step 2)", () => {
     await typeAndSend(u, "how much money do I have");
     await waitFor(() => expect(posts("UC1")).toHaveLength(1));
     expect(picks()[0].body).toEqual({ vertical: "banking", text: "how much money do I have" });
+    expect(posts("UC1")[0].body).toEqual({ vertical: "banking", persona: "standard", said: "how much money do I have", brain: "llama" });
     await screen.findByTestId("turn-answer");
     expect(screen.getByTestId("turn-reasoning").textContent).toMatch(/llama\.cpp picked UC1 Delegated access \(consent only\) from this vertical's list/);
   });
@@ -372,6 +389,7 @@ describe("the llama.cpp brain (Step 2)", () => {
     const u = userEvent.setup();
     await typeAndSend(u, "show my balance");
     await waitFor(() => expect(posts("UC1")).toHaveLength(1));
+    expect(posts("UC1")[0].body.brain).toBe("scripted"); // the brain actually used after the fallback
     await screen.findByTestId("turn-answer");
     expect(screen.getByTestId("turn-reasoning").textContent).toMatch(/llama\.cpp brain unavailable: The local model did not answer\. Is llama\.cpp running\? Used the Scripted brain instead\./);
     expect(screen.getByTestId("turn-reasoning").textContent).toMatch(/Matched your words to UC1/);
