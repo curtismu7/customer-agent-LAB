@@ -10,6 +10,8 @@ import { verifyMockJwt, signMockJwt, tokenView } from './mockjwt.js';
 import { GATEWAY, decide, edgePolicy } from './policy.js';
 import { situationOf } from './situations.js';
 import { formatTraceparent, newTrace } from './trace.js';
+import { enrichHop } from './vendor/hopDetail.mjs';
+import HOP_CATALOG from './vendor/hop-catalog.json' with { type: 'json' };
 
 export const ENGINE_OUTCOMES = new Set(['PERMIT', 'DENY', 'DENY_401', 'DENY_403', 'DENY_429', 'DENY_503', 'STEP_UP', 'HITL_REQUIRED', 'PERMIT_THEN_DENY', 'DELEGATE_AND_EXECUTE']);
 const T0 = 1767225600; // 2026-01-01T00:00:00Z, the lab's fixed clock
@@ -46,7 +48,8 @@ function makeCtx(uc, { cast, vertical, persona, traceparent, seed }) {
 
 const label = (ctx, key, extra = {}) => fill(LABELS[key], { ...ctx.cast, ...extra });
 
-function hop(ctx, key, { from, to, method = 'POST', url, headers = {}, body, status = 200, resBody, resHeaders = {}, note, verdict = 'ok', extraLabel } = {}) {
+function hop(ctx, key, { from, to, method = 'POST', url, headers = {}, body, status = 200, resBody, resHeaders = {}, note, verdict = 'ok', extraLabel, detail } = {}) {
+  if (detail) (ctx.details ??= {})[ctx.hops.length + 1] = detail;
   const span = ctx.trace.span();
   const tp = formatTraceparent(ctx.trace.traceId, span);
   ctx.hops.push({
@@ -121,6 +124,7 @@ function exchange(ctx, { subject, actorTok, actChain, audience, scope, key = 'to
     body: { grant_type: 'urn:ietf:params:oauth:grant-type:token-exchange', subject_token: subject.raw, subject_token_type: 'urn:ietf:params:oauth:token-type:access_token', ...(actorTok ? { actor_token: actorTok.raw, actor_token_type: 'urn:ietf:params:oauth:token-type:access_token' } : {}), audience: aud, scope: claims.scope },
     resBody: { access_token: t.raw, issued_token_type: 'urn:ietf:params:oauth:token-type:access_token', token_type: 'Bearer', expires_in: TTL, scope: claims.scope },
     note: actChain ? `act claim names the agent: ${JSON.stringify(actChain)}` : 'no actor token was sent, so the token has no act claim',
+    detail: { before: subject.claims, after: claims, kv: [['grant_type', 'token-exchange'], ['subject_token_type', 'access_token'], ...(actorTok ? [['actor_token_type', 'access_token']] : [])] },
   });
 }
 
@@ -166,10 +170,21 @@ function gatewayCheck(ctx, { again = false, key = 'gateway-check' } = {}) {
     resBody: denied ? { error: denied.error, checks } : { forwarded: true, checks },
     resHeaders: denied && denied.status === 429 ? { 'retry-after': '60' } : {},
     extraLabel: { again: again ? ' (second use)' : '' },
+    detail: { stages: gatewayStages(checks, claims, ctx) },
   });
   if (denied) halt(ctx, denied.outcome, 'gateway', denied.status, denied.error);
   return !denied;
 }
+// The gateway filter chain as step-detail stages: one row per check the gateway ran, in order; the failing one says why and stops the chain.
+const STAGE_NAMES = { signature: 'Signature', invalid_signature: 'Signature', validation_unavailable: 'Token validation', aud: 'Audience', invalid_audience: 'Audience', act: 'act present', missing_act: 'act present', 'dpop-proof-fresh': 'DPoP proof', invalid_dpop_proof: 'DPoP proof', rate: 'Rate limit', rate_limited: 'Rate limit', scope: 'Scope', insufficient_scope: 'Scope', 'edge-policy': 'Edge policy', policy_denied: 'Edge policy' };
+function gatewayStages(checks, claims, ctx) {
+  const note = { aud: claims.aud, act: claims.act?.sub, scope: ctx.scope, signature: 'mock key' };
+  return checks.map((c) => ({ name: STAGE_NAMES[c.check] ?? c.check, result: c.ok ? 'pass' : 'fail', note: c.ok ? (note[c.check] ? String(note[c.check]) : '') : `${c.why} (stopped here)` }));
+}
+
+// demo-hop/1: add the teaching fields from the shared hop catalog. Mock runs keep MOCK tokens raw (rulebook); secrets stay write-only.
+const enrichAll = (ctx) => ctx.hops.map((h) => enrichHop(h, HOP_CATALOG, ctx.details?.[h.n], { tokens: 'raw' }));
+
 const ensureGateway = (ctx) => {
   if (ctx.halted || ctx.gwDone || ctx.sit.public || !ctx.uc.needs.includes('gw')) return;
   gatewayCheck(ctx);
@@ -192,6 +207,7 @@ function authorize(ctx) {
     resBody: { decision: dec.decision === 'DENY_403' ? 'DENY' : dec.decision, reason: dec.reason, ...(['STEP_UP', 'HITL_REQUIRED', 'CIBA'].includes(dec.decision) ? { obligation: dec.decision } : {}) },
     verdict: dec.decision === 'PERMIT' ? 'ok' : ['STEP_UP', 'HITL_REQUIRED', 'CIBA'].includes(dec.decision) ? 'obligation' : 'deny',
     note: ctx.sit.forgedApproval ? 'the client sent a boolean "approved" flag; the BFF ignores it and needs a real, verified receipt' : undefined,
+    detail: { decision: { outcome: dec.decision, by: 'authorize policy (mock)', reasons: [dec.reason].filter(Boolean) } },
   });
   if (dec.decision === 'DENY' || dec.decision === 'DENY_403') halt(ctx, dec.decision, 'authorize', 403, dec.reason);
   else if (dec.decision !== 'PERMIT') ctx.pending = dec.decision;
@@ -303,7 +319,7 @@ export function runUseCase(uc, input) {
     const ctx = makeCtx(uc, input);
     const target = uc.trigger.type === 'link' ? uc.trigger.path : uc.trigger.type === 'edu' ? `panel:${uc.trigger.panel}` : uc.trigger.type;
     hop(ctx, 'guided', { from: 'browser', to: 'page', method: 'GET', url: String(target), resBody: { opens: uc.opens, linkOut: uc.linkOut, note: 'a guided page: the lab does not recompute this outcome; the label is the catalog\'s' } });
-    return { ...base, kind: 'guided', computed: false, persona: ctx.person.key, outcome: uc.expectedOutcome, matchesExpected: null, hops: ctx.hops, tokens: ctx.tokens, traceId: ctx.trace.traceId, traceparent: formatTraceparent(ctx.trace.traceId, ctx.rootSpan), narration: narrate(ctx, uc.expectedOutcome) };
+    return { ...base, kind: 'guided', computed: false, persona: ctx.person.key, outcome: uc.expectedOutcome, matchesExpected: null, hops: enrichAll(ctx), tokens: ctx.tokens, traceId: ctx.trace.traceId, traceparent: formatTraceparent(ctx.trace.traceId, ctx.rootSpan), narration: narrate(ctx, uc.expectedOutcome) };
   }
   const ctx = makeCtx(uc, input);
   if (!ctx.sit.public) signIn(ctx);
@@ -317,5 +333,5 @@ export function runUseCase(uc, input) {
   if (ctx.halted) refusal(ctx);
   else if (ctx.pending && ctx.pending !== 'CIBA') held(ctx);
   const outcome = finalOutcome(ctx);
-  return { ...base, kind: 'flow', computed: true, persona: ctx.person.key, outcome, matchesExpected: outcome === uc.expectedOutcome, hops: ctx.hops, tokens: ctx.tokens, traceId: ctx.trace.traceId, traceparent: formatTraceparent(ctx.trace.traceId, ctx.rootSpan), narration: narrate(ctx, outcome) };
+  return { ...base, kind: 'flow', computed: true, persona: ctx.person.key, outcome, matchesExpected: outcome === uc.expectedOutcome, hops: enrichAll(ctx), tokens: ctx.tokens, traceId: ctx.trace.traceId, traceparent: formatTraceparent(ctx.trace.traceId, ctx.rootSpan), narration: narrate(ctx, outcome) };
 }

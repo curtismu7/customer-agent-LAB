@@ -218,8 +218,13 @@ test('vertical packs: the tool follows the vertical for the same role, and no {{
 });
 
 test('every URL in every hop is a reserved host (.example or .invalid) and nothing in a run looks like another project', () => {
+  // Step-detail spec links (demo-hop/1 `spec.refs`) point at public standards; every other URL in a run must be a reserved host.
+  const STANDARDS = /^(www\.rfc-editor\.org|openid\.net|modelcontextprotocol\.io|a2a-protocol\.org|docs\.oasis-open\.org)$/;
   for (const uc of MANIFEST.usecases) {
-    const text = JSON.stringify(go(uc.id));
+    const run = go(uc.id);
+    const refs = run.hops.flatMap((h) => h.spec?.refs ?? []);
+    for (const r of refs) assert.match(new URL(r.url).host, STANDARDS, `${uc.id}: ${r.url}`);
+    const text = JSON.stringify({ ...run, hops: run.hops.map(({ spec, ...h }) => h) });
     for (const m of text.matchAll(/https?:\/\/([^/"\\\s]+)/g)) assert.match(m[1], /\.(example|invalid)$/, `${uc.id}: ${m[1]}`);
   }
 });
