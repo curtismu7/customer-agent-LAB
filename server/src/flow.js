@@ -214,19 +214,30 @@ function challenge(ctx, key, method) {
 // reel-spec; step names only). PLANS: the agent lists its tools and plans a call ('tools-list' and 'llm' done); UC-MUSE1/2 have no AI-DEMO2 reel
 // run but call a tool in this lab, so they plan too. CALLS_TOOL: the run reaches the MCP server ('mcp' done). NO_CALL_CHALLENGE: 'mcp' done
 // without 'tools-call-challenge'. API_KEY_PATH: 'vault-key-inject' and 'api-key-swap' done. A2A_PROTOCOL: 'a2a-agent-card' and
-// 'a2a-protocol-message' done.
+// 'a2a-protocol-message' done. DELEGATES: 'agent-token' and/or 'exchange' done (or active) in AI-DEMO2 although the lab's evidence chain has no
+// exchange step; the agent token and the RFC 8693 exchange then run before the first Authorize or gateway call, as in AI-DEMO2. Deviation: AI-DEMO2
+// draws UC14 and UC15 with the exchange only; here they also mint the agent token (the lab's exchange carries an actor).
+const DELEGATES = new Set(['UC6', 'UC7', 'UC8', 'UC9', 'UC10', 'UC13', 'UC14', 'UC15', 'UC16', 'UC21', 'UC22', 'UC27', 'UC30', 'UC31', 'UC39', 'UC41', 'UC42']);
 const PLANS = new Set(['UC1', 'UC2', 'UC2.5', 'UC2.6', 'UC3', 'UC4', 'UC6', 'UC7', 'UC8', 'UC9', 'UC17', 'UC19', 'UC20', 'UC21', 'UC22', 'UC24', 'UC25', 'UC27', 'UC28', 'UC30', 'UC31', 'UC33', 'UC34', 'UC35', 'UC37', 'UC38', 'UC39', 'UC40', 'UC41', 'UC42', 'UC44', 'UC45', 'UC48', 'UC-TOOL1', 'UC-MUSE1', 'UC-MUSE2']);
 const CALLS_TOOL = new Set(['UC1', 'UC3', 'UC4', 'UC14b', 'UC17', 'UC19', 'UC20', 'UC21', 'UC22', 'UC24', 'UC25', 'UC28', 'UC30', 'UC33', 'UC34', 'UC38', 'UC39', 'UC40', 'UC41', 'UC44', 'UC45', 'UC48', 'UC-TOOL1']);
 const NO_CALL_CHALLENGE = new Set(['UC14b']);
 const API_KEY_PATH = new Set(['UC33']);
 const A2A_PROTOCOL = new Set(['UC2', 'UC2.5', 'UC2.6', 'UC37']);
-export const REEL_TABLES = { PLANS, CALLS_TOOL, NO_CALL_CHALLENGE, API_KEY_PATH, A2A_PROTOCOL };
+export const REEL_TABLES = { PLANS, CALLS_TOOL, NO_CALL_CHALLENGE, API_KEY_PATH, A2A_PROTOCOL, DELEGATES };
+
+// The delegation AI-DEMO2 draws before the policy and the gateway: consent (unless enterprise-managed), the agent token and the exchange, once.
+function ensureDelegated(ctx) {
+  if (ctx.halted || ctx.exchanged || !ctx.user || ctx.sit.public || !DELEGATES.has(ctx.uc.id)) return;
+  needConsent(ctx);
+  exchangeOnce(ctx);
+}
 
 // A use case that reaches the MCP server in AI-DEMO2 goes through the gateway even when the lab's derived needs list leaves 'gw' out.
 const gatewayApplies = (ctx) => !ctx.halted && !ctx.gwDone && !ctx.sit.public && (ctx.uc.needs.includes('gw') || CALLS_TOOL.has(ctx.uc.id));
 // The authorized call: the tools/call challenge first (not on the gateway-stage attack chains, which AI-DEMO2 draws without it), then the gateway.
 function gatewayLeg(ctx) {
   if (!gatewayApplies(ctx)) return;
+  ensureDelegated(ctx);
   if (!GATEWAY_STAGE_EVENTS.has(ctx.event) && !NO_CALL_CHALLENGE.has(ctx.uc.id)) challenge(ctx, 'tools-call-challenge', 'tools/call');
   gatewayCheck(ctx);
 }
@@ -234,6 +245,7 @@ function gatewayLeg(ctx) {
 function authorize(ctx) {
   if (ctx.halted || ctx.authorized) return;
   ctx.authorized = true;
+  ensureDelegated(ctx);
   if (GATEWAY_STAGE_EVENTS.has(ctx.event) && gatewayApplies(ctx)) gatewayCheck(ctx);
   if (ctx.halted) return;
   const act = ctx.exchangedClaims?.act;
