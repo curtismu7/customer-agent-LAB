@@ -78,14 +78,11 @@
 .sq-row[data-verdict="skip"] { opacity: 0.45; }
 .sq-row[data-verdict="skip"] .sq-msg { stroke-dasharray: 4 3; }
 
-/* actor card: floats over the stage on wide screens, sits in the flow on a phone */
-.ev-actorcard { display: grid; gap: 6px; padding: 12px 14px; border: 1px solid var(--lane); border-top-width: 4px; border-radius: 10px; background: var(--surface); box-shadow: 0 10px 28px var(--shadow-ink); font-size: 13px; }
-.ev-actorcard__head { display: flex; align-items: center; gap: 8px; }
+/* actor card: a FloatingDialog (shared/floating-dialog); the lane colour marks its top edge */
+.ev-actorcard-dialog.fd-panel { border-top-color: var(--lane); }
+.ev-actorcard { display: grid; gap: 6px; font-size: 13px; }
 .ev-actorcard__role { margin: 0; line-height: 1.45; }
 .ev-steps { display: inline-flex; flex-wrap: wrap; gap: 4px; }
-@media (min-width: 900px) {
-  .sq-stage .ev-actorcard { position: absolute; z-index: 2; top: 64px; right: 6px; width: 300px; }
-}
 
 /* ===== movie reel ===== */
 .rl { list-style: none; margin: 0; padding: 6px 2px; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(132px, 1fr); gap: 8px; overflow-x: auto; }
