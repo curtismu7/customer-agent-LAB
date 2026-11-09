@@ -54,6 +54,10 @@ export default function Turn({ turn, onHop, onPreview, userId, running }) {
   const run = res?.ok ? res.body.run : null;
   const uc = turn.uc;
   const handoff = uc && isHandoff(uc) && !turn.preview;
+  // A note in the conversation (for example "Back from a2a-lab (UC47)"): no You / AI exchange.
+  if (turn.status === "note") return <li className="turn turn--note muted" data-testid="turn-note" data-status="note" role="note">{visible(turn.said)}</li>;
+  // A turn restored after a hand-off keeps ids and words only, never the run: say what it was and how to see the evidence again.
+  const restoredRun = turn.restored && !run && !handoff && turn.status !== "nomatch";
   return (
     <li className="turn" data-testid="turn" data-status={turn.status}>
       <div className="turn__you">
@@ -78,6 +82,12 @@ export default function Turn({ turn, onHop, onPreview, userId, running }) {
           )}
           {handoff && <p data-testid="turn-handoff-say">This one runs in its own app. Open it with {visible(turn.vertical)}{userId ? ` and ${userId}` : ""} already chosen, or preview it here.</p>}
           {handoff && <HandoffCard uc={uc} vertical={turn.vertical} userId={userId} canPreview={!uc.guided} onPreview={() => onPreview?.(turn)} previewing={running} />}
+          {restoredRun && (
+            <p className="muted" data-testid="turn-restored">
+              {turn.refused ? "The server refused this run before you left." : <>From before you left{turn.outcome ? <>: <Tag state={outcomeState(turn.outcome)}>{turn.outcome}</Tag></> : ""}.</>}
+              {" "}The evidence is not kept: run it again to see it.
+            </p>
+          )}
           {turn.status === "running" && <p className="muted" data-testid="turn-running">Working on it...</p>}
           {res && !res.ok && <p className="turn__refused" data-testid="turn-refused">The server refused this run{res.status ? ` (HTTP ${res.status})` : " (no answer)"}: {visible(res.body?.detail || res.body?.message || "no reason given")}</p>}
           {run && (

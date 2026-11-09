@@ -179,3 +179,4 @@
 .app[data-text="130"] .content { zoom: 1.3; }
 .app[data-presenter] { font-size: 18px; }
 .app[data-presenter] .muted { font-size: 16px; }
+.turn--note { display: block; font-size: 13px; padding: 4px 0 4px 10px; border-left: 3px solid var(--focus); overflow-wrap: anywhere; }

@@ -575,3 +575,62 @@ describe("quickConfig rules", () => {
       .toEqual({ ...DEFAULTS, views: { sequence: "embedded", reel: "off", topology: "off", tokens: "embedded" } });
   });
 });
+
+describe("resume after a hand-off", () => {
+  test("Back from a2a-lab restores the chat (words and outcomes, not the run), adds a note, selects the use case and cleans the address bar", async () => {
+    await boot();
+    const u = userEvent.setup();
+    await u.click(screen.getByTestId("wtt-UC1"));
+    await within(await screen.findByTestId("turn")).findByTestId("turn-answer");
+    await u.click(within(screen.getByTestId("wtt-away")).getByTestId("wtt-UC2"));
+    await waitFor(() => expect(screen.getAllByTestId("turn")).toHaveLength(2));
+    const stored = window.sessionStorage.getItem(`cal.resume.${workspaceId()}`);
+    expect(stored).not.toMatch(/eyJ|"hops"|"tokens"|"raw"/);
+    expect(JSON.parse(stored).turns.map((t) => [t.ucId, t.status, t.outcome])).toEqual([["UC1", "done", "PERMIT"], ["UC2", "handoff", undefined]]);
+    cleanup(); // the tab goes to the other app ...
+    window.history.replaceState(null, "", "/?returned=a2a-lab&uc=UC2"); // ... and comes Back
+    await boot();
+    const turns = screen.getAllByTestId("turn");
+    expect(turns).toHaveLength(2);
+    expect(within(turns[0]).getByTestId("turn-said").textContent).toBe("show my balance");
+    expect(within(turns[0]).getByTestId("turn-restored").textContent).toMatch(/From before you left: PERMIT\. The evidence is not kept: run it again to see it\./);
+    expect(within(turns[0]).queryByTestId("turn-tokens")).toBeNull();
+    expect(within(turns[1]).getByTestId("handoff-card")).toBeTruthy();
+    expect(screen.getByTestId("turn-note").textContent).toBe("Back from a2a-lab (UC2)");
+    expect(window.location.search).toBe("");
+    expect(screen.getByTestId("uc-UC2").getAttribute("aria-pressed")).toBe("true");
+    expect(A.calls.filter((c) => c.method === "POST" && c.path.startsWith("/api/run/"))).toHaveLength(0); // nothing re-ran by itself
+  });
+
+  test("a plain reload starts fresh; a second Back for the same return adds no second note", async () => {
+    await boot();
+    const u = userEvent.setup();
+    await u.click(screen.getByTestId("wtt-UC1"));
+    await screen.findByTestId("turn-answer");
+    cleanup(); await boot(); // plain reload: no ?returned
+    expect(screen.queryAllByTestId("turn")).toHaveLength(0);
+    await u.click(screen.getByTestId("wtt-UC1"));
+    await screen.findByTestId("turn-answer");
+    for (let i = 0; i < 2; i++) { cleanup(); window.history.replaceState(null, "", "/?returned=a2a-lab&uc=UC1"); await boot(); }
+    expect(screen.getAllByTestId("turn")).toHaveLength(1);
+    expect(screen.getAllByTestId("turn-note")).toHaveLength(1);
+  });
+
+  test("an unknown returned app restores nothing and adds no note; Reset clears the stored chat", async () => {
+    await boot();
+    const u0 = userEvent.setup();
+    await u0.click(screen.getByTestId("wtt-UC1"));
+    await screen.findByTestId("turn-answer");
+    cleanup();
+    window.history.replaceState(null, "", "/?returned=evil-app&uc=UC1");
+    await boot();
+    expect(screen.queryByTestId("turn-note")).toBeNull();
+    expect(screen.queryAllByTestId("turn")).toHaveLength(0);
+    expect(window.location.search).toBe("");
+    const u = userEvent.setup();
+    await u.click(screen.getByTestId("wtt-UC1"));
+    await screen.findByTestId("turn-answer");
+    await u.click(screen.getByTestId("reset"));
+    await waitFor(() => expect(JSON.parse(window.sessionStorage.getItem(`cal.resume.${workspaceId()}`)).turns).toEqual([]));
+  });
+});
