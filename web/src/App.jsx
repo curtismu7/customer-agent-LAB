@@ -152,7 +152,12 @@ export default function App() {
     if (needs) setPersona(needs);
     // A hand-off picked from the list answers in the conversation, the same way a typed prompt does: the reasoning and the hand-off card.
     if (u && isHandoff(u)) { const tid = ++turnSeq.current; setTurns((ts) => [...ts, { id: tid, said: `${u.id} ${u.title} (picked from the list)`, uc: u, vertical, how: "picked", status: "handoff" }]); }
-    setTimeout(() => { if (window.matchMedia?.("(max-width: 900px)").matches) runRef.current?.scrollIntoView?.({ block: "start" }); }, 0);
+    // One column (phones, tablets): bring the answer into view, the hand-off reply for a hand-off, else the use case panel.
+    setTimeout(() => {
+      if (!window.matchMedia?.("(max-width: 900px)").matches) return;
+      const target = u && isHandoff(u) ? [...document.querySelectorAll('[data-testid="turn"]')].pop() : runRef.current;
+      target?.scrollIntoView?.({ block: "start" });
+    }, 0);
   };
 
   const patchTurn = (id, patch) => setTurns((ts) => ts.map((t) => (t.id === id ? { ...t, ...patch } : t)));
