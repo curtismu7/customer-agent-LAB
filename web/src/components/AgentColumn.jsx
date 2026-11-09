@@ -52,7 +52,12 @@ function Starters({ agent, brand, prompts, onSay, stub }) {
 export default function AgentColumn({ agent, brand, userId, verticalLabel, stub, prompts, turns, status, onSay, onHop, onPreview, running, children }) {
   const [text, setText] = useState("");
   const endRef = useRef(null);
-  useEffect(() => { endRef.current?.scrollIntoView?.({ block: "nearest" }); }, [turns.length, turns[turns.length - 1]?.status]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Keep the newest reply in view inside the column's own scroller (never scrollIntoView, which would also scroll the page).
+  useEffect(() => {
+    const box = endRef.current?.parentElement;
+    const last = box?.querySelector(".turn:last-child");
+    if (box && last && box.scrollHeight > box.clientHeight) box.scrollTop = Math.max(0, last.offsetTop - box.offsetTop - 8);
+  }, [turns.length, turns[turns.length - 1]?.status]); // eslint-disable-line react-hooks/exhaustive-deps
   const [word, state] = STATUS[status] || STATUS.idle;
   const send = (e) => { e.preventDefault(); if (!text.trim() || running) return; onSay(text, "typed"); setText(""); };
   return (
