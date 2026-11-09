@@ -6,6 +6,8 @@
 // Docker): unset, the lab makes no call at all, and even when set it calls the model only after the visitor picks the llama.cpp brain. Down, slow, unreadable or off-list answers come back as
 // { ok: false, reason } and the page falls back to Scripted (or, with Routing set to LLM only, says so and runs nothing).
 
+import { isHosted } from './config.js';
+
 const ORIGIN = /^http:\/\/(127\.0\.0\.1|localhost|\[::1\]|host\.docker\.internal):(\d{2,5})\/?$/;
 const MAX_TEXT = 300;
 const MAX_BODY = 64 * 1024;
@@ -18,10 +20,13 @@ export const REASONS = {
   unreadable: 'The local model answered with something that is not a use case pick.',
   'off-list': 'The local model named a use case that is not on this list, so it was refused.',
   empty: 'There is no list to pick from for this vertical.',
+  hosted: 'The hosted build has no model: CAL_BRAIN_URL is ignored, and the Scripted brain answers.',
 };
 
-// { origin, host, port } for a valid setting, { invalid: true } for a bad one, null when unset.
+// { origin, host, port } for a valid setting, { invalid: true } for a bad one, null when unset, { hosted: true } in the hosted build
+// (CAL_DEPLOY_MODE=hosted): there the brain is off and refused whatever CAL_BRAIN_URL says.
 export function brainConfig(env = process.env) {
+  if (isHosted(env)) return { hosted: true };
   const raw = String(env.CAL_BRAIN_URL ?? '').trim();
   if (!raw) return null;
   const m = ORIGIN.exec(raw);
@@ -54,7 +59,8 @@ async function readCapped(res, max) {
 export const cleanText = (s) => String(s ?? '').slice(0, MAX_TEXT).replace(/[\u0000-\u001f\u007f-\u009f‪-‮⁦-⁩]/g, ' ').trim();
 
 export function createBrain({ config, fetchImpl = (...a) => globalThis.fetch(...a), timeoutMs = 15000, model = 'llama-3.2-3b-instruct' } = {}) {
-  const usable = Boolean(config && !config.invalid);
+  const usable = Boolean(config && !config.invalid && !config.hosted);
+  const offReason = () => (config?.hosted ? 'hosted' : config?.invalid ? 'invalid' : 'off');
   const call = async (pathName, init, ms) => {
     try {
       const res = await fetchImpl(`${config.origin}${pathName}`, { ...init, redirect: 'error', signal: AbortSignal.timeout(ms) });
@@ -68,16 +74,17 @@ export function createBrain({ config, fetchImpl = (...a) => globalThis.fetch(...
   return {
     configured: () => usable,
     invalid: () => Boolean(config?.invalid),
+    offReason, // why there is no brain: hosted, invalid or off (meaningful only when configured() is false)
     label: () => (usable ? `llama.cpp at ${config.origin}` : null),
     // Is the model up? A short health call; never throws.
     async status() {
-      if (!usable) return { available: false, reason: config?.invalid ? 'invalid' : 'off' };
+      if (!usable) return { available: false, reason: offReason() };
       const r = await call('/health', { method: 'GET' }, 3000);
       return r.reason ? { available: false, reason: r.reason } : { available: true, reason: null };
     },
     // Pick one id from `prompts` ([{ uc, text, title }]) for what the visitor typed. { ok: true, uc } (uc null = nothing matches) or { ok: false, reason }.
     async pick(said, prompts) {
-      if (!usable) return { ok: false, reason: config?.invalid ? 'invalid' : 'off' };
+      if (!usable) return { ok: false, reason: offReason() };
       const ids = [...new Set((prompts || []).map((p) => p.uc))];
       if (!ids.length) return { ok: false, reason: 'empty' };
       const text = cleanText(said);

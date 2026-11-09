@@ -1,0 +1,59 @@
+name: Image
+
+# The hosted build's image (rulebook section 6): the same Dockerfile as local Docker, built for linux/arm64 (the SE cluster's nodes are arm64) on a
+# GitHub-hosted arm64 runner. Pull requests build it without pushing; a push to main pushes ghcr.io/<owner>/customer-agent-lab:sha-<full commit>
+# with the workflow's own GITHUB_TOKEN (packages: write, no other secret). The tag is immutable; deploy/k8s/deploy.sh refuses mutable ones.
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  image:
+    runs-on: ubuntu-24.04-arm
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: docker/setup-buildx-action@v3
+      - name: Log in to GHCR (push only)
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Image name (lower case)
+        id: name
+        run: echo "repo=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/customer-agent-lab" >> "$GITHUB_OUTPUT"
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/arm64
+          load: true
+          push: false
+          tags: |
+            cal-smoke
+            ${{ steps.name.outputs.repo }}:sha-${{ github.sha }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+      - name: Smoke the built image in hosted mode before any push
+        run: |
+          docker run -d --name cal -p 127.0.0.1:5600:5600 --read-only --tmpfs /tmp -e CAL_DEPLOY_MODE=hosted -e ALLOW_MOCK_SIGNIN=1 -e LAB_ALLOWED_HOSTS=customer-agent.lab.example cal-smoke
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:5600/api/health >/dev/null 2>&1 && break; sleep 1; done
+          curl -fsS http://127.0.0.1:5600/api/health | grep -q '"schema":"demo-health/1"'
+          curl -fsS http://127.0.0.1:5600/api/info | grep -q '"hosted":true'
+          curl -fsS http://127.0.0.1:5600/ | grep -q 'data-state="hosted" data-testid="banner">HOSTED AND SIMULATED'
+          curl -fsS -H 'host: customer-agent.lab.example' -H 'x-forwarded-for: 203.0.113.7' -H 'content-type: application/json' -H 'x-workspace: w-smoke' \
+            --data '{"vertical":"banking"}' http://127.0.0.1:5600/api/run/UC1 | grep -q '"hops":\['
+          test "$(curl -s -o /dev/null -w '%{http_code}' -H 'host: attacker.example' http://127.0.0.1:5600/api/health)" = 403
+          docker logs cal
+      - name: Push (main only, after the smoke passed)
+        if: github.event_name != 'pull_request'
+        run: docker push "${{ steps.name.outputs.repo }}:sha-${{ github.sha }}"

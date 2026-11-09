@@ -85,7 +85,7 @@ export function mockApi(state = {}) {
     const path = String(url).split("?")[0];
     const query = new URLSearchParams(String(url).split("?")[1] || "");
     calls.push({ method, url: String(url), path, query, headers: opts.headers || {}, body: opts.body ? JSON.parse(opts.body) : undefined });
-    if (path === "/api/info") return json(200, INFO);
+    if (path === "/api/info") return json(200, { ...INFO, ...(s.info || {}) });
     if (path === "/api/story") return query.get("vertical") === "government" ? json(501, { error: "vertical_stub" }) : json(200, STORY);
     if (path === "/api/usecases") return json(200, catalog(query.get("vertical") || "banking"));
     if (path === "/api/mode" && method === "GET") return json(200, { workspace: "w-test", mode: s.mode, modes: ["mock", "live"], live: s.live, liveReason: s.live === "allowed" ? null : s.liveReason });

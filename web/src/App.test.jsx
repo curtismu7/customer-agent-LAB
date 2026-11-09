@@ -29,6 +29,16 @@ describe("header, banner and side nav", () => {
     expect(BANNER_UNKNOWN).toMatch(/MOCK mode, REAL only in LIVE mode/);
   });
 
+  test("the hosted build shows the server's hosted and simulated banner, not the mode banner", async () => {
+    const hostedBanner = "HOSTED AND SIMULATED: this is the hosted copy of the lab, mock only.";
+    api = mockApi({ info: { hosted: true, hostedBanner } });
+    vi.stubGlobal("fetch", api);
+    render(<App />);
+    await screen.findByTestId("uc-UC1");
+    await waitFor(() => expect(screen.getByTestId("banner").textContent).toBe(hostedBanner));
+    expect(screen.getByTestId("banner").getAttribute("data-state")).toBe("hosted");
+  });
+
   test("header: app name, Mock | Live toggle, mode chip, workspace id, theme picker, Reset, Presenter", async () => {
     await boot();
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Customer Agent LAB");

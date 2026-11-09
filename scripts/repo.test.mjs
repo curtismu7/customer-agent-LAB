@@ -92,8 +92,8 @@ test('docs never use the word "door"', () => {
   for (const f of ['README.md', 'CLAUDE.md', 'docs/talk-track.md', 'docs/safety.md']) assert.ok(!/\bdoor\b/i.test(read(f)), f);
 });
 
-test('the lab ships no k8s manifests (deferred by the owner, 2026-10-31) and no bare MODE', () => {
-  assert.ok(!fs.existsSync(path.join(root, 'k8s'))); assert.ok(!fs.existsSync(path.join(root, 'deploy')));
+test('the only k8s manifests are the hosted mock build in deploy/k8s (owner exception, 2026-11-09), and there is no bare MODE', () => {
+  assert.ok(!fs.existsSync(path.join(root, 'k8s'))); assert.deepEqual(fs.readdirSync(path.join(root, 'deploy')), ['k8s']);
   const files = (dir) => fs.readdirSync(path.join(root, dir), { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? files(`${dir}/${e.name}`) : [`${dir}/${e.name}`]));
   for (const f of files('server/src')) assert.ok(!/process\.env\.MODE\b/.test(read(f)), f);
 });
@@ -202,4 +202,15 @@ test('step 1 (Agno layout): layout.css follows the CSS standard like app.css (to
 test('step 1: the data files the agent page reads ship in the image (data/ is copied whole)', () => {
   for (const f of ['data/handoff.json', 'data/prompts.json']) assert.ok(fs.existsSync(path.join(root, f)), f);
   assert.match(read('Dockerfile'), /COPY data data/);
+});
+
+test('the hosted k8s manifests: placeholders only, no namespace, mock-only hosted env, non-root, read-only, probes on /api/health', () => {
+  const files = ['deployment.yaml', 'service.yaml', 'certificate.yaml', 'ingress.yaml'].map((f) => read(`deploy/k8s/${f}`));
+  for (const t of files) assert.ok(!/^\s*namespace:/m.test(t), 'no namespace in a manifest');
+  const d = files[0];
+  assert.match(d, /image: __IMAGE__/); assert.match(d, /CAL_DEPLOY_MODE, value: hosted/); assert.match(d, /CAL_LAB_MODE, value: mock/);
+  assert.match(d, /LAB_ALLOWED_HOSTS, value: __SE_HOST__/); assert.match(d, /runAsNonRoot: true/); assert.match(d, /readOnlyRootFilesystem: true/);
+  assert.match(d, /emptyDir/); assert.equal((d.match(/path: \/api\/health/g) || []).length, 2); assert.match(d, /limits:/);
+  assert.match(files[3], /host: __SE_HOST__/); assert.match(files[3], /ingressClassName: __INGRESS_CLASS__/);
+  assert.match(read('deploy/k8s/deploy.sh'), /OWNER_APPROVED/);
 });

@@ -279,7 +279,9 @@ export default function App() {
     document.getElementById(`tab-${next.id}`)?.focus();
   };
 
-  const banner = story && mode ? story.banner[mode] : BANNER_UNKNOWN;
+  // The hosted build (mock only) has its own banner, from the server: it says hosted and simulated whatever the mode chip shows.
+  const hosted = info?.hosted === true && typeof info.hostedBanner === "string";
+  const banner = hosted ? info.hostedBanner : story && mode ? story.banner[mode] : BANNER_UNKNOWN;
   const extraKey = current.startsWith(EXTRA_PREFIX) ? current.slice(EXTRA_PREFIX.length) : null;
   const sayIds = PRESENTER_TALK[extraKey ? "extra" : current] || [];
   const verticalLabel = verticalInfo?.label || vertical;
@@ -332,7 +334,7 @@ export default function App() {
           <ShelfLink url={info?.shelfUrl} headers={() => ({ "x-workspace": workspaceId() })} />
         </div>
       </header>
-      <p className="banner" role="note" data-state={mode === "live" ? "live" : "mock"} data-testid="banner">{banner}</p>
+      <p className="banner" role="note" data-state={hosted ? "hosted" : mode === "live" ? "live" : "mock"} data-testid="banner">{banner}</p>
       <div className="statusline">
         <span className="chip" data-testid="mode">Mode: {mode || (modeFailed ? "unknown" : "...")}{mode === "live" ? " (real calls, identity provider only)" : mode === "mock" ? " (engine, offline)" : modeFailed ? " (server did not answer)" : ""}</span>
         <span className="chip" data-testid="workspace">Workspace: {workspaceId()}</span>
