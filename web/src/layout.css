@@ -24,6 +24,8 @@
   .shell-nav { order: 3; flex-basis: 100%; }
   .shell-right { gap: 4px; }
   .shell-right button, .shell-nav__list button { padding: 4px 8px; font-size: 13px; }
+  .shell-bar { gap: 6px 12px; padding: 8px 16px; }
+  .statusline .chip { display: none; } /* the shell badge already names the mode on a phone */
 }
 
 /* ===== segmented control ===== */

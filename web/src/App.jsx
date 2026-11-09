@@ -257,7 +257,7 @@ export default function App() {
             {/* rule 19 (2026-11-03): the conformance gate greps for a mode-real testid in the UI; this hidden marker aliases the Real button. */}
             <span hidden aria-hidden="true" data-testid="mode-real" />
           </div>
-          <button type="button" aria-expanded={qcOpen} aria-controls="quick-config" onClick={() => { setQcOpen((v) => !v); if (page) select("agent"); }} data-testid="qc-open">Quick Config</button>
+          <button type="button" aria-expanded={qcOpen} aria-controls={qcOpen && current === "agent" && !page ? "quick-config" : undefined} onClick={() => { setQcOpen((v) => !v); if (page || current !== "agent") select("agent"); }} data-testid="qc-open">Quick Config</button>
           <button type="button" onClick={reset} data-testid="reset">Reset</button>
           <button type="button" aria-pressed={presenter} onClick={() => setPresenter((v) => !v)} data-testid="presenter">{presenter ? "Exit presenter (Esc)" : "Presenter (P)"}</button>
           <label className="shell-theme">Theme
