@@ -208,7 +208,7 @@ test('flag-gated use cases run in mock and say what live feature they need; UC15
 
 test('the enterprise-managed flag replaces consent with group policy; ID-JAG is issued then redeemed', () => {
   assert.ok(!kinds(go('UC25')).includes('consent'));
-  assert.deepEqual(ranKinds(go('UC40')), [...FRAME, 'enterprise-managed-mode', 'actor-token', 'id-jag-issued', 'id-jag-redeemed', 'agent-reply']);
+  assert.deepEqual(ranKinds(go('UC40')), [...FRAME, 'enterprise-managed-mode', 'actor-token', 'id-jag-issued', 'id-jag-redeemed', 'authorize-decision', 'tools-call-challenge', 'gateway-check', 'tool-dispatched', 'api-call', 'agent-reply']);
   assert.equal(go('UC40').tokens.find((t) => /ID-JAG/.test(t.label)).header.typ, 'oauth-id-jag+jwt');
 });
 

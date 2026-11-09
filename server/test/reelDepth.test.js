@@ -68,8 +68,8 @@ test('every flow use case in every full vertical keeps the AI-DEMO2 shape', () =
     });
     // Every dispatched tool reaches its back end: the bearer api-call, or the API-key path drawn before it.
     const td = k.indexOf('tool-dispatched');
-    if (td >= 0 && API_KEY_PATH.has(uc.id)) { assert.deepEqual(k.slice(td - 2, td), ['vault-key-inject', 'api-key-swap'], at); assert.ok(!k.includes('api-call'), at); }
-    else if (td >= 0) assert.equal(k[td + 1], 'api-call', at);
+    if (td >= 0 && API_KEY_PATH.has(uc.id)) assert.deepEqual(k.slice(td - 2, td), ['vault-key-inject', 'api-key-swap'], at);
+    if (td >= 0) assert.equal(k[td + 1], 'api-call', at);
     // An obligation always draws a real step-up hop right after the decision.
     const ob = ran(r).find((h) => h.kind === 'authorize-decision' && h.verdict === 'obligation');
     if (ob) assert.equal(k[k.indexOf('authorize-decision') + 1], 'step-up', at); else assert.ok(!k.includes('step-up'), at);
@@ -149,19 +149,26 @@ test('the tools/list hop carries the user token of the session and the MCP sessi
   assert.deepEqual(tl.response.body.result.tools.map((t) => t.name), ['get_account_balance']);
 });
 
-test('fidelity: UC3 runs the dispatch leg; UC40 has the agent token first; UC33 the API-key path; UC2 the A2A handoff; UC7 a real step-up', () => {
+test('fidelity: UC3 runs the dispatch leg; UC40 has the agent token first and the full leg; UC33 the API-key path; UC2 the A2A handoff; UC7 a real step-up', () => {
   assert.deepEqual(ranKinds(go('UC3')).slice(-6), ['authorize-decision', 'tools-call-challenge', 'gateway-check', 'tool-dispatched', 'api-call', 'agent-reply']);
-  // UC40 does not run the dispatch leg: its redeemed ID-JAG token has no act claim, the lab gateway would refuse it (DENY_401) and change the outcome.
+  // UC40: the token redeemed from the ID-JAG has no act by design; the gateway requires act only on a delegating exchange's token.
   const forty = go('UC40');
-  assert.deepEqual(ranKinds(forty).slice(-5), ['enterprise-managed-mode', 'actor-token', 'id-jag-issued', 'id-jag-redeemed', 'agent-reply']);
+  assert.deepEqual(ranKinds(forty).slice(-10), ['enterprise-managed-mode', 'actor-token', 'id-jag-issued', 'id-jag-redeemed', 'authorize-decision', 'tools-call-challenge', 'gateway-check', 'tool-dispatched', 'api-call', 'agent-reply']);
   assert.equal(forty.outcome, 'PERMIT');
+  const gw40 = forty.hops.find((h) => h.kind === 'gateway-check');
+  assert.equal(gw40.response.status, 200); assert.ok(!gw40.response.body.checks.some((c) => c.check === 'act'), 'no act check on an ID-JAG token');
+  // The act requirement still holds for the impersonation attack: a token without act is refused.
+  for (const id of ['UC16']) assert.equal(go(id).hops.find((h) => h.kind === 'gateway-check').response.body.error, 'missing_act', id);
   const k33 = ranKinds(go('UC33'));
-  assert.deepEqual(k33.slice(-6), ['tools-call-challenge', 'gateway-check', 'vault-key-inject', 'api-key-swap', 'tool-dispatched', 'agent-reply']);
+  assert.deepEqual(k33.slice(-7), ['tools-call-challenge', 'gateway-check', 'vault-key-inject', 'api-key-swap', 'tool-dispatched', 'api-call', 'agent-reply']);
   const r33 = go('UC33');
   const vault = r33.hops.find((h) => h.kind === 'vault-key-inject'), swap = r33.hops.find((h) => h.kind === 'api-key-swap');
   assert.equal(vault.to, 'credentials'); assert.equal(vault.response.body.api_key, '[write-only]');
   assert.deepEqual(Object.keys(swap.request.headers).sort(), ['traceparent', 'x-api-key', 'x-user-sub']);
   assert.equal(swap.request.headers['x-api-key'], '[write-only]'); assert.equal(swap.request.headers.authorization, undefined);
+  const api33 = r33.hops.find((h) => h.kind === 'api-call');
+  assert.equal(api33.from, 'mcp'); assert.equal(api33.to, 'api'); assert.equal(api33.request.headers.authorization, undefined);
+  assert.equal(api33.request.headers['x-api-key'], '[write-only]'); assert.equal(api33.request.headers['x-user-sub'], go('UC33').tokens[0].claims.sub);
   for (const id of A2A_PROTOCOL) {
     const k = ranKinds(go(id));
     const at = k.indexOf('a2a-exchange-2');

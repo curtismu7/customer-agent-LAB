@@ -122,6 +122,7 @@ function exchange(ctx, { subject, actorTok, actChain, audience, scope, key = 'to
   if (ctx.event === 'dpop-replay') claims.cnf = { jkt: sha(`${ctx.trace.traceId}:dpop-key`, 43) };
   const t = mint(ctx, `exchanged token (MOCK)`, claims, 'at+jwt');
   ctx.exchanged = t;
+  ctx.exchangedVia = 'exchange';
   ctx.exchangedClaims = claims;
   hop(ctx, key, {
     from: 'bff', to: 'idp', url: `${ctx.urls.idp}/token`,
@@ -143,7 +144,9 @@ function gatewayCheck(ctx, { again = false, key = 'gateway-check' } = {}) {
   ctx.gwDone = true;
   const tok = ctx.exchanged || ctx.user;
   const claims = ctx.exchangedClaims || (ctx.user && ctx.user.claims) || {};
-  const agentMediated = Boolean(ctx.exchanged) || ctx.event === 'impersonation-no-act' || ctx.uc.evidence.tokenChain.some((s) => s.startsWith('a2a-'));
+  // act is required on a token minted by a delegating exchange (RFC 8693). An access token redeemed from an ID-JAG has no act by design: the
+  // ID-JAG grant is the user's own, scoped to this one server.
+  const agentMediated = (Boolean(ctx.exchanged) && ctx.exchangedVia !== 'id-jag') || ctx.event === 'impersonation-no-act' || ctx.uc.evidence.tokenChain.some((s) => s.startsWith('a2a-'));
   const checks = [];
   let verdict = null; // { outcome, status, error }
   const fail = (outcome, status, error, why) => { checks.push({ check: error, ok: false, why }); if (!verdict) verdict = { outcome, status, error }; };
@@ -213,9 +216,7 @@ function challenge(ctx, key, method) {
 // without 'tools-call-challenge'. API_KEY_PATH: 'vault-key-inject' and 'api-key-swap' done. A2A_PROTOCOL: 'a2a-agent-card' and
 // 'a2a-protocol-message' done.
 const PLANS = new Set(['UC1', 'UC2', 'UC2.5', 'UC2.6', 'UC3', 'UC4', 'UC6', 'UC7', 'UC8', 'UC9', 'UC17', 'UC19', 'UC20', 'UC21', 'UC22', 'UC24', 'UC25', 'UC27', 'UC28', 'UC30', 'UC31', 'UC33', 'UC34', 'UC35', 'UC37', 'UC38', 'UC39', 'UC40', 'UC41', 'UC42', 'UC44', 'UC45', 'UC48', 'UC-TOOL1', 'UC-MUSE1', 'UC-MUSE2']);
-const CALLS_TOOL = new Set(['UC1', 'UC3', 'UC4', 'UC14b', 'UC17', 'UC19', 'UC20', 'UC21', 'UC22', 'UC24', 'UC25', 'UC28', 'UC30', 'UC33', 'UC34', 'UC38', 'UC39', 'UC41', 'UC44', 'UC45', 'UC48', 'UC-TOOL1']);
-// UC40 is left out on purpose: AI-DEMO2 reaches the MCP server with the redeemed ID-JAG token, but that token has no act claim and this lab's
-// gateway refuses an agent-mediated call without one (DENY_401), which would change the computed outcome. Its chain stops at the redemption.
+const CALLS_TOOL = new Set(['UC1', 'UC3', 'UC4', 'UC14b', 'UC17', 'UC19', 'UC20', 'UC21', 'UC22', 'UC24', 'UC25', 'UC28', 'UC30', 'UC33', 'UC34', 'UC38', 'UC39', 'UC40', 'UC41', 'UC44', 'UC45', 'UC48', 'UC-TOOL1']);
 const NO_CALL_CHALLENGE = new Set(['UC14b']);
 const API_KEY_PATH = new Set(['UC33']);
 const A2A_PROTOCOL = new Set(['UC2', 'UC2.5', 'UC2.6', 'UC37']);
@@ -283,7 +284,7 @@ function dispatch(ctx) {
 }
 
 // The tool runs and its back end answers. Bearer path: tool-dispatched then api-call with the delegated token. API-key path (AI-DEMO2 order:
-// vault-key-inject and api-key-swap before the MCP step): the gateway fetches the route's key and swaps the bearer for it; no bearer api-call.
+// gateway, vault-key-inject, api-key-swap, mcp, api): the gateway fetches the route's key and swaps the bearer for it; the api step carries the key.
 function toolCall(ctx) {
   const publicCall = ctx.sit.public;
   if (API_KEY_PATH.has(ctx.uc.id) && !publicCall) apiKeyPath(ctx);
@@ -296,13 +297,14 @@ function toolCall(ctx) {
     note: publicCall ? 'public catalog call: no token, no authorize, no gateway check' : undefined,
   });
   ctx.toolResult = text;
-  if (API_KEY_PATH.has(ctx.uc.id) && !publicCall) return;
+  const keyPath = API_KEY_PATH.has(ctx.uc.id) && !publicCall;
   const write = ctx.role === 'write' || Boolean(ctx.sit.args);
   hop(ctx, 'api-call', {
-    from: 'mcp', to: 'api', method: write ? 'POST' : 'GET', url: `${ctx.urls.api}/v1/${String(ctx.tool).replace(/_/g, '-')}`, headers: bearer,
+    from: 'mcp', to: 'api', method: write ? 'POST' : 'GET', url: `${ctx.urls.api}/v1/${String(ctx.tool).replace(/_/g, '-')}`,
+    headers: keyPath ? { 'x-api-key': '[write-only]', 'x-user-sub': ctx.person.sub } : bearer,
     ...(write && ctx.sit.args ? { body: ctx.sit.args } : {}),
     resBody: { tool: ctx.tool, data: `${ctx.cast.castAsset} data (synthetic)`, source: 'mock' },
-    note: publicCall ? 'public data: the resource server needs no token' : 'the MCP server calls the resource server with the delegated token; the API checks it again',
+    note: publicCall ? 'public data: the resource server needs no token' : keyPath ? 'API-key path: the service key (write-only) and the user subject reach the resource server; no bearer' : 'the MCP server calls the resource server with the delegated token; the API checks it again',
   });
 }
 
@@ -449,7 +451,7 @@ const STEPS = {
   'credential-swap': (ctx) => { const t = mint(ctx, 'operator credential (MOCK)', { sub: 'operator-service-mock', aud: ctx.urls.mcp, scope: ctx.scope }, 'at+jwt'); hop(ctx, 'credential-swap', { from: 'privilege', to: 'mcp', url: `${ctx.urls.mcp}/mcp`, headers: { authorization: `Bearer ${t.raw}` }, resBody: { swapped: true, note: 'the caller bearer is swapped for the operator credential before the call leaves' } }); },
   'enterprise-managed-mode': (ctx) => hop(ctx, 'enterprise-managed-mode', { from: 'bff', to: 'idp', url: `${ctx.urls.idp}/group-policy`, body: { sub: ctx.person.sub, group: ctx.cast.castGroup }, resBody: { allowed: true, note: 'group policy decides issuance; no per-server consent screen' } }),
   'id-jag-issued': (ctx) => { if (!ctx.agents.length) actorToken(ctx, ctx.agent.id, 'agent'); /* AI-DEMO2: the agent token comes before the ID-JAG */ const t = mint(ctx, 'ID-JAG (MOCK)', { sub: ctx.person.sub, aud: ctx.urls.mcp, scope: ctx.scope, jti: sha(`${ctx.trace.traceId}:idjag`, 16) }, 'oauth-id-jag+jwt'); ctx.idjag = t; hop(ctx, 'id-jag-issued', { from: 'bff', to: 'idp', url: `${ctx.urls.idp}/token`, body: { grant_type: 'urn:ietf:params:oauth:grant-type:token-exchange', requested_token_type: 'urn:ietf:params:oauth:token-type:id-jag', subject_token: ctx.user.raw }, resBody: { access_token: t.raw, issued_token_type: 'urn:ietf:params:oauth:token-type:id-jag' } }); },
-  'id-jag-redeemed': (ctx) => { const t = mint(ctx, 'MCP access token (MOCK)', { sub: ctx.person.sub, aud: ctx.urls.mcp, scope: ctx.scope }, 'at+jwt'); ctx.exchanged = t; ctx.exchangedClaims = t.claims; hop(ctx, 'id-jag-redeemed', { from: 'bff', to: 'mcp-as', url: `${ctx.urls.mcp}/token`, body: { grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion: ctx.idjag.raw }, resBody: { access_token: t.raw, token_type: 'Bearer', note: 'single-use assertion; scoped to this one server' } }); },
+  'id-jag-redeemed': (ctx) => { const t = mint(ctx, 'MCP access token (MOCK)', { sub: ctx.person.sub, aud: ctx.urls.mcp, scope: ctx.scope }, 'at+jwt'); ctx.exchanged = t; ctx.exchangedVia = 'id-jag'; ctx.exchangedClaims = t.claims; hop(ctx, 'id-jag-redeemed', { from: 'bff', to: 'mcp-as', url: `${ctx.urls.mcp}/token`, body: { grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion: ctx.idjag.raw }, resBody: { access_token: t.raw, token_type: 'Bearer', note: 'single-use assertion; scoped to this one server' } }); },
   'verified-trust-issuance': (ctx) => { const t = mint(ctx, 'signed agent assertion (MOCK)', { sub: ctx.cast.castAgent, act_for: ctx.person.sub, vct: 'agent-assertion' }, 'vc+sd-jwt'); hop(ctx, 'verified-trust-issuance', { from: 'agent', to: 'credentials', url: 'https://credentials.mock.example/issue', body: { agent: ctx.cast.castAgent, user: ctx.person.sub }, resBody: { credential: t.raw } }); },
   'personal-agent-lookup': (ctx) => hop(ctx, 'personal-agent-lookup', { from: 'bff', to: 'registry', method: 'GET', url: `${ctx.urls.registry}/agents/${encodeURIComponent(ctx.cast.castAgent)}`, resBody: { id: ctx.cast.castAgent, registered: true, owner: ctx.person.sub } }),
 };
