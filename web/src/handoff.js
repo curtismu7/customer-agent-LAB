@@ -7,7 +7,8 @@
 
 // Paths from the lab-proxy route table (shared/lab-proxy/nginx.conf and the shelf's PROXY_PATHS; paths only), keyed by the app ids the routing
 // table uses. Where the table's id differs from the proxy path, the shelf entry (same port, same title) confirms they are one app:
-// cimd = the shelf's cimd-lab ("CIMD Lab"), privilege-a2a-anthropic-demo = the proxy's /privilege-a2a/. Apps with no proxy route get no link.
+// cimd = the shelf's cimd-lab ("CIMD Lab"), privilege-a2a-anthropic-demo = the proxy's /privilege-a2a/. Owner confirmed 2026-11-09:
+// pingfederate = /pingfederate-lab/, id-jag-standalone = /id-jag-kit/. Apps with no proxy route get no link.
 export const PROXY_PATHS = Object.freeze({
   "a2a-lab": "/a2a-lab/",
   "agent-kill-switch": "/agent-kill-switch/",
@@ -18,15 +19,16 @@ export const PROXY_PATHS = Object.freeze({
   "delegation-lab": "/delegation-lab/",
   "gateway-suite-lab": "/gateway-suite/",
   "hitl-mfa-lab": "/hitl-mfa-lab/",
+  "id-jag-standalone": "/id-jag-kit/",
   "jev-lab": "/jev-lab/",
   "jit-lab": "/jit-lab/",
   "mcp-gateway-lab": "/mcp-gateway-lab/",
   "meridian-a2a-hop": "/meridian-a2a-hop/",
   "no-tool-no-promise": "/no-tool-no-promise/",
   "obo-lab": "/obo-lab/",
+  pingfederate: "/pingfederate-lab/",
   "pingone-mcp-inspector": "/pingone-mcp-inspector/",
   "privilege-a2a-anthropic-demo": "/privilege-a2a/",
-  "privilege-demo": "/privilege-demo/",
   "token-workbench": "/token-workbench/",
 });
 export const SELF_PREFIX = "/customer-agent/";
@@ -36,6 +38,9 @@ export const ROUTE_LABEL = { Here: "Runs here", "Here + go deeper": "Runs here, 
 export const routeOf = (u) => (u?.route && typeof u.route.route === "string" ? u.route : { route: "Here", app: null, basis: null });
 export const isHandoff = (u) => routeOf(u).route === "Hand off";
 export const isDeeper = (u) => routeOf(u).route === "Here + go deeper";
+// The app, then the optional second choice (`also`, Hand off rows only), as one list and as words.
+export const appsOf = (r) => [r?.app, r?.also].filter(Boolean);
+export const appsText = (r) => appsOf(r).join(" or ");
 
 // What the link carries, in order: [[name, value], ...]. uc and vertical must be id-shaped (else null: no link and nothing to list); the user
 // (the persona id, e.g. alex.morgan) is carried only when it is id-shaped too.
