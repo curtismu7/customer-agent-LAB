@@ -48,9 +48,9 @@
    "basis": null
   },
   "UC34": {
-   "route": "Here + go deeper",
-   "app": "agent-audit-trail",
-   "basis": "my guess, confirm"
+   "route": "Here",
+   "app": null,
+   "basis": "owner decision 2026-11-09"
   },
   "UC35": {
    "route": "Here",
@@ -193,14 +193,14 @@
    "basis": "named in lab entry"
   },
   "UC41": {
-   "route": "Hand off",
-   "app": "mcp-surface-lab",
-   "basis": "my guess, confirm"
+   "route": "Here",
+   "app": null,
+   "basis": "owner decision 2026-11-09"
   },
   "UC42": {
-   "route": "Hand off",
-   "app": "mcp-surface-lab",
-   "basis": "my guess, confirm"
+   "route": "Here",
+   "app": null,
+   "basis": "owner decision 2026-11-09"
   },
   "UC-TOOL1": {
    "route": "Guide",
@@ -215,7 +215,7 @@
   "UC-TOOL3": {
    "route": "Hand off",
    "app": "gateway-suite-lab",
-   "basis": "my guess, confirm"
+   "basis": "owner confirmed 2026-11-09"
   },
   "UC46": {
    "route": "Hand off",
@@ -280,7 +280,7 @@
   "UC-LEARN6": {
    "route": "Hand off",
    "app": "token-workbench",
-   "basis": "my guess, confirm"
+   "basis": "owner confirmed 2026-11-09"
   },
   "UC-LEARN7": {
    "route": "Guide",
@@ -288,14 +288,14 @@
    "basis": null
   },
   "UC-PAM-SETUP": {
-   "route": "Hand off",
-   "app": "privilege-demo",
-   "basis": "my guess, confirm"
+   "route": "Guide",
+   "app": null,
+   "basis": "owner decision 2026-11-09"
   },
   "UC-PAM-SCRIPT": {
-   "route": "Hand off",
-   "app": "privilege-demo",
-   "basis": "my guess, confirm"
+   "route": "Guide",
+   "app": null,
+   "basis": "owner decision 2026-11-09"
   },
   "UC-LEARN8": {
    "route": "Hand off",
@@ -335,17 +335,17 @@
   "UC-LEARN11": {
    "route": "Hand off",
    "app": "ai-guard-sidecar",
-   "basis": "my guess, confirm"
+   "basis": "owner confirmed 2026-11-09"
   },
   "UC-LEARN16": {
    "route": "Hand off",
    "app": "pingone-signin",
-   "basis": "my guess, confirm"
+   "basis": "owner confirmed 2026-11-09"
   },
   "UC-LEARN17": {
    "route": "Hand off",
    "app": "token-workbench",
-   "basis": "my guess, confirm"
+   "basis": "owner confirmed 2026-11-09"
   },
   "UC-LEARN18": {
    "route": "Guide",
@@ -364,8 +364,9 @@
   },
   "UC39": {
    "route": "Hand off",
-   "app": "agent-registry-demo",
-   "basis": "my guess, confirm"
+   "app": "agent-kill-switch",
+   "basis": "owner decision 2026-11-09",
+   "also": "agent-registry-demo"
   },
   "UC40": {
    "route": "Hand off",
@@ -400,7 +401,7 @@
   "UC27": {
    "route": "Here + go deeper",
    "app": "hitl-mfa-lab",
-   "basis": "my guess, confirm"
+   "basis": "owner confirmed 2026-11-09"
   },
   "UC28": {
    "route": "Hand off",
@@ -430,12 +431,12 @@
   "UC45": {
    "route": "Hand off",
    "app": "worker-demo",
-   "basis": "my guess, confirm"
+   "basis": "owner confirmed 2026-11-09"
   },
   "UC48": {
    "route": "Hand off",
-   "app": "personal-agent-demo",
-   "basis": "my guess, confirm"
+   "app": "muse",
+   "basis": "owner decision 2026-11-09"
   }
  }
 }

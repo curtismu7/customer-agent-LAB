@@ -13,12 +13,12 @@ const DATA = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../d
 const raw = (name) => JSON.parse(fs.readFileSync(path.join(DATA, name), 'utf8'));
 const count = (kind) => Object.values(HANDOFF.routes).filter((r) => r.route === kind).length;
 
-test('handoff.json covers exactly the 87 catalog ids, one route each, in the owner table counts (12 / 10 / 56 / 9)', () => {
+test('handoff.json covers exactly the 87 catalog ids, one route each, in the owner table counts (15 / 9 / 52 / 11)', () => {
   const ids = MANIFEST.usecases.map((u) => u.id).sort();
   assert.equal(ids.length, 87);
   assert.deepEqual(Object.keys(HANDOFF.routes).sort(), ids);
   for (const r of Object.values(HANDOFF.routes)) assert.ok(ROUTE_KINDS.includes(r.route), r.route);
-  assert.deepEqual([count('Here'), count('Here + go deeper'), count('Hand off'), count('Guide')], [12, 10, 56, 9]);
+  assert.deepEqual([count('Here'), count('Here + go deeper'), count('Hand off'), count('Guide')], [15, 9, 52, 11]);
 });
 
 test('every Hand off and Here + go deeper row names an app; Here and Guide rows name none; app ids are plain ids', () => {
@@ -38,6 +38,14 @@ test('the route validator refuses a missing id, an extra id, a Hand off without 
   const extra = structuredClone(good); extra.routes.UC999 = { route: 'Here', app: null, basis: null }; assert.match(validateRoutes(extra).join(), /UC999: not in the catalog/);
   const noApp = structuredClone(good); noApp.routes.UC2.app = null; assert.match(validateRoutes(noApp).join(), /UC2: Hand off needs an app/);
   const bad = structuredClone(good); bad.routes.UC3.route = 'Elsewhere'; assert.match(validateRoutes(bad).join(), /UC3: route out of range/);
+});
+
+test('UC39 offers a second app; `also` is refused off a Hand off row, when not an id, or when it repeats the app', () => {
+  const good = raw('handoff.json');
+  assert.deepEqual(routeOf('UC39'), { route: 'Hand off', app: 'agent-kill-switch', basis: 'owner decision 2026-11-09', also: 'agent-registry-demo' });
+  const onHere = structuredClone(good); onHere.routes.UC3.also = 'a2a-lab'; assert.match(validateRoutes(onHere).join(), /UC3: also is not a second app/);
+  const notId = structuredClone(good); notId.routes.UC39.also = 'https://x.invalid/'; assert.match(validateRoutes(notId).join(), /UC39: also/);
+  const same = structuredClone(good); same.routes.UC39.also = 'agent-kill-switch'; assert.match(validateRoutes(same).join(), /UC39: also/);
 });
 
 test('banking prompts are the catalog chip text verbatim', () => {
@@ -114,7 +122,9 @@ function parseRoutingTable(md) {
     if (!cols || /^-+$/.test(cells[0])) continue;
     const at = (name) => cells[cols.indexOf(name)];
     assert.ok(!Object.hasOwn(rows, cells[0]), `${cells[0]} appears twice in the routing table`);
-    rows[cells[0]] = { route: at('Route'), app: at('App') || null, basis: at('Basis') || null };
+    // "a / b" in the App column: app a, with b offered as a second choice (handoff.json `also`).
+    const [app, also] = (at('App') || '').split(' / ');
+    rows[cells[0]] = { route: at('Route'), app: app || null, basis: at('Basis') || null, ...(also ? { also } : {}) };
   }
   return rows;
 }

@@ -6,6 +6,7 @@ import { forgetWorkspace, workspaceId } from "./workspace";
 import { catalog, mockApi, RAW, runBody } from "./testFixtures";
 import { matchPrompt, normalize } from "./chat";
 import { handoffCarry, handoffHref, PROXY_PATHS } from "./handoff";
+import { HandoffCard } from "./components/HandoffCard";
 import { DEFAULTS, cleanConfig, chooseTab, setView } from "./quickConfig";
 import PROMPTS_DATA from "../../data/prompts.json";
 import HANDOFF_DATA from "../../data/handoff.json";
@@ -277,7 +278,9 @@ describe("hand-off and go deeper", () => {
     expect(handoffHref("a2a-lab", "UC2", "banking", "/")).toBeNull();
     expect(handoffHref("a2a-lab", "UC2", "banking", "/other/customer-agent/")).toBeNull();
     expect(handoffHref("cimd", "UC43", "banking", "/customer-agent/")).toBe("../cimd-lab/?from=customer-agent&uc=UC43&vertical=banking");
-    expect(handoffHref("pingfederate", "UC-LOGIN-PF", "banking", "/customer-agent/")).toBeNull(); // no confirmed proxy route
+    expect(handoffHref("pingfederate", "UC-LOGIN-PF", "banking", "/customer-agent/")).toBe("../pingfederate-lab/?from=customer-agent&uc=UC-LOGIN-PF&vertical=banking"); // owner confirmed 2026-11-09
+    expect(handoffHref("id-jag-standalone", "UC40", "banking", "/customer-agent/")).toBe("../id-jag-kit/?from=customer-agent&uc=UC40&vertical=banking");
+    expect(handoffHref("muse", "UC48", "banking", "/customer-agent/")).toBeNull(); // no proxy route yet
     expect(handoffHref("a2a-lab", "UC2", "banking", "/customer-agent/", "alex.morgan")).toBe("../a2a-lab/?from=customer-agent&uc=UC2&vertical=banking&user=alex.morgan");
     expect(handoffHref("a2a-lab", "UC2", "banking", "/customer-agent/", "a b&c=d")).toBe("../a2a-lab/?from=customer-agent&uc=UC2&vertical=banking"); // a user that is not an id is left out
     expect(handoffCarry("UC2", "banking", "a b")).toEqual([["from", "customer-agent"], ["uc", "UC2"], ["vertical", "banking"]]);
@@ -292,8 +295,23 @@ describe("hand-off and go deeper", () => {
     expect(handoffHref("a2a-lab", "UC2&evil=1", "banking", "/customer-agent/")).toBeNull();
     expect(handoffHref("a2a-lab", "UC2", "//evil.example", "/customer-agent/")).toBeNull();
     for (const p of Object.values(PROXY_PATHS)) expect(p).toMatch(/^\/[a-z0-9-]+\/$/);
-    const apps = new Set(Object.values(HANDOFF_DATA.routes).map((r) => r.app).filter(Boolean));
+    const apps = new Set(Object.values(HANDOFF_DATA.routes).flatMap((r) => [r.app, r.also]).filter(Boolean));
     for (const id of Object.keys(PROXY_PATHS)) expect(apps.has(id), id).toBe(true);
+  });
+
+  test("a hand-off with a second app (UC39) offers both: two Open buttons under the proxy, two Shelf lines off it", () => {
+    const uc = { id: "UC39", route: { route: "Hand off", app: "agent-kill-switch", also: "agent-registry-demo", basis: "owner decision 2026-11-09" } };
+    window.history.replaceState(null, "", "/customer-agent/");
+    render(<HandoffCard uc={uc} vertical="banking" userId="alex.morgan" />);
+    expect(screen.getByTestId("handoff-card").querySelector("h3").textContent).toMatch(/^agent-kill-switch or agent-registry-demo/);
+    expect(screen.getByTestId("handoff-open").getAttribute("data-href")).toBe("../agent-kill-switch/?from=customer-agent&uc=UC39&vertical=banking&user=alex.morgan");
+    expect(screen.getByTestId("handoff-open-also").textContent).toBe("Or open agent-registry-demo");
+    expect(screen.getByTestId("handoff-open-also").getAttribute("data-href")).toBe("../agent-registry-demo/?from=customer-agent&uc=UC39&vertical=banking&user=alex.morgan");
+    cleanup();
+    window.history.replaceState(null, "", "/");
+    render(<HandoffCard uc={uc} vertical="banking" userId="alex.morgan" />);
+    expect(screen.getByTestId("handoff-open-also-shelf").textContent).toMatch(/Start agent-registry-demo from the Shelf/);
+    expect(document.querySelectorAll("a[href]")).toHaveLength(0);
   });
 });
 

@@ -23,6 +23,8 @@ export function validateRoutes(h) {
     if (r?.app !== null && !(typeof r?.app === 'string' && APP_ID.test(r.app))) problems.push(`${id}: app is not an id`);
     if ((r?.route === 'Hand off' || r?.route === 'Here + go deeper') && !r?.app) problems.push(`${id}: ${r?.route} needs an app`);
     if ((r?.route === 'Here' || r?.route === 'Guide') && r?.app) problems.push(`${id}: ${r.route} has no app`);
+    // `also`: an optional second app the visitor may pick instead (Hand off only, a different id).
+    if (Object.hasOwn(r ?? {}, 'also') && (r.route !== 'Hand off' || typeof r.also !== 'string' || !APP_ID.test(r.also) || r.also === r.app)) problems.push(`${id}: also is not a second app`);
   }
   return problems;
 }
