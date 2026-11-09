@@ -26,7 +26,7 @@ Eleven attacks run in mock: wrong scope, wrong audience, a replayed proof, a for
 
 ## Mock and live
 
-Mock runs a whole use case offline. Live, which the owner switches on, makes two real calls to one identity provider environment: its discovery document and the agent's own token. It stops there, with no customer sign-in, no gateway and no tool call, and it lists the steps it did not run. That is what this lab can honestly show against a real tenant.
+Mock runs a whole use case offline. (If the owner turned on the local llama.cpp brain, the model only picks which use case to run; it never writes the answer, and the reasoning says so.) Live, which the owner switches on, makes two real calls to one identity provider environment: its discovery document and the agent's own token. It stops there, with no customer sign-in, no gateway and no tool call, and it lists the steps it did not run. That is what this lab can honestly show against a real tenant.
 
 ## What is simulated
 

@@ -84,9 +84,9 @@ export default function App() {
   // If the server does not answer, the mode stays unknown (the chip and the banner say so); a mode it never told us is not claimed.
   const loadMode = useCallback(() => getJson("/api/mode").then((m) => { setMode(m.mode); setModeFailed(false); setLiveReason(m.live === "allowed" ? null : m.liveReason); }, () => setModeFailed(true)), []);
   useEffect(() => { getJson("/api/info").then(setInfo, (e) => setError(e.message)); loadMode(); }, [loadMode]);
-  // The llama.cpp brain: is it configured and up. Asked at start and whenever the visitor picks it; a failed call reads as unavailable.
+  // The llama.cpp brain: is it configured, and (only once the visitor has picked it) does the model answer. The plain call touches no model.
   const [brainInfo, setBrainInfo] = useState(null);
-  useEffect(() => { getJson("/api/brain").then(setBrainInfo, () => setBrainInfo({ configured: false, available: false, message: "The server did not answer." })); }, [cfg.brain]);
+  useEffect(() => { getJson(`/api/brain${cfg.brain === "llama" ? "?check=1" : ""}`).then(setBrainInfo, () => setBrainInfo({ configured: false, available: false, message: "The server did not answer." })); }, [cfg.brain]);
 
   // The story (banner, talk track, cast) comes from a full vertical; a stub has none, so the last good story stays.
   const verticalInfo = info?.verticals.find((v) => v.id === vertical);
@@ -191,6 +191,10 @@ export default function App() {
   // LLM only says so and runs nothing. Neither brain ever writes the answer.
   const [picking, setPicking] = useState(false);
   const busy = running || picking;
+  // A pick in flight is dropped when the chat is reset, a new chat starts or the vertical changes: its answer belongs to the old context.
+  const pickSeq = useRef(0);
+  const dropPick = () => { pickSeq.current += 1; setPicking(false); };
+  useEffect(() => { dropPick(); }, [vertical]);
   const answer = (said, source, m, brainNote) => {
     const u = m ? allUc.find((x) => x.id === m.uc) : null;
     if (!u) { const id = ++turnSeq.current; setTurns((ts) => [...ts, { id, said, status: "nomatch", source, brainNote }]); return; }
@@ -204,11 +208,11 @@ export default function App() {
     const said = String(text).slice(0, 400);
     if (stub) return answer(said, source, null);
     if (cfg.brain !== "llama") return answer(said, source, matchPrompt(said, prompts));
-    const mine = runSeq.current;
+    const mine = ++pickSeq.current;
     setPicking(true);
     const res = await postJson("/api/brain/pick", { vertical, text: said }).catch(() => ({ ok: false, body: {} }));
+    if (mine !== pickSeq.current) return; // a Reset, a new chat or another vertical took over
     setPicking(false);
-    if (mine !== runSeq.current) return; // a Reset took over
     const b = res.ok ? res.body : { ok: false, message: res.body?.message || "The server did not answer." };
     if (b.ok && b.uc && prompts.some((p) => p.uc === b.uc)) return answer(said, source, { uc: b.uc, how: "llm" });
     if (b.ok) return answer(said, source, null, "llama.cpp found no use case on this list for those words.");
@@ -237,6 +241,7 @@ export default function App() {
   // Reset: the server clears this workspace's mode and runs; results, the chat, extra pages and the diagram go back to the start.
   const reset = useCallback(async () => {
     runSeq.current += 1;
+    dropPick();
     setRunning(false);
     const ok = await resetWorkspace().catch(() => false);
     setResults({}); setOpened({}); setLast(null); setTurns([]); setSelHop(null); setRunCount((n) => n + 1); setModeMsg("");
@@ -331,7 +336,7 @@ export default function App() {
           {current === "agent" && !page && (
             <div className="agno" data-several={several ? "true" : undefined}>
               {!presenter && (
-                <SetupSidebar onNewChat={() => { setTurns([]); setSelHop(null); }} mode={mode} host={cast.castHost} several={several} setSeveral={setSeveral} agent={cast.castAgent}
+                <SetupSidebar onNewChat={() => { dropPick(); setTurns([]); setSelHop(null); }} mode={mode} host={cast.castHost} several={several} setSeveral={setSeveral} agent={cast.castAgent}
                   vertical={vertical} verticals={verticals} onVertical={setVertical} sessions={sessions} onSession={pick}
                   brain={cfg.brain} brainInfo={brainInfo} onBrain={(b) => setCfg((c) => ({ ...c, brain: b }))}>
                   <UseCasePicker catalog={catalog} selectedId={selectedId} onPick={pick} failed={!catalog && !!error} keep={several ? isHandoff : null} />
@@ -343,7 +348,7 @@ export default function App() {
                   {uc && (
                     <details className="ucpanel" open ref={runRef} data-testid="uc-panel">
                       <summary>Use case {uc.id}: inputs, persona, Run and the raw result</summary>
-                      <RunPanel uc={uc} vertical={vertical} verticals={verticals} persona={persona} setPersona={setPersona} personas={personas} onRun={run} running={running} result={result} mode={mode} />
+                      <RunPanel uc={uc} vertical={vertical} verticals={verticals} persona={persona} setPersona={setPersona} personas={personas} onRun={run} running={busy} result={result} mode={mode} />
                     </details>
                   )}
                 </AgentColumn>

@@ -137,9 +137,10 @@ export function createApp({
 
   // The llama.cpp brain (Step 2): is it there, and which use case of the vertical's What to type list fits the words. It returns an id or a
   // reason, never text of its own; the page runs the engine with the id and writes the reply from the run.
-  api.get('/brain', async (_req, res) => {
+  // Without ?check=1 it only says whether a model is configured and calls nothing; the page checks only after the visitor picks llama.cpp.
+  api.get('/brain', async (req, res) => {
     noStore(res);
-    const s = await brain.status();
+    const s = req.query.check === '1' ? await brain.status() : { available: null, reason: brain.configured() ? null : (brain.invalid() ? 'invalid' : 'off') };
     res.json({ schema: 'customer-agent-brain/1', configured: brain.configured(), available: s.available, label: brain.label(), reason: s.reason, message: s.reason ? REASONS[s.reason] : null });
   });
   api.post('/brain/pick', jsonWrites, async (req, res, next) => {

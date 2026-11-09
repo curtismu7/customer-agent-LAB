@@ -59,4 +59,5 @@ test('the compose file tells the guards the publish is loopback-only, opts in to
   assert.match(compose, /CAL_PUBLISH: loopback/); assert.match(compose, /ALLOW_MOCK_SIGNIN: "1"/);
   assert.doesNotMatch(compose.replace(/^\s*#.*$/gm, ''), /CAL_ALLOW_LIVE/);
   assert.match(compose, /name: customer-agent-lab/);
+  assert.match(compose, /CAL_BRAIN_URL: \$\{CAL_BRAIN_URL:-\}\n/, 'the llama.cpp brain is off by default in Docker (owner opt-in)');
 });

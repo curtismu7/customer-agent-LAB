@@ -398,6 +398,28 @@ describe("the llama.cpp brain (Step 2)", () => {
     expect(document.querySelector("img[src='x']")).toBeNull();
   });
 
+  test("the model is checked only once llama.cpp is picked; Reset during a pick drops it and nothing runs", async () => {
+    await boot({ brain: UP });
+    expect(A.calls.filter((c) => c.path === "/api/brain").map((c) => c.url)).toEqual(["/api/brain"]);
+    cleanup(); window.localStorage.clear();
+    useLlama();
+    let release;
+    await boot({ brain: UP, pick: () => new Promise(() => {}) });
+    expect(A.calls.some((c) => c.url === "/api/brain?check=1")).toBe(true);
+    const fn = A;
+    const slow = (url, opts) => (String(url).startsWith("/api/brain/pick") ? new Promise((r) => { release = () => r({ ok: true, status: 200, json: () => Promise.resolve({ ok: true, uc: "UC1" }) }); fn(url, opts); }) : fn(url, opts));
+    vi.stubGlobal("fetch", slow);
+    const u = userEvent.setup();
+    await typeAndSend(u, "how much money do I have");
+    await waitFor(() => expect(screen.getByTestId("agent-status").textContent).toBe("Running"));
+    await u.click(screen.getByTestId("reset"));
+    await waitFor(() => expect(screen.getByTestId("agent-status").textContent).not.toBe("Running"));
+    release();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(fn.calls.filter((c) => c.method === "POST" && c.path.startsWith("/api/run/"))).toHaveLength(0);
+    expect(screen.queryAllByTestId("turn")).toHaveLength(0);
+  });
+
   test("Quick Config: llama.cpp and Routing are selectable when configured; Routing is locked while the brain is Scripted", async () => {
     await boot({ brain: UP });
     const u = userEvent.setup();

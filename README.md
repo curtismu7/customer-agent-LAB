@@ -108,7 +108,15 @@ Other variable: `HOST_PORT` (Docker host port, default 5603). Keep both inside 5
 - **Docker is Mock only for now:** the compose file does not set `CAL_ALLOW_LIVE` and does not mount the shared settings file (a test pins that); run Live from a clone on the host.
 - **Mock sign-in (rule 11):** a mock run needs `IDP=mock` (the default) and `ALLOW_MOCK_SIGNIN=1`, and is refused (403) behind a proxy (forwarded headers) or on a non-loopback bind. Docker is the one exception: its compose file publishes on `127.0.0.1` alone and says so with `CAL_PUBLISH=loopback`. `NODE_ENV=production` is not a guard.
 
-API: `GET /api/health`, `GET /api/info`, `GET /api/story?vertical=`, `GET /api/diagram?name=` (two diagram-studio/1 diagrams: delegation-chain, gateway-refusals; the web app draws them), `GET /api/usecases?vertical=&track=`, `GET /api/usecases/:id`, `GET`/`PUT /api/mode`, `POST /api/run/:id` (`{vertical, persona, mode}`; `GET /api/info` adds `liveSettings`: whether the PingOne settings are present and the one origin, never the environment id or client), `GET /api/runs`, `POST /api/reset`. The workspace id goes in the `X-Workspace` header (default `default`).
+## Agent brain: Scripted or llama.cpp (owner opt-in)
+
+- **Scripted** (default) matches your words to a prompt in the vertical's What to type list. It is offline.
+- **llama.cpp** asks a local model to pick ONE use case id from that same list. The request carries a JSON-schema enum of the ids and the server checks the id again, so a made-up id is refused; the engine runs it and the reply is written from the run. The model never writes an answer. The reasoning says which brain picked.
+- **Off unless the owner sets `CAL_BRAIN_URL`**, which must be plain http on `127.0.0.1`, `localhost`, `[::1]` or `host.docker.internal` with a port, for example `CAL_BRAIN_URL=http://host.docker.internal:8090 docker compose up --build -d` (Docker) or `CAL_BRAIN_URL=http://127.0.0.1:8090 npm start` (host). From Docker the netguard then allows `host.docker.internal` and nothing else. The lab calls the model only after a visitor picks llama.cpp; with it unset the option reads "not configured" and the lab calls nothing.
+- **When the model cannot answer** (down, slow, error, unreadable or an off-list id), Routing in Quick Config decides: **Fallback** says so and uses Scripted; **LLM only** says so and runs nothing.
+- This is an exception to "Mock is fully offline" (rulebook rule 13 probe: owner opt-in, never on by default in Docker). A 3B model is weak: it can pick a near neighbour (for example UC2.6 for "hand this to a specialist").
+
+API: `GET /api/health`, `GET /api/info`, `GET /api/story?vertical=`, `GET /api/diagram?name=` (two diagram-studio/1 diagrams: delegation-chain, gateway-refusals; the web app draws them), `GET /api/usecases?vertical=&track=`, `GET /api/usecases/:id`, `GET`/`PUT /api/mode`, `GET /api/brain[?check=1]`, `POST /api/brain/pick` (`{vertical, text}` -> `{ok, uc}` or `{ok:false, reason, message}`), `POST /api/run/:id` (`{vertical, persona, mode}`; `GET /api/info` adds `liveSettings`: whether the PingOne settings are present and the one origin, never the environment id or client), `GET /api/runs`, `POST /api/reset`. The workspace id goes in the `X-Workspace` header (default `default`).
 
 ## Health, doctor and reset
 

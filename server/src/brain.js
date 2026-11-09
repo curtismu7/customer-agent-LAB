@@ -2,7 +2,8 @@
 // "What to type" list. The request constrains the reply with a JSON schema enum, and this file checks the id against the list again, so an id
 // the model made up is refused. The page then runs the engine and writes the reply from the run, exactly as with the Scripted brain.
 // The one origin it may call comes from CAL_BRAIN_URL and must be plain http on loopback or host.docker.internal (the Mac, from Docker);
-// index.js tells the netguard to allow that one host and nothing else. Down, slow, unreadable or off-list answers come back as
+// allowBrainHost tells the netguard to allow that one host and nothing else. Owner opt-in only (rulebook: a probe is never on by default in
+// Docker): unset, the lab makes no call at all, and even when set it calls the model only after the visitor picks the llama.cpp brain. Down, slow, unreadable or off-list answers come back as
 // { ok: false, reason } and the page falls back to Scripted (or, with Routing set to LLM only, says so and runs nothing).
 
 const ORIGIN = /^http:\/\/(127\.0\.0\.1|localhost|\[::1\]|host\.docker\.internal):(\d{2,5})\/?$/;
@@ -30,6 +31,26 @@ export function brainConfig(env = process.env) {
 }
 
 // Only what a person could type: a string, at most MAX_TEXT characters, control characters removed. It goes in the user message only.
+// index.js: from Docker the netguard must allow host.docker.internal (loopback is always allowed). Returns the host it allowed, or null.
+export function allowBrainHost(guard, config) {
+  if (config?.host !== 'host.docker.internal') return null;
+  return guard.allowHost(config.host) ? config.host : null;
+}
+
+// Reads at most `max` characters of a response body, then stops reading; null when the body is longer.
+async function readCapped(res, max) {
+  if (!res.body?.getReader) { const t = await res.text(); return t.length > max ? null : t; }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let text = '';
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) return text + decoder.decode();
+    text += decoder.decode(value, { stream: true });
+    if (text.length > max) { await reader.cancel().catch(() => {}); return null; }
+  }
+}
+
 export const cleanText = (s) => String(s ?? '').slice(0, MAX_TEXT).replace(/[\u0000-\u001f\u007f-\u009f‪-‮⁦-⁩]/g, ' ').trim();
 
 export function createBrain({ config, fetchImpl = (...a) => globalThis.fetch(...a), timeoutMs = 15000, model = 'llama-3.2-3b-instruct' } = {}) {
@@ -37,8 +58,8 @@ export function createBrain({ config, fetchImpl = (...a) => globalThis.fetch(...
   const call = async (pathName, init, ms) => {
     try {
       const res = await fetchImpl(`${config.origin}${pathName}`, { ...init, redirect: 'error', signal: AbortSignal.timeout(ms) });
-      const text = await res.text();
-      if (text.length > MAX_BODY) return { reason: 'unreadable' };
+      const text = await readCapped(res, MAX_BODY);
+      if (text === null) return { reason: 'unreadable' };
       return res.ok ? { text } : { reason: 'error', status: res.status };
     } catch (e) {
       return { reason: e?.name === 'TimeoutError' || e?.name === 'AbortError' ? 'timeout' : 'unreachable' };
@@ -46,6 +67,7 @@ export function createBrain({ config, fetchImpl = (...a) => globalThis.fetch(...
   };
   return {
     configured: () => usable,
+    invalid: () => Boolean(config?.invalid),
     label: () => (usable ? `llama.cpp at ${config.origin}` : null),
     // Is the model up? A short health call; never throws.
     async status() {

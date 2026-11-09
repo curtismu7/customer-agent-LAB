@@ -3,7 +3,7 @@
 import http from 'node:http';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { brainConfig, cleanText, createBrain, REASONS } from '../src/brain.js';
+import { allowBrainHost, brainConfig, cleanText, createBrain, REASONS } from '../src/brain.js';
 import { installNetguard } from '../src/netguard.js';
 import { promptsFor } from '../src/routes.js';
 import { get, post, withServer } from './helpers.js';
@@ -58,7 +58,7 @@ test('hostile input stays inert: it goes only in the user message, cleaned and c
 
 test('API: GET /api/brain and POST /api/brain/pick answer with an id or a reason; bad bodies are refused', async () => {
   await withServer(async (url) => {
-    const b = await (await get(url, '/api/brain')).json();
+    const b = await (await get(url, '/api/brain?check=1')).json();
     assert.deepEqual({ ...b, label: undefined }, { schema: 'customer-agent-brain/1', configured: true, available: true, label: undefined, reason: null, message: null });
     const ok = await (await post(url, '/api/brain/pick', { vertical: 'banking', text: 'show my balance' })).json();
     assert.equal(ok.ok, true); assert.equal(ok.uc, IDS[0]);
@@ -71,7 +71,7 @@ test('API: GET /api/brain and POST /api/brain/pick answer with an id or a reason
   await withServer(async (url) => {
     const down = await (await post(url, '/api/brain/pick', { vertical: 'banking', text: 'show my balance' })).json();
     assert.deepEqual(down, { ok: false, reason: 'unreachable', message: REASONS.unreachable });
-    const b = await (await get(url, '/api/brain')).json();
+    const b = await (await get(url, '/api/brain?check=1')).json();
     assert.equal(b.available, false); assert.equal(b.message, REASONS.unreachable);
   }, { brain: brainWith(async () => { throw new TypeError('fetch failed'); }) });
 });
@@ -89,4 +89,42 @@ test('netguard: a pick through the real fetch reaches only the configured loopba
     await assert.rejects(fetch('http://model.example:8090/v1/chat/completions', { signal: AbortSignal.timeout(1500) }), /network blocked/);
     assert.deepEqual(guard.attempts, ['fetch:model.example'], 'allowing the Docker host name allows nothing else');
   } finally { guard.restore(); await new Promise((r) => model.close(r)); }
+});
+
+test('GET /api/brain without ?check=1 calls no model; unset says off, a bad setting says invalid', async () => {
+  let calls = 0;
+  await withServer(async (url) => {
+    const b = await (await get(url, '/api/brain')).json();
+    assert.equal(b.configured, true); assert.equal(b.available, null); assert.equal(calls, 0);
+  }, { brain: brainWith(async () => { calls += 1; return new Response('{}'); }) });
+  await withServer(async (url) => assert.equal((await (await get(url, '/api/brain')).json()).reason, 'off'), { brain: createBrain({ config: null }) });
+  await withServer(async (url) => assert.equal((await (await get(url, '/api/brain')).json()).reason, 'invalid'), { brain: createBrain({ config: { invalid: true } }) });
+});
+
+test('allowBrainHost (index.js wiring): only host.docker.internal is allowed, loopback needs nothing', () => {
+  const allowed = [];
+  const guard = { allowHost: (h) => { allowed.push(h); return true; } };
+  assert.equal(allowBrainHost(guard, brainConfig({ CAL_BRAIN_URL: 'http://host.docker.internal:8090' })), 'host.docker.internal');
+  assert.equal(allowBrainHost(guard, brainConfig({ CAL_BRAIN_URL: 'http://127.0.0.1:8090' })), null);
+  assert.equal(allowBrainHost(guard, null), null);
+  assert.equal(allowBrainHost(guard, { invalid: true }), null);
+  assert.deepEqual(allowed, ['host.docker.internal']);
+});
+
+test('a real model server: a redirect is refused and a body over the cap is not read in full', async () => {
+  let streamed = 0;
+  const srv = http.createServer((req, res) => {
+    if (req.url === '/health') { res.writeHead(302, { location: 'http://model.example/' }); return res.end(); }
+    res.setHeader('content-type', 'application/json');
+    const chunk = 'x'.repeat(16 * 1024);
+    const push = () => { while (streamed < 4 * 1024 * 1024) { streamed += chunk.length; if (!res.write(chunk)) return res.once('drain', push); } res.end(); };
+    res.on('close', () => {}); push();
+  });
+  await new Promise((r) => srv.listen(0, '127.0.0.1', r));
+  try {
+    const brain = createBrain({ config: brainConfig({ CAL_BRAIN_URL: `http://127.0.0.1:${srv.address().port}` }) });
+    assert.deepEqual(await brain.status(), { available: false, reason: 'unreachable' }, 'redirect: error');
+    assert.deepEqual(await brain.pick('show my balance', PROMPTS), { ok: false, reason: 'unreadable' });
+    assert.ok(streamed < 4 * 1024 * 1024, 'the reader stopped before the server finished sending');
+  } finally { srv.closeAllConnections?.(); await new Promise((r) => srv.close(r)); }
 });
