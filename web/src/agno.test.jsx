@@ -10,6 +10,7 @@ import { HandoffCard } from "./components/HandoffCard";
 import { RouteTag } from "./components/UseCasePicker";
 import { HandoffSummary } from "./components/EvidenceColumn";
 import { HANDOFF_WHY } from "./chat";
+import ExtraPage from "./components/ExtraPage";
 import { DEFAULTS, cleanConfig, chooseTab, setView } from "./quickConfig";
 import PROMPTS_DATA from "../../data/prompts.json";
 import HANDOFF_DATA from "../../data/handoff.json";
@@ -334,6 +335,24 @@ describe("hand-off and go deeper", () => {
     render(<HandoffSummary uc={uc39} catalog={catalog} vertical="banking" />);
     expect(screen.getByTestId("handoff-summary").textContent).toMatch(/hands to agent-kill-switch or agent-registry-demo/);
     expect(listed(screen.getByTestId("handoff-summary"))).toEqual(["UC39", "UC-NHI2"]);
+  });
+});
+
+describe("Agent to agent page (owner, 2026-11-09: keep it)", () => {
+  test("#page-a2a shows the label, what it is, the outcome and only the delegation hops of the run", () => {
+    const hops = ["sign-in", "actor-token", "consent", "a2a-exchange-1", "actor-token", "a2a-exchange-2", "gateway-check", "authorize-decision", "tool-dispatched"]
+      .map((kind, i) => ({ ...runBody().run.hops[0], n: i + 1, kind, label: kind }));
+    const uc = { id: "UC2", title: "A2A delegation", trigger: { type: "chip", text: "hand off to a specialist" }, linkOut: null };
+    render(<ExtraPage opens="a2a" entry={{ uc, run: { ...runBody("UC2").run, hops } }} />);
+    const page = screen.getByTestId("extra-a2a");
+    expect(within(page).getByRole("heading", { level: 2 }).textContent).toBe("Agent to agent");
+    expect(page.textContent).toMatch(/Opened by UC2: A2A delegation/);
+    expect(page.textContent).toMatch(/agent-card, delegation and trust hops/);
+    expect(page.textContent).toMatch(/PERMIT/);
+    expect(page.textContent).toMatch(/Hops for this page \(2\)/);
+    expect(page.textContent).toMatch(/a2a-exchange-1/);
+    expect(page.textContent).toMatch(/a2a-exchange-2/);
+    expect(page.textContent).not.toMatch(/gateway-check/);
   });
 });
 
