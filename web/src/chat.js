@@ -44,7 +44,9 @@ export const APPROVAL = {
 export function reasoningOf(turn, run) {
   const steps = [];
   const uc = turn.uc;
+  if (turn.brainNote) steps.push(turn.brainNote);
   if (turn.how === "picked") steps.push(`You picked ${uc.id} ${uc.title} from the list`);
+  else if (turn.how === "llm") steps.push(`llama.cpp picked ${uc.id} ${uc.title} from this vertical's list (the server checked the id against the list)`);
   else steps.push(`Matched your words to ${uc.id} ${uc.title}${turn.how === "close" ? " (close match)" : ""}`);
   if (!run) return steps;
   if (run.kind === "guided") { steps.push("This use case is a guided page: the lab shows it and does not compute the outcome"); return steps; }

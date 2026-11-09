@@ -5,7 +5,7 @@ const Seg = ({ label, children }) => <div className="seg seg--fill" role="group"
 
 // The Quick Config panel. Mode is the server's (rule 19): the buttons call the same POST /api/mode as the header toggle, and a refused Real
 // shows the server's own reason. Everything else is a display choice kept for this workspace in the browser.
-export default function QuickConfig({ id, mode, liveReason, onMode, config, onView, onText, onPresenter, onReset, onClose }) {
+export default function QuickConfig({ id, mode, liveReason, onMode, config, brainInfo = null, onBrain = () => {}, onRouting = () => {}, onView, onText, onPresenter, onReset, onClose }) {
   const closeRef = useRef(null);
   useEffect(() => { closeRef.current?.focus(); }, []);
   const at = TEXT_SIZES.indexOf(config.text);
@@ -30,10 +30,19 @@ export default function QuickConfig({ id, mode, liveReason, onMode, config, onVi
         <div className="qc__item">
           <p className="kicker">Agent brain</p>
           <Seg label="Agent brain">
-            <button type="button" aria-pressed="true" data-testid="qc-brain-scripted">Scripted</button>
-            <button type="button" disabled title="A later step: a local model that only picks the use case" data-testid="qc-brain-llama">llama.cpp (later step)</button>
+            <button type="button" aria-pressed={config.brain === "scripted"} onClick={() => onBrain("scripted")} data-testid="qc-brain-scripted">Scripted</button>
+            <button type="button" aria-pressed={config.brain === "llama"} disabled={!brainInfo?.configured} onClick={() => onBrain("llama")} data-testid="qc-brain-llama">llama.cpp</button>
           </Seg>
-          <p className="muted">Scripted matches your words to a use case and works offline. A local-model brain is a later step.</p>
+          <p className="muted" data-testid="qc-brain-state">{!brainInfo?.configured ? "No local model is configured for this lab, so only Scripted is offered." : brainInfo.available ? `${brainInfo.label} answered.` : `llama.cpp is unavailable: ${brainInfo.message || "no reason given"}`}</p>
+          <p className="muted">Both brains only pick a use case from the What to type list; the engine runs it and the reply is written from the run. Neither makes an answer up.</p>
+        </div>
+        <div className="qc__item">
+          <p className="kicker">Routing</p>
+          <Seg label="Routing">
+            <button type="button" aria-pressed={config.routing === "fallback"} disabled={config.brain !== "llama"} onClick={() => onRouting("fallback")} data-testid="qc-routing-fallback">Fallback (Scripted)</button>
+            <button type="button" aria-pressed={config.routing === "llm-only"} disabled={config.brain !== "llama"} onClick={() => onRouting("llm-only")} data-testid="qc-routing-llm">LLM only</button>
+          </Seg>
+          <p className="muted">When llama.cpp cannot answer: Fallback uses Scripted and says so; LLM only says so and runs nothing. Locked while the brain is Scripted.</p>
         </div>
       </div>
       <p className="kicker">Evidence views · where each one shows</p>

@@ -7,6 +7,7 @@ import { applySharedSettings, readLiveSettings, settingsPath } from './settings.
 import { createLive, hostToAllow, liveConfig } from './live.js';
 import { createHealth } from './health.js';
 import { createWorkspaces } from './workspaces.js';
+import { allowBrainHost, brainConfig, createBrain } from './brain.js';
 
 const guard = installNetguard(); // before anything else can open a socket
 
@@ -27,7 +28,12 @@ const liveRefused = liveRefusal({ env: process.env, bind: host, headers: {} });
 const liveOn = live.configured() && liveRefused === null;
 const liveHost = hostToAllow(live, liveRefused);
 if (liveHost) guard.allowHost(liveHost);
-const app = createApp({ bind: host, workspaces: createWorkspaces({ defaultMode: defaultMode() }), live, health: createHealth({ runtime: () => (liveOn ? 'live' : 'offline') }) });
+// The llama.cpp brain (Step 2, owner opt-in): one origin from CAL_BRAIN_URL, loopback or host.docker.internal only. Loopback is already allowed; from Docker the
+// netguard allows host.docker.internal and nothing else. Unset or invalid: no brain, and the page offers Scripted only.
+const brainCfg = brainConfig(process.env);
+allowBrainHost(guard, brainCfg);
+const brain = createBrain({ config: brainCfg });
+const app = createApp({ bind: host, workspaces: createWorkspaces({ defaultMode: defaultMode() }), live, brain, health: createHealth({ runtime: () => (liveOn ? 'live' : 'offline') }) });
 const { url } = await startHttpServer({ port: resolvePort(), host, app });
-console.log(`[customer-agent-lab] lab at ${url} (opens in ${mode} mode; loopback; ${liveOn ? `live is on: outbound only to ${live.origin()}` : 'no outbound network'})`);
+console.log(`[customer-agent-lab] lab at ${url} (opens in ${mode} mode; loopback; ${liveOn ? `live is on: outbound only to ${live.origin()}` : 'no outbound network'}${brain.configured() ? `; brain: ${brain.label()}` : ''})`);
 console.log(`[customer-agent-lab] health: ${url}api/health`);

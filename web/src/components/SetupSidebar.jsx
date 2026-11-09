@@ -13,8 +13,11 @@ export function VerticalSelect({ vertical, verticals, onChange }) {
   );
 }
 
+// The llama.cpp option's words: off when the lab has no local model configured, else whether it answered.
+export const brainLabel = (b) => (!b?.configured ? "llama.cpp · not configured" : b.available ? "llama.cpp · local model" : "llama.cpp · unavailable");
+
 // The setup sidebar: New chat, gateway status, one agent or several, agent, brain, vertical, the use cases (children) and the sessions.
-export default function SetupSidebar({ onNewChat, mode, host, several, setSeveral, agent, vertical, verticals, onVertical, sessions, onSession, children }) {
+export default function SetupSidebar({ onNewChat, mode, host, several, setSeveral, agent, vertical, verticals, onVertical, sessions, onSession, brain = "scripted", brainInfo = null, onBrain = () => {}, children }) {
   return (
     <aside className="setup" aria-label="Setup" data-testid="setup">
       <button type="button" className="primary setup__new" onClick={onNewChat} data-testid="new-chat">+ New chat</button>
@@ -35,9 +38,9 @@ export default function SetupSidebar({ onNewChat, mode, host, several, setSevera
         </select>
       </label>
       <label className="field">Brain
-        <select value="scripted" onChange={() => {}} data-testid="brain-select">
+        <select value={brain} onChange={(e) => onBrain(e.target.value)} data-testid="brain-select">
           <option value="scripted">Scripted · offline</option>
-          <option value="llama" disabled>llama.cpp (later step)</option>
+          <option value="llama" disabled={!brainInfo?.configured}>{brainLabel(brainInfo)}</option>
         </select>
       </label>
       <VerticalSelect vertical={vertical} verticals={verticals} onChange={onVertical} />

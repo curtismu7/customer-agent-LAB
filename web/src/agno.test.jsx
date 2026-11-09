@@ -40,6 +40,8 @@ function api(state = {}) {
     if (path === "/api/usecases") { inner(url, opts); return json(200, routed(q.get("vertical") || "banking")); }
     if (path === "/api/prompts") { inner(url, opts); const v = q.get("vertical") || "banking"; return json(200, { vertical: v, pack: v === "government" ? "stub" : "full", prompts: v === "government" ? [] : PROMPTS }); }
     if (path === "/api/story") return inner(url, opts).then(async (r) => (r.ok ? json(200, { ...(await r.json()), cast: STORY_CAST }) : r));
+    if (path === "/api/brain") { inner(url, opts); return json(200, { schema: "customer-agent-brain/1", configured: false, available: false, label: null, reason: "off", message: "No local model is configured for this lab (CAL_BRAIN_URL is not set).", ...(state.brain || {}) }); }
+    if (path === "/api/brain/pick") { inner(url, opts); return json(200, state.pick ? state.pick(JSON.parse(opts.body)) : { ok: false, reason: "off", message: "No local model is configured for this lab (CAL_BRAIN_URL is not set)." }); }
     return inner(url, opts);
   };
   fn.calls = inner.calls; fn.state = inner.state;
@@ -69,7 +71,7 @@ describe("Agno layout: setup sidebar, agent column, evidence column", () => {
     expect(screen.getByTestId("banner").getAttribute("role")).toBe("note");
   });
 
-  test("the sidebar has New chat, the gateway line, One agent | Several, agent, brain (llama.cpp a later step), vertical, the use cases with route tags, and sessions", async () => {
+  test("the sidebar has New chat, the gateway line, One agent | Several, agent, brain (llama.cpp off when not configured), vertical, the use cases with route tags, and sessions", async () => {
     await boot();
     const side = screen.getByTestId("setup");
     expect(within(side).getByTestId("new-chat")).toBeTruthy();
@@ -78,7 +80,7 @@ describe("Agno layout: setup sidebar, agent column, evidence column", () => {
     expect(within(side).getByTestId("agent-select").value).toBe("concierge-agent");
     const brain = within(side).getByTestId("brain-select");
     expect(brain.value).toBe("scripted");
-    expect(within(brain).getByText("llama.cpp (later step)").disabled).toBe(true);
+    expect(within(brain).getByText("llama.cpp · not configured").disabled).toBe(true);
     expect(within(screen.getByTestId("uc-UC1")).getByTestId("route-tag").textContent).toBe("PERMIT +");
     expect(within(screen.getByTestId("uc-UC2")).getByTestId("route-tag").textContent).toBe("Opens a2a-lab");
     expect(within(screen.getByTestId("uc-UC5")).getByTestId("route-tag").textContent).toBe("DENY_403");
@@ -335,6 +337,100 @@ describe("hand-off and go deeper", () => {
     render(<HandoffSummary uc={uc39} catalog={catalog} vertical="banking" />);
     expect(screen.getByTestId("handoff-summary").textContent).toMatch(/hands to agent-kill-switch or agent-registry-demo/);
     expect(listed(screen.getByTestId("handoff-summary"))).toEqual(["UC39", "UC-NHI2"]);
+  });
+});
+
+describe("the llama.cpp brain (Step 2)", () => {
+  const UP = { configured: true, available: true, label: "llama.cpp at http://host.docker.internal:8090", reason: null, message: null };
+  const picks = () => A.calls.filter((c) => c.method === "POST" && c.path === "/api/brain/pick");
+  const useLlama = (routing = "fallback") => window.localStorage.setItem(`cal.qc.${workspaceId()}`, JSON.stringify({ brain: "llama", routing }));
+  const typeAndSend = async (u, text) => { await u.type(screen.getByTestId("composer-input"), text); await u.click(screen.getByTestId("composer-send")); };
+
+  test("not configured: the llama.cpp option is offered but disabled, and Scripted stays the brain", async () => {
+    await boot();
+    const opt = [...screen.getByTestId("brain-select").options].find((o) => o.value === "llama");
+    expect(opt.disabled).toBe(true);
+    expect(opt.textContent).toBe("llama.cpp · not configured");
+    expect(screen.getByTestId("brain-select").value).toBe("scripted");
+  });
+
+  test("llama.cpp picks the id, the engine runs it, and the reasoning says which brain chose", async () => {
+    useLlama();
+    await boot({ brain: UP, pick: () => ({ ok: true, uc: "UC1", ms: 700 }) });
+    expect(screen.getByTestId("brain-select").value).toBe("llama");
+    const u = userEvent.setup();
+    await typeAndSend(u, "how much money do I have");
+    await waitFor(() => expect(posts("UC1")).toHaveLength(1));
+    expect(picks()[0].body).toEqual({ vertical: "banking", text: "how much money do I have" });
+    await screen.findByTestId("turn-answer");
+    expect(screen.getByTestId("turn-reasoning").textContent).toMatch(/llama\.cpp picked UC1 Delegated access \(consent only\) from this vertical's list/);
+  });
+
+  test("model down with Routing = Fallback: the agent says it is unavailable and the Scripted brain answers", async () => {
+    useLlama("fallback");
+    await boot({ brain: { ...UP, available: false, reason: "unreachable", message: "The local model did not answer. Is llama.cpp running?" }, pick: () => ({ ok: false, reason: "unreachable", message: "The local model did not answer. Is llama.cpp running?" }) });
+    const u = userEvent.setup();
+    await typeAndSend(u, "show my balance");
+    await waitFor(() => expect(posts("UC1")).toHaveLength(1));
+    await screen.findByTestId("turn-answer");
+    expect(screen.getByTestId("turn-reasoning").textContent).toMatch(/llama\.cpp brain unavailable: The local model did not answer\. Is llama\.cpp running\? Used the Scripted brain instead\./);
+    expect(screen.getByTestId("turn-reasoning").textContent).toMatch(/Matched your words to UC1/);
+  });
+
+  test("model down with Routing = LLM only: it says so and nothing runs", async () => {
+    useLlama("llm-only");
+    await boot({ brain: UP, pick: () => ({ ok: false, reason: "timeout", message: "The local model took too long to answer." }) });
+    const u = userEvent.setup();
+    await typeAndSend(u, "show my balance");
+    await screen.findByTestId("turn-nomatch");
+    expect(screen.getByTestId("turn-brain-note").textContent).toBe("llama.cpp brain unavailable: The local model took too long to answer. Routing is LLM only, so nothing ran.");
+    expect(A.calls.filter((c) => c.method === "POST" && c.path.startsWith("/api/run/"))).toHaveLength(0);
+  });
+
+  test("an id that is not on this vertical's list never runs, even if the server let it through; hostile text is shown as text", async () => {
+    useLlama();
+    await boot({ brain: UP, pick: () => ({ ok: true, uc: "UC999" }) });
+    const u = userEvent.setup();
+    await typeAndSend(u, "<img src=x onerror=alert(1)>");
+    await screen.findByTestId("turn-nomatch");
+    expect(A.calls.filter((c) => c.method === "POST" && c.path.startsWith("/api/run/"))).toHaveLength(0);
+    expect(screen.getAllByTestId("turn-said").pop().textContent).toBe("<img src=x onerror=alert(1)>");
+    expect(document.querySelector("img[src='x']")).toBeNull();
+  });
+
+  test("the model is checked only once llama.cpp is picked; Reset during a pick drops it and nothing runs", async () => {
+    await boot({ brain: UP });
+    expect(A.calls.filter((c) => c.path === "/api/brain").map((c) => c.url)).toEqual(["/api/brain"]);
+    cleanup(); window.localStorage.clear();
+    useLlama();
+    let release;
+    await boot({ brain: UP, pick: () => new Promise(() => {}) });
+    expect(A.calls.some((c) => c.url === "/api/brain?check=1")).toBe(true);
+    const fn = A;
+    const slow = (url, opts) => (String(url).startsWith("/api/brain/pick") ? new Promise((r) => { release = () => r({ ok: true, status: 200, json: () => Promise.resolve({ ok: true, uc: "UC1" }) }); fn(url, opts); }) : fn(url, opts));
+    vi.stubGlobal("fetch", slow);
+    const u = userEvent.setup();
+    await typeAndSend(u, "how much money do I have");
+    await waitFor(() => expect(screen.getByTestId("agent-status").textContent).toBe("Running"));
+    await u.click(screen.getByTestId("reset"));
+    await waitFor(() => expect(screen.getByTestId("agent-status").textContent).not.toBe("Running"));
+    release();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(fn.calls.filter((c) => c.method === "POST" && c.path.startsWith("/api/run/"))).toHaveLength(0);
+    expect(screen.queryAllByTestId("turn")).toHaveLength(0);
+  });
+
+  test("Quick Config: llama.cpp and Routing are selectable when configured; Routing is locked while the brain is Scripted", async () => {
+    await boot({ brain: UP });
+    const u = userEvent.setup();
+    await u.click(screen.getByTestId("qc-open"));
+    expect(screen.getByTestId("qc-routing-llm").disabled).toBe(true);
+    expect(screen.getByTestId("qc-brain-state").textContent).toMatch(/answered/);
+    await u.click(screen.getByTestId("qc-brain-llama"));
+    expect(screen.getByTestId("qc-brain-llama").getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByTestId("qc-routing-llm").disabled).toBe(false);
+    await u.click(screen.getByTestId("qc-routing-llm"));
+    expect(JSON.parse(window.localStorage.getItem(`cal.qc.${workspaceId()}`))).toMatchObject({ brain: "llama", routing: "llm-only" });
   });
 });
 
