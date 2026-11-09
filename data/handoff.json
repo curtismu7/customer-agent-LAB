@@ -1,0 +1,441 @@
+{
+ "schema": "customer-agent-handoff/1",
+ "source": "Converted once from the owner routing table (2026-11-08). Route: Here | Here + go deeper | Hand off | Guide. app: the shelf id of the standalone that covers it. basis: why that app was picked.",
+ "routes": {
+  "UC1": {
+   "route": "Here + go deeper",
+   "app": "delegation-lab",
+   "basis": "named in lab entry"
+  },
+  "UC2": {
+   "route": "Hand off",
+   "app": "a2a-lab",
+   "basis": "named in lab entry"
+  },
+  "UC2.5": {
+   "route": "Hand off",
+   "app": "meridian-a2a-hop",
+   "basis": "matches lab description"
+  },
+  "UC2.7": {
+   "route": "Hand off",
+   "app": "a2a-lab",
+   "basis": "named in lab entry"
+  },
+  "UC2.6": {
+   "route": "Hand off",
+   "app": "a2a-lab",
+   "basis": "named in lab entry"
+  },
+  "UC3": {
+   "route": "Here",
+   "app": null,
+   "basis": null
+  },
+  "UC19": {
+   "route": "Here + go deeper",
+   "app": "agent-registry-demo",
+   "basis": "matches lab description"
+  },
+  "UC20": {
+   "route": "Here + go deeper",
+   "app": "agent-audit-trail",
+   "basis": "matches lab description"
+  },
+  "UC33": {
+   "route": "Here",
+   "app": null,
+   "basis": null
+  },
+  "UC34": {
+   "route": "Here + go deeper",
+   "app": "agent-audit-trail",
+   "basis": "my guess, confirm"
+  },
+  "UC35": {
+   "route": "Here",
+   "app": null,
+   "basis": null
+  },
+  "UC4": {
+   "route": "Here",
+   "app": null,
+   "basis": null
+  },
+  "UC6": {
+   "route": "Here + go deeper",
+   "app": "mock-authorize",
+   "basis": "matches lab description"
+  },
+  "UC7": {
+   "route": "Here + go deeper",
+   "app": "hitl-mfa-lab",
+   "basis": "named in lab entry"
+  },
+  "UC8": {
+   "route": "Here + go deeper",
+   "app": "hitl-mfa-lab",
+   "basis": "named in lab entry"
+  },
+  "UC9": {
+   "route": "Here + go deeper",
+   "app": "delegation-lab",
+   "basis": "named in lab entry"
+  },
+  "UC9A": {
+   "route": "Hand off",
+   "app": "delegation-lab",
+   "basis": "named in lab entry"
+  },
+  "UC21": {
+   "route": "Here + go deeper",
+   "app": "delegation-lab",
+   "basis": "named in lab entry"
+  },
+  "UC22": {
+   "route": "Hand off",
+   "app": "hitl-mfa-lab",
+   "basis": "named in lab entry"
+  },
+  "UC23": {
+   "route": "Hand off",
+   "app": "progressive-trust-ladder",
+   "basis": "matches lab description"
+  },
+  "UC24": {
+   "route": "Here",
+   "app": null,
+   "basis": null
+  },
+  "UC26": {
+   "route": "Here",
+   "app": null,
+   "basis": null
+  },
+  "UC5": {
+   "route": "Here",
+   "app": null,
+   "basis": null
+  },
+  "UC10": {
+   "route": "Here",
+   "app": null,
+   "basis": null
+  },
+  "UC11": {
+   "route": "Here",
+   "app": null,
+   "basis": null
+  },
+  "UC12": {
+   "route": "Hand off",
+   "app": "stolen-token-lab",
+   "basis": "matches lab description"
+  },
+  "UC13": {
+   "route": "Here",
+   "app": null,
+   "basis": null
+  },
+  "UC14": {
+   "route": "Hand off",
+   "app": "intent-par-inspector",
+   "basis": "matches lab description"
+  },
+  "UC14b": {
+   "route": "Hand off",
+   "app": "intent-par-inspector",
+   "basis": "named in lab entry"
+  },
+  "UC15": {
+   "route": "Hand off",
+   "app": "intent-par-inspector",
+   "basis": "matches lab description"
+  },
+  "UC16": {
+   "route": "Hand off",
+   "app": "obo-lab",
+   "basis": "matches lab description"
+  },
+  "UC16b": {
+   "route": "Here",
+   "app": null,
+   "basis": null
+  },
+  "UC17": {
+   "route": "Hand off",
+   "app": "jit-lab",
+   "basis": "matches lab description"
+  },
+  "UC18": {
+   "route": "Hand off",
+   "app": "agent-kill-switch",
+   "basis": "matches lab description"
+  },
+  "UC29": {
+   "route": "Here",
+   "app": null,
+   "basis": null
+  },
+  "UC30": {
+   "route": "Hand off",
+   "app": "mcp-gateway-lab",
+   "basis": "named in lab entry"
+  },
+  "UC31": {
+   "route": "Hand off",
+   "app": "mcp-gateway-lab",
+   "basis": "named in lab entry"
+  },
+  "UC32": {
+   "route": "Hand off",
+   "app": "mcp-gateway-lab",
+   "basis": "named in lab entry"
+  },
+  "UC41": {
+   "route": "Hand off",
+   "app": "mcp-surface-lab",
+   "basis": "my guess, confirm"
+  },
+  "UC42": {
+   "route": "Hand off",
+   "app": "mcp-surface-lab",
+   "basis": "my guess, confirm"
+  },
+  "UC-TOOL1": {
+   "route": "Guide",
+   "app": null,
+   "basis": null
+  },
+  "UC-TOOL2": {
+   "route": "Guide",
+   "app": null,
+   "basis": null
+  },
+  "UC-TOOL3": {
+   "route": "Hand off",
+   "app": "gateway-suite-lab",
+   "basis": "my guess, confirm"
+  },
+  "UC46": {
+   "route": "Hand off",
+   "app": "privilege-a2a-anthropic-demo",
+   "basis": "matches lab description"
+  },
+  "UC46A": {
+   "route": "Hand off",
+   "app": "privilege-a2a-anthropic-demo",
+   "basis": "matches lab description"
+  },
+  "UC47": {
+   "route": "Hand off",
+   "app": "privilege-a2a-anthropic-demo",
+   "basis": "matches lab description"
+  },
+  "UC-MUSE1": {
+   "route": "Hand off",
+   "app": "muse",
+   "basis": "matches lab description"
+  },
+  "UC-MUSE2": {
+   "route": "Hand off",
+   "app": "muse",
+   "basis": "matches lab description"
+  },
+  "UC-NHI1": {
+   "route": "Hand off",
+   "app": "agent-governance-lab",
+   "basis": "matches lab description"
+  },
+  "UC-NHI2": {
+   "route": "Hand off",
+   "app": "agent-registry-demo",
+   "basis": "matches lab description"
+  },
+  "UC-LEARN1": {
+   "route": "Guide",
+   "app": null,
+   "basis": null
+  },
+  "UC-LEARN2": {
+   "route": "Hand off",
+   "app": "pingone-mcp-inspector",
+   "basis": "named in lab entry"
+  },
+  "UC-LEARN3": {
+   "route": "Hand off",
+   "app": "mcp-tools",
+   "basis": "named in lab entry"
+  },
+  "UC-LEARN4": {
+   "route": "Hand off",
+   "app": "mcp-tools",
+   "basis": "matches lab description"
+  },
+  "UC-LEARN5": {
+   "route": "Guide",
+   "app": null,
+   "basis": null
+  },
+  "UC-LEARN6": {
+   "route": "Hand off",
+   "app": "token-workbench",
+   "basis": "my guess, confirm"
+  },
+  "UC-LEARN7": {
+   "route": "Guide",
+   "app": null,
+   "basis": null
+  },
+  "UC-PAM-SETUP": {
+   "route": "Hand off",
+   "app": "privilege-demo",
+   "basis": "my guess, confirm"
+  },
+  "UC-PAM-SCRIPT": {
+   "route": "Hand off",
+   "app": "privilege-demo",
+   "basis": "my guess, confirm"
+  },
+  "UC-LEARN8": {
+   "route": "Hand off",
+   "app": "id-jag-standalone",
+   "basis": "matches lab description"
+  },
+  "UC-LEARN9": {
+   "route": "Hand off",
+   "app": "id-jag-standalone",
+   "basis": "named in lab entry"
+  },
+  "UC-LEARN10": {
+   "route": "Guide",
+   "app": null,
+   "basis": null
+  },
+  "UC-LEARN12": {
+   "route": "Hand off",
+   "app": "pingfederate",
+   "basis": "matches lab description"
+  },
+  "UC-LEARN13": {
+   "route": "Hand off",
+   "app": "pingfederate",
+   "basis": "matches lab description"
+  },
+  "UC-LEARN14": {
+   "route": "Hand off",
+   "app": "ciba-hitl-lab",
+   "basis": "matches lab description"
+  },
+  "UC-LEARN15": {
+   "route": "Hand off",
+   "app": "jev-lab",
+   "basis": "matches lab description"
+  },
+  "UC-LEARN11": {
+   "route": "Hand off",
+   "app": "ai-guard-sidecar",
+   "basis": "my guess, confirm"
+  },
+  "UC-LEARN16": {
+   "route": "Hand off",
+   "app": "pingone-signin",
+   "basis": "my guess, confirm"
+  },
+  "UC-LEARN17": {
+   "route": "Hand off",
+   "app": "token-workbench",
+   "basis": "my guess, confirm"
+  },
+  "UC-LEARN18": {
+   "route": "Guide",
+   "app": null,
+   "basis": null
+  },
+  "UC-LEARN19": {
+   "route": "Hand off",
+   "app": "intent-par-inspector",
+   "basis": "named in lab entry"
+  },
+  "UC25": {
+   "route": "Hand off",
+   "app": "id-jag-standalone",
+   "basis": "matches lab description"
+  },
+  "UC39": {
+   "route": "Hand off",
+   "app": "agent-registry-demo",
+   "basis": "my guess, confirm"
+  },
+  "UC40": {
+   "route": "Hand off",
+   "app": "id-jag-standalone",
+   "basis": "matches lab description"
+  },
+  "UC-LOGIN": {
+   "route": "Hand off",
+   "app": "pingone-signin",
+   "basis": "matches lab description"
+  },
+  "UC-LOGIN-PF": {
+   "route": "Hand off",
+   "app": "pingfederate",
+   "basis": "matches lab description"
+  },
+  "UC-LOGIN-AIC": {
+   "route": "Guide",
+   "app": null,
+   "basis": null
+  },
+  "UC-AIC-TX": {
+   "route": "Guide",
+   "app": null,
+   "basis": null
+  },
+  "UC-OBO": {
+   "route": "Hand off",
+   "app": "obo-lab",
+   "basis": "matches lab description"
+  },
+  "UC27": {
+   "route": "Here + go deeper",
+   "app": "hitl-mfa-lab",
+   "basis": "my guess, confirm"
+  },
+  "UC28": {
+   "route": "Hand off",
+   "app": "no-tool-no-promise",
+   "basis": "matches lab description"
+  },
+  "UC37": {
+   "route": "Hand off",
+   "app": "a2a-lab",
+   "basis": "matches lab description"
+  },
+  "UC38": {
+   "route": "Hand off",
+   "app": "worker-demo",
+   "basis": "matches lab description"
+  },
+  "UC43": {
+   "route": "Hand off",
+   "app": "cimd",
+   "basis": "matches lab description"
+  },
+  "UC44": {
+   "route": "Hand off",
+   "app": "obo-lab",
+   "basis": "matches lab description"
+  },
+  "UC45": {
+   "route": "Hand off",
+   "app": "worker-demo",
+   "basis": "my guess, confirm"
+  },
+  "UC48": {
+   "route": "Hand off",
+   "app": "personal-agent-demo",
+   "basis": "my guess, confirm"
+  }
+ }
+}

@@ -22,6 +22,7 @@ import { situationOf } from './situations.js';
 import { parseTraceparent, randomTraceparent } from './trace.js';
 import { createLive, LiveRefused } from './live.js';
 import { shelfInfo } from './shelfLink.js';
+import { promptsFor, routeOf } from './routes.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const WEB_DIST = process.env.WEB_DIST || path.resolve(HERE, '../../web/dist');
@@ -31,7 +32,8 @@ const KEYS = Object.freeze({ run: ['vertical', 'persona', 'mode'], mode: ['mode'
 
 // What a list or detail answer shows for a use case: the manifest row, plus the tool resolved for the vertical and whether the run is guided (the
 // lab opens the product's page and does not compute the outcome) or computed by the engine. `labInputs` are the lab-invented numbers and events fed to the engine (empty for most).
-const view = (uc, cast) => ({ ...uc, tool: uc.primaryTool ? toolFor(cast, uc.primaryTool) : null, live: liveNote(uc), guided: !isFlow(uc), labInputs: { ...situationOf(uc.id) } });
+// `route` says where the use case runs (data/handoff.json): Here, Here + go deeper, Hand off (another standalone app) or Guide.
+const view = (uc, cast) => ({ ...uc, tool: uc.primaryTool ? toolFor(cast, uc.primaryTool) : null, live: liveNote(uc), guided: !isFlow(uc), labInputs: { ...situationOf(uc.id) }, route: { ...routeOf(uc.id) } });
 
 export function createApp({
   health = createHealth(), configFile = CONFIG, env = process.env, bind = '127.0.0.1', workspaces = createWorkspaces({ defaultMode: defaultMode() }), webDist = WEB_DIST, live = createLive(),
@@ -123,6 +125,13 @@ export function createApp({
       return { track: t, count: items.length, usecases: items };
     });
     res.json({ schema: 'customer-agent-usecases/1', vertical: v, pack: isFullVertical(v) ? 'full' : 'stub', total: tracks.reduce((n, t) => n + t.count, 0), source: MANIFEST.source, meta: MANIFEST.meta, tracks });
+  });
+
+  // What to type, per vertical (data/prompts.json). A stub vertical answers 200 with no prompts: it has no demo pack yet.
+  api.get('/prompts', (req, res) => {
+    staticCatalog(res);
+    const v = verticalOf(req.query.vertical, res); if (!v) return;
+    res.json({ schema: 'customer-agent-prompts/1', vertical: v, pack: isFullVertical(v) ? 'full' : 'stub', prompts: promptsFor(v) });
   });
 
   api.get('/usecases/:id', (req, res) => {

@@ -1,0 +1,42 @@
+{
+ "schema": "customer-agent-prompts/1",
+ "about": "What to type, per vertical. Each entry is one prompt and the use case it runs. Banking text is the catalog's own chip text (data/usecases.json trigger.text, verbatim; a test pins it). Healthcare and retail wording is lab-written for the same use cases (lab-invented, a test proves each one runs its use case). Stub verticals have no demo pack yet, so no prompts.",
+ "verticals": {
+  "banking": [
+   { "uc": "UC1", "text": "show my balance" },
+   { "uc": "UC33", "text": "show my mortgage" },
+   { "uc": "UC7", "text": "transfer $600 from checking to savings" },
+   { "uc": "UC8", "text": "transfer $300 from checking to savings" },
+   { "uc": "UC6", "text": "transfer $2500 from checking to savings" },
+   { "uc": "UC9", "text": "check my sensitive account details for group entitlement" },
+   { "uc": "UC21", "text": "check my sensitive account details for tier access" },
+   { "uc": "UC34", "text": "Check for unusual patterns in my recent activity" },
+   { "uc": "UC35", "text": "Explain why my last blocked action was denied and walk me through the token chain" },
+   { "uc": "UC24", "text": "What branches are near me?" }
+  ],
+  "healthcare": [
+   { "uc": "UC1", "text": "show my coverage" },
+   { "uc": "UC33", "text": "show my dental coverage" },
+   { "uc": "UC7", "text": "pay $600 toward my patient bill" },
+   { "uc": "UC8", "text": "pay $300 toward my patient bill" },
+   { "uc": "UC6", "text": "pay $2500 toward my patient bill" },
+   { "uc": "UC9", "text": "check my sensitive patient records for group entitlement" },
+   { "uc": "UC21", "text": "check my sensitive patient records for tier access" },
+   { "uc": "UC34", "text": "Check for unusual patterns in my recent claims" },
+   { "uc": "UC35", "text": "Explain why my last blocked request was denied and walk me through the token chain" },
+   { "uc": "UC24", "text": "What clinics are near me?" }
+  ],
+  "retail": [
+   { "uc": "UC1", "text": "show my orders" },
+   { "uc": "UC33", "text": "show my gift card balance" },
+   { "uc": "UC7", "text": "check out $600 with store credit" },
+   { "uc": "UC8", "text": "check out $300 with store credit" },
+   { "uc": "UC6", "text": "check out $2500 with store credit" },
+   { "uc": "UC9", "text": "check my sensitive order history for group entitlement" },
+   { "uc": "UC21", "text": "check my sensitive order history for tier access" },
+   { "uc": "UC34", "text": "Check for unusual patterns in my recent orders" },
+   { "uc": "UC35", "text": "Explain why my last blocked checkout was denied and walk me through the token chain" },
+   { "uc": "UC24", "text": "What stores are near me?" }
+  ]
+ }
+}
