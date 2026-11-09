@@ -1,4 +1,4 @@
-import { currentPath, go, handoffCarry, handoffHref, routeOf } from "../handoff";
+import { appsText, currentPath, go, handoffCarry, handoffHref, routeOf } from "../handoff";
 import { Tag } from "./Bits";
 
 // The open control for another standalone app: a button that navigates this tab to a RELATIVE path from the fixed allow-list. It exists only when
@@ -15,7 +15,7 @@ export function HandoffCard({ uc, vertical, userId, canPreview, onPreview, previ
   const r = routeOf(uc);
   const carry = handoffCarry(uc.id, vertical, userId) || [];
   return (
-    <section className="handoff card" aria-label={`Hand-off to ${r.app}`} data-testid="handoff-card">
+    <section className="handoff card" aria-label={`Hand-off to ${appsText(r)}`} data-testid="handoff-card">
       <h3 className="handoff__title"><code>{r.app}</code>{r.also && <> or <code>{r.also}</code></>} <span className="muted">separate app{r.basis ? ` · routing table: ${r.basis}` : ""}</span></h3>
       <ul className="handoff__ids" aria-label="Carried in the link">
         {carry.map(([k, v]) => <li key={k}><Tag>{k}={v}</Tag></li>)}

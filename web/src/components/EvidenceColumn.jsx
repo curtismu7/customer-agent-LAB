@@ -5,15 +5,15 @@ import StepDetailPanel from "../evidence/StepDetailPanel";
 import DiagramView from "./DiagramView";
 import TokenView from "./TokenView";
 import { DIAGRAMS, VIEWS, VIEW_LABEL } from "../quickConfig";
-import { handoffCarry, routeOf } from "../handoff";
+import { appsOf, handoffCarry, routeOf } from "../handoff";
 import { Tag } from "./Bits";
 
 // The hand-off summary the evidence column shows while a Hand off use case is selected and has not been previewed.
-function HandoffSummary({ uc, catalog, vertical, userId }) {
+export function HandoffSummary({ uc, catalog, vertical, userId }) {
   const all = (catalog?.tracks || []).flatMap((t) => t.usecases);
   const n = (f) => all.filter((u) => f(routeOf(u).route)).length;
-  const app = routeOf(uc).app;
-  const same = all.filter((u) => routeOf(u).route === "Hand off" && routeOf(u).app === app);
+  const mine = appsOf(routeOf(uc));
+  const same = all.filter((u) => routeOf(u).route === "Hand off" && appsOf(routeOf(u)).some((a) => mine.includes(a)));
   return (
     <section className="evsum" aria-label="Hand-off" data-testid="handoff-summary">
       <ul className="card-grid evsum__cards">
@@ -33,7 +33,7 @@ function HandoffSummary({ uc, catalog, vertical, userId }) {
           <ul className="plain"><li>tokens</li><li>secrets or keys</li><li>cookies</li></ul>
         </div>
       </div>
-      <p className="kicker">Everything this lab hands to <code>{app}</code></p>
+      <p className="kicker">Everything this lab hands to {mine.map((a, i) => <Fragment key={a}>{i ? " or " : ""}<code>{a}</code></Fragment>)}</p>
       <ul className="evsum__list">{same.map((u) => <li key={u.id} data-current={u.id === uc.id ? "true" : undefined}><span className="mono">{u.id}</span> {u.title}</li>)}</ul>
       <p className="muted">This app does not check whether the other one is running (no outbound calls). If it does not load, start it from the Shelf.</p>
     </section>

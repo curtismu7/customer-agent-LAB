@@ -63,6 +63,6 @@ export const HANDOFF_WHY = (uc) => {
   const r = uc?.route || {};
   return [
     `${uc.id} needs several agents or the product's own pages, so it runs in its own app`,
-    `Its home is ${r.app}${r.basis ? ` (routing table: ${r.basis})` : ""}`,
+    `${r.also ? `It can open ${r.app} or ${r.also}` : `Its home is ${r.app}`}${r.basis ? ` (routing table: ${r.basis})` : ""}`,
   ];
 };

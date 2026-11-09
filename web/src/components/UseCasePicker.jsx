@@ -1,12 +1,12 @@
 import { useMemo, useState } from "react";
 import { EXTRAS, NEEDS_LABELS, TRACK_LABELS, haystack, outcomeState } from "../lib";
-import { routeOf } from "../handoff";
+import { appsText, routeOf } from "../handoff";
 import { Tag } from "./Bits";
 
 // The route tag on a row: the catalog outcome for a use case that runs here, "Opens <app>" for a hand-off, "Guide" for a guide. Always a word.
 export function RouteTag({ u }) {
   const r = routeOf(u);
-  if (r.route === "Hand off") return <Tag state="info" testId="route-tag" title={`Hands off to ${r.app}, a separate standalone app`}>Opens {r.app}</Tag>;
+  if (r.route === "Hand off") return <Tag state="info" testId="route-tag" title={`Hands off to ${appsText(r)}, ${r.also ? "separate standalone apps" : "a separate standalone app"}`}>Opens {appsText(r)}</Tag>;
   if (r.route === "Guide") return <Tag state="info" testId="route-tag" title="A learning page or script: no lab yet">Guide</Tag>;
   return <Tag state={outcomeState(u.expectedOutcome)} testId="route-tag" title={r.route === "Here + go deeper" ? `Runs here; go deeper in ${r.app}` : "Runs here"}>{u.expectedOutcome}{r.route === "Here + go deeper" ? " +" : ""}</Tag>;
 }

@@ -38,6 +38,9 @@ export const ROUTE_LABEL = { Here: "Runs here", "Here + go deeper": "Runs here, 
 export const routeOf = (u) => (u?.route && typeof u.route.route === "string" ? u.route : { route: "Here", app: null, basis: null });
 export const isHandoff = (u) => routeOf(u).route === "Hand off";
 export const isDeeper = (u) => routeOf(u).route === "Here + go deeper";
+// The app, then the optional second choice (`also`, Hand off rows only), as one list and as words.
+export const appsOf = (r) => [r?.app, r?.also].filter(Boolean);
+export const appsText = (r) => appsOf(r).join(" or ");
 
 // What the link carries, in order: [[name, value], ...]. uc and vertical must be id-shaped (else null: no link and nothing to list); the user
 // (the persona id, e.g. alex.morgan) is carried only when it is id-shaped too.
