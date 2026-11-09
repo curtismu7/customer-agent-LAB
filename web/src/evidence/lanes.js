@@ -1,4 +1,4 @@
-import { visible } from "../safeText";
+import { visible } from "./safeText";
 
 // Actors of the demo-hop/1 format (shared/hop-detail/README.md): label, initials, lane token (evidence.css), and the
 // teaching text an actor card shows. An id this table does not know falls back to the neutral lane.

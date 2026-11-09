@@ -140,3 +140,10 @@
 
 /* Spec reference URL: visible text (no links in this app), selectable on touch and by keyboard users. */
 .ev-ref-url { font-family: var(--font-mono); font-size: 0.72em; color: var(--muted); overflow-wrap: anywhere; }
+
+/* Status chip (Tag.jsx): self-contained so the shared copy needs nothing from the app. */
+.ev-tag { display: inline-block; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text); font-size: 12px; font-weight: 600; }
+.ev-tag[data-state="ok"] { border-color: var(--status-ok); color: var(--status-ok); }
+.ev-tag[data-state="warn"] { border-color: var(--status-warn); color: var(--status-warn); }
+.ev-tag[data-state="bad"] { border-color: var(--danger-text); color: var(--danger-text); }
+.ev-tag[data-state="info"] { border-color: var(--status-info); color: var(--status-info); }

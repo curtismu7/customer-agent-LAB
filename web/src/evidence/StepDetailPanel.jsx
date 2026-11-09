@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Tag } from "../components/Bits";
+import { Tag } from "./Tag";
 import { actorOf, readPref, STAGE_STATE, txt, verdictState, verdictWord, writePref } from "./lanes";
 import "./evidence.css";
 

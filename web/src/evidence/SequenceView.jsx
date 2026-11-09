@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
-import { Tag } from "../components/Bits";
+import { Tag } from "./Tag";
 import ActorCard from "./ActorCard";
 import { actorOf, actorsIn, isNote, laneVar, readPref, stepKey, touches, txt, verdictWord, writePref } from "./lanes";
 import "./evidence.css";
