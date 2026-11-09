@@ -8,9 +8,12 @@
 // Paths from the lab-proxy route table (shared/lab-proxy/nginx.conf and the shelf's PROXY_PATHS; paths only), keyed by the app ids the routing
 // table uses. Where the table's id differs from the proxy path, the shelf entry (same port, same title) confirms they are one app:
 // cimd = the shelf's cimd-lab ("CIMD Lab"), privilege-a2a-anthropic-demo = the proxy's /privilege-a2a/. Owner confirmed 2026-11-09:
-// pingfederate = /pingfederate-lab/, id-jag-standalone = /id-jag-kit/. Apps with no proxy route get no link.
+// pingfederate = /pingfederate-lab/, id-jag-standalone = /id-jag-kit/. 2026-11-09: ten more routes on lab-proxy main (AI-DEMO-Standalone #130),
+// checked through the proxy; pingone-signin = /pingone-signin-lab/, agent-audit-trail = /agent-audit-trail-lab/. Apps with no proxy route get no link.
 export const PROXY_PATHS = Object.freeze({
   "a2a-lab": "/a2a-lab/",
+  "agent-audit-trail": "/agent-audit-trail-lab/",
+  "agent-governance-lab": "/agent-governance-lab/",
   "agent-kill-switch": "/agent-kill-switch/",
   "agent-registry-demo": "/agent-registry-demo/",
   "ai-guard-sidecar": "/ai-guard-sidecar/",
@@ -20,16 +23,24 @@ export const PROXY_PATHS = Object.freeze({
   "gateway-suite-lab": "/gateway-suite/",
   "hitl-mfa-lab": "/hitl-mfa-lab/",
   "id-jag-standalone": "/id-jag-kit/",
+  "intent-par-inspector": "/intent-par-inspector/",
   "jev-lab": "/jev-lab/",
   "jit-lab": "/jit-lab/",
   "mcp-gateway-lab": "/mcp-gateway-lab/",
+  "mcp-tools": "/mcp-tools/",
   "meridian-a2a-hop": "/meridian-a2a-hop/",
+  "mock-authorize": "/mock-authorize/",
+  muse: "/muse/",
   "no-tool-no-promise": "/no-tool-no-promise/",
   "obo-lab": "/obo-lab/",
   pingfederate: "/pingfederate-lab/",
   "pingone-mcp-inspector": "/pingone-mcp-inspector/",
+  "pingone-signin": "/pingone-signin-lab/",
   "privilege-a2a-anthropic-demo": "/privilege-a2a/",
+  "progressive-trust-ladder": "/progressive-trust-ladder/",
+  "stolen-token-lab": "/stolen-token-lab/",
   "token-workbench": "/token-workbench/",
+  "worker-demo": "/worker-demo/",
 });
 export const SELF_PREFIX = "/customer-agent/";
 const ID = /^[A-Za-z0-9.-]{1,40}$/;
