@@ -101,6 +101,13 @@ try {
       check((await t('outcome').innerText()) === 'PERMIT' && (await t('matches').innerText()).includes('matches the catalog label'), `${tag}: UC1 runs, PERMIT, engine matches the catalog label`);
       check((await t('hop').count()) === 21 && (await t('hop-verdict').filter({ hasText: /^skip$/ }).count()) === 5 && (await t('hops-count').innerText()) === 'Hops (16, +5 not in this run)', `${tag}: 16 hops that ran, then 5 not in this path (AI-DEMO2's reel order); the count says so`);
       check(/^00-[0-9a-f]{32}-[0-9a-f]{16}-01$/.test(await t('run-traceparent').innerText()), `${tag}: the run has a W3C traceparent`);
+      if (name === 'phone') {
+        await t('actor-gateway').scrollIntoViewIfNeeded(); await t('actor-gateway').click();
+        const sheet = page.getByRole('dialog', { name: 'Gateway actor details' });
+        const sb = await sheet.boundingBox();
+        check((await sheet.getAttribute('data-narrow')) === 'true' && Math.round(sb.width) === width && Math.round(sb.y + sb.height) === height, `${tag}: on a phone the actor card is a full-width bottom sheet (${Math.round(sb.width)} px)`);
+        await sheet.getByRole('button', { name: 'Close Gateway details' }).click();
+      }
       const token = t('token').first();
       check((await token.getByTestId('mock-tag').innerText()) === 'MOCK' && /^eyJ/.test(await token.getByTestId('token-raw').innerText()) && (await token.getByTestId('token-claims').innerText()).includes('"sub"'), `${tag}: the token is labelled MOCK, shown raw and decoded`);
       check((await t('nav-page-consent').count()) === 1, `${tag}: UC1 brought in the Consent and step-up page`);
@@ -233,6 +240,33 @@ try {
       await t('seq-fit').click(); f = await fit();
       check(f.zoom === 'fit' && f.sw <= f.cw, `${tag}: Fit returns to the fitted view`);
       check(await oneRow(), `${tag}: the shell bar is still one row with the More menu (${await t('nav-more').count()})`);
+
+      // the actor card is a FloatingDialog (owner 2026-11-09): drag it by the title bar, it has Pop out, and the pop-out is a live same-origin window
+      await t('actor-gateway').click();
+      const card = page.getByRole('dialog', { name: 'Gateway actor details' });
+      await card.waitFor();
+      check(await card.getByRole('button', { name: 'Pop out to a new window' }).isVisible(), `${tag}: the actor card has a Pop out button`);
+      const before = await card.boundingBox();
+      const bar = card.getByTestId('fd-titlebar').locator('.fd-title');
+      const b = await bar.boundingBox();
+      await page.mouse.move(b.x + 20, b.y + b.height / 2); await page.mouse.down();
+      await page.mouse.move(b.x - 100, b.y + b.height / 2 + 80, { steps: 6 }); await page.mouse.up();
+      const after = await card.boundingBox();
+      check(Math.round(before.x - after.x) === 120 && Math.round(after.y - before.y) === 80, `${tag}: the actor card drags by its title bar (moved ${Math.round(after.x - before.x)}, ${Math.round(after.y - before.y)})`);
+      await card.getByTestId('fd-titlebar').focus(); await page.keyboard.press('ArrowRight');
+      check(Math.round((await card.boundingBox()).x - after.x) === 10, `${tag}: arrow keys on the focused title bar move the card`);
+      if (width === 1280) await page.screenshot({ path: path.join(shots, `actor-card-${scheme}.png`) });
+      if (width === 1280) {
+        const [pop] = await Promise.all([page.waitForEvent('popup'), card.getByRole('button', { name: 'Pop out to a new window' }).click()]);
+        await pop.getByRole('dialog', { name: 'Gateway actor details' }).waitFor();
+        check(pop.url() === 'about:blank' && (await pop.getByTestId('actor-card').innerText()).includes('Checks every call'), `${tag}: Pop out opens a same-origin blank window showing the card`);
+        check((await t('fd-placeholder').innerText()).includes('open in a separate window') && (await page.getByRole('dialog').count()) === 0, `${tag}: the page shows the placeholder while the card is popped out`);
+        check(await pop.evaluate(() => getComputedStyle(document.querySelector('.fd-popout-layout')).display === 'flex'), `${tag}: the popped-out window has the page's stylesheets`);
+        await pop.close(); await card.waitFor();
+        check((await t('fd-placeholder').count()) === 0, `${tag}: closing the window brings the card back into the page`);
+      }
+      await page.keyboard.press('Escape');
+      check((await page.getByRole('dialog').count()) === 0, `${tag}: Escape closes the actor card`);
       await t('wtt-UC7').click(); await t('turn-approval').waitFor();
       check(await oneRow(), `${tag}: the shell bar is still one row after a second extra page`);
       check((await page.evaluate(() => [...document.querySelectorAll('[data-testid="nav-more"] option')].length)) === 3, `${tag}: both extra pages are in the More menu`);
