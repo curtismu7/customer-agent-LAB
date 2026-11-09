@@ -30,8 +30,8 @@ try {
     const ok = await post('/api/run/UC1', { vertical: 'banking' });
     const denied = await post('/api/run/UC6', { vertical: 'healthcare' });
     const reset = await post('/api/reset');
-    const good = ok.body.run?.outcome === 'PERMIT' && denied.body.run?.outcome === 'DENY' && reset.body.reset === 'ok' && ok.body.run.hops.every((x) => /^00-[0-9a-f]{32}-[0-9a-f]{16}-01$/.test(x.traceparent));
-    report(good ? 'pass' : 'fail', 'http-cycle', good ? 'a permitted run, a denied run and a Reset behaved over the HTTP API, every hop carrying a traceparent' : 'the run, deny, reset cycle did not complete');
+    const good = ok.body.run?.outcome === 'PERMIT' && denied.body.run?.outcome === 'DENY' && reset.body.reset === 'ok' && ok.body.run.hops.filter((x) => x.verdict !== 'skip').every((x) => /^00-[0-9a-f]{32}-[0-9a-f]{16}-01$/.test(x.traceparent));
+    report(good ? 'pass' : 'fail', 'http-cycle', good ? 'a permitted run, a denied run and a Reset behaved over the HTTP API, every hop that ran carrying a traceparent' : 'the run, deny, reset cycle did not complete');
   } finally { health.stop(); await new Promise((res) => server.close(res)); }
 } catch { report('fail', 'http-cycle', 'the HTTP cycle could not run'); }
 

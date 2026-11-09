@@ -172,7 +172,10 @@ export default function App() {
     const tid = turn ? ++turnSeq.current : null;
     if (turn) setTurns((ts) => [...ts, { id: tid, uc: u, vertical, status: "running", ...turn }]);
     setRunning(true);
-    const res = await postJson(`/api/run/${encodeURIComponent(u.id)}`, { vertical, persona: who }, { traceparent: newTraceparent() }).catch(() => ({ ok: false, status: 0, body: { error: "network", detail: "The server did not answer. Is it running?" } }));
+    // A typed or chip turn tells the server what was said and which brain actually picked the use case ("llama" only when llama.cpp did;
+    // a fallback is "scripted"). A picked or previewed run sends neither.
+    const typed = turn && turn.how !== "picked" ? { said: String(turn.said).slice(0, 400), brain: turn.how === "llm" ? "llama" : "scripted" } : {};
+    const res = await postJson(`/api/run/${encodeURIComponent(u.id)}`, { vertical, persona: who, ...typed }, { traceparent: newTraceparent() }).catch(() => ({ ok: false, status: 0, body: { error: "network", detail: "The server did not answer. Is it running?" } }));
     if (mine !== runSeq.current) return; // a Reset or a newer run took over
     setRunning(false);
     setResults((r) => ({ ...r, [key]: res }));

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { Tag } from "./Tag";
 import ActorCard from "./ActorCard";
-import { actorOf, actorsIn, isNote, laneVar, readPref, stepKey, touches, txt, verdictWord, writePref } from "./lanes";
+import { actorOf, actorsIn, isNote, laneVar, readPref, stepKey, touches, txt, verdictWord, withSkipped, writePref } from "./lanes";
 import "./evidence.css";
 
 // Lifeline sequence diagram of one run, ported from AI-DEMO2's SequenceReelDiagram + SequenceActorHeader and driven by
@@ -41,9 +41,10 @@ export default function SequenceView({ hops = [], selected = null, onSelect }) {
   useEffect(() => writePref(K.font, font), [font]);
   useEffect(() => writePref(K.speed, speed), [speed]);
 
-  // Hops that did not run (verdict skip) sit behind a chip, the way AI-DEMO2 collapses "hops not in this run".
+  // Hops that did not run (verdict skip) sit behind a chip, the way AI-DEMO2 collapses "hops not in this run"; expanded,
+  // they are drawn faint AFTER every hop that ran. Hidden ones are out of the rows, the arrow keys and slow mode.
   const skipped = hops.filter((h) => h.verdict === "skip").length;
-  const shown = useMemo(() => (showSkipped ? hops : hops.filter((h) => h.verdict !== "skip")), [hops, showSkipped]);
+  const shown = useMemo(() => withSkipped(hops, showSkipped), [hops, showSkipped]);
   const total = shown.length;
   const ns = shown.map((h) => h.n);
   // The cast comes from the whole run, not the revealed slice, so columns hold still during a narration.

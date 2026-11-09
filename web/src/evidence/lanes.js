@@ -17,6 +17,9 @@ export const ACTORS = {
   privilege: { label: "Privilege gateway", initials: "PV", lane: "privilege", role: "The agent gateway leg that checks the agent key and its grants.", sees: "the agent key and the call", never: "the user's password" },
   registry: { label: "Agent registry", initials: "RG", lane: "registry", role: "The list of registered agents and their owners.", sees: "agent ids and owners", never: "tokens" },
   credentials: { label: "Credential store", initials: "CS", lane: "credentials", role: "Holds the downstream credential that is swapped in for the call.", sees: "the stored credential", never: "the user token" },
+  llm: { label: "Agent model", initials: "LM", lane: "llm", role: "The agent's model (here: Scripted intent match, mock). It reads the request and proposes a tool call; the policy decides whether it runs.", sees: "the customer's words and the tools it may call", never: "any token or secret" },
+  api: { label: "Resource server", initials: "RS", lane: "api", role: "The back-end API behind the tool. It checks the delegated token itself and returns the data.", sees: "the delegated token and the request", never: "the user's password or the agent secret" },
+  database: { label: "Database", initials: "DB", lane: "database", role: "The back end's own data store. Only the API talks to it.", sees: "the API's queries", never: "any token" },
 };
 
 export function actorOf(id) {
@@ -34,6 +37,12 @@ export function actorsIn(hops) {
   const out = [];
   for (const h of hops || []) for (const id of [h.from, h.to]) if (id && !out.includes(id)) out.push(id);
   return out;
+}
+
+// The hops a screen draws: every hop that ran, then (only when asked) the ones that did not run (verdict skip), in that order.
+export function withSkipped(hops, show) {
+  const ran = (hops || []).filter((h) => h.verdict !== "skip");
+  return show ? [...ran, ...(hops || []).filter((h) => h.verdict === "skip")] : ran;
 }
 
 export const touches = (hop, id) => Boolean(hop) && (hop.from === id || hop.to === id);

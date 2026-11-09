@@ -104,11 +104,12 @@ test('POST /api/run/:id runs a use case in mock and returns the full record', as
     assert.equal(status, 200); assert.equal(body.ok, true); assert.equal(body.workspace, 'default'); assert.equal(body.seq, 1);
     const r = body.run;
     assert.equal(r.mode, 'mock'); assert.equal(r.outcome, 'PERMIT'); assert.equal(r.matchesExpected, true); assert.equal(r.vertical, 'retail');
-    assert.equal(r.hops.at(-1).request.body.params.name, 'list_orders');
+    assert.equal(r.hops.find((h) => h.kind === 'tool-dispatched').request.body.params.name, 'list_orders');
     assert.ok(r.tokens.every((t) => t.mock && /MOCK/.test(t.label)));
     assert.ok(r.tokens.every((t) => t.notice === 'MOCK token, issued by this lab and signed with a public mock key'), 'the notice reaches the client unmangled by the response mask');
     assert.ok(r.tokens[0].raw.startsWith('eyJ'), 'rule 4: the MOCK token is shown raw, not masked');
-    assert.ok(r.hops[0].response.body.access_token.startsWith('eyJ') && !r.hops[0].response.body.access_token.includes('masked'));
+    const signIn = r.hops.find((h) => h.kind === 'sign-in');
+    assert.ok(signIn.response.body.access_token.startsWith('eyJ') && !signIn.response.body.access_token.includes('masked'));
     assert.match(JSON.stringify(r.hops), /Bearer eyJ/);
   });
 });
@@ -270,7 +271,7 @@ test('run responses carry the traceparent header and continue an incoming trace'
     const tp = `00-${'12'.repeat(16)}-${'34'.repeat(8)}-01`;
     const r = await post(url, '/api/run/UC6', {}, { traceparent: tp });
     assert.match(r.headers.get('traceparent'), new RegExp(`^00-${'12'.repeat(16)}-[0-9a-f]{16}-01$`));
-    const j = await r.json(); assert.equal(j.run.traceId, '12'.repeat(16)); assert.ok(j.run.hops.every((h) => h.traceparent.split('-')[1] === '12'.repeat(16)));
+    const j = await r.json(); assert.equal(j.run.traceId, '12'.repeat(16)); assert.ok(j.run.hops.filter((h) => h.verdict !== 'skip').every((h) => h.traceparent.split('-')[1] === '12'.repeat(16)));
   });
 });
 
@@ -280,7 +281,7 @@ test('a run without a valid traceparent starts its own trace: two runs, two trac
     for (const h of [{}, {}, { traceparent: 'nope' }, { traceparent: `00-${'0'.repeat(32)}-${'b'.repeat(16)}-01` }, { traceparent: `00-${'A'.repeat(32)}-${'b'.repeat(16)}-01` }]) {
       const { status, body } = await run(url, 'UC6', {}, h);
       assert.equal(status, 200); assert.match(body.run.traceId, /^[0-9a-f]{32}$/); assert.notEqual(body.run.traceId, '0'.repeat(32));
-      assert.ok(body.run.hops.every((x) => x.traceparent.split('-')[1] === body.run.traceId));
+      assert.ok(body.run.hops.filter((x) => x.verdict !== 'skip').every((x) => x.traceparent.split('-')[1] === body.run.traceId)); // a not-in-path hop never ran: no span
       seen.add(body.run.traceId);
     }
     assert.equal(seen.size, 5, 'every run without a valid header gets a different trace id');
@@ -356,4 +357,24 @@ test('rule 19: POST /api/mode switches source; Real is 409 while the live guards
     assert.ok(!('environmentId' in info.liveSettings), 'info never leaks settings values');
     const back = await post(url, '/api/mode', { source: 'mock' }); assert.equal(back.status, 200); assert.equal((await back.json()).source, 'mock');
   }, { env: { CAL_ALLOW_LIVE: '1', IDP: 'pingone' } });
+});
+
+test('reel depth: the run API takes brain and said; bad types are refused; a hostile said stays inert data on the prompt hop only', async () => {
+  await withServer(async (url) => {
+    for (const body of [{ brain: 'gpt' }, { brain: 1 }, { said: 5 }, { said: ['x'] }, { said: 'x'.repeat(401) }, { said: null }]) {
+      const r = await run(url, 'UC1', body);
+      assert.equal(r.status, 400, JSON.stringify(body).slice(0, 40)); assert.match(r.body.error, /^bad_(brain|said)$/);
+    }
+    const said = '<script>alert(1)</script>\u0000\u0007\u001b[2J show my balance';
+    const r = await run(url, 'UC1', { said, brain: 'llama' });
+    assert.equal(r.status, 200); assert.equal(r.body.run.outcome, 'PERMIT');
+    const hops = r.body.run.hops;
+    assert.equal(hops.find((h) => h.kind === 'prompt').request.body.message, '<script>alert(1)</script> [2J show my balance', 'JSON data: control characters become spaces, the markup stays text');
+    assert.deepEqual(hops.filter((h) => JSON.stringify(h).includes('<script>')).map((h) => h.kind), ['prompt']);
+    const { narration, tokens } = r.body.run;
+    assert.ok(!JSON.stringify({ narration, tokens }).includes('<script>'));
+    assert.equal(hops.find((h) => h.kind === 'agent-receive').response.body.routing, 'llama.cpp picked UC1 (local model, mock run)');
+    const ok = await run(url, 'UC1', { said: 'x'.repeat(400), brain: 'scripted' });
+    assert.equal(ok.status, 200);
+  });
 });

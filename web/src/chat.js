@@ -53,7 +53,8 @@ export function reasoningOf(turn, run) {
   if (run.kind === "live") { steps.push("Live mode: only the identity provider was called"); return steps; }
   const decision = run.hops.find((h) => h.decision);
   const stop = run.hops.find((h) => h.verdict && h.verdict !== "ok" && h.verdict !== "skip");
-  steps.push(`Ran ${run.hops.length} ${run.hops.length === 1 ? "hop" : "hops"} in the mock engine`);
+  const ranN = run.hops.filter((h) => h.verdict !== "skip").length; // the not-in-path hops did not run
+  steps.push(`Ran ${ranN} ${ranN === 1 ? "hop" : "hops"} in the mock engine`);
   if (decision) steps.push(`${decision.title}: ${decision.decision.outcome}${decision.decision.by ? ` by ${decision.decision.by}` : ""}`);
   else if (stop) steps.push(`${stop.title}: ${pillOf(stop.verdict)[0]}`);
   return steps;

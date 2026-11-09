@@ -26,11 +26,14 @@ function TokenCards({ tokens }) {
   );
 }
 
-// One tool-call pill per hop, coloured by the hop verdict and always carrying the word. A click opens that hop in the evidence column.
+// One tool-call pill per hop that ran, coloured by the hop verdict and always carrying the word. A click opens that hop in the evidence column.
+// Hops not in this run (verdict skip) get no pill, so a click can never select a hidden hop; their count is shown instead.
 function Pills({ hops, onHop }) {
+  const ran = hops.filter((h) => h.verdict !== "skip");
+  const notRun = hops.length - ran.length;
   return (
     <ul className="pills" aria-label="Tool calls, one per hop" data-testid="turn-pills">
-      {hops.map((h) => {
+      {ran.map((h) => {
         const [word, state] = pillOf(h.verdict);
         return (
           <li key={h.n}>
@@ -40,6 +43,7 @@ function Pills({ hops, onHop }) {
           </li>
         );
       })}
+      {notRun > 0 && <li className="muted" data-testid="turn-not-run">+{notRun} not in this run</li>}
     </ul>
   );
 }

@@ -12,6 +12,10 @@ const go = (id, vertical = 'banking', extra = {}) => runUseCase(findUseCase(id),
 // Flips every bit of the first signature byte, so the tampered token ALWAYS differs (replacing trailing characters can be a no-op in base64url).
 const flipSignature = (jwt) => { const [h, p, sig] = jwt.split('.'); const b = Buffer.from(sig, 'base64url'); b[0] ^= 0xff; return `${h}.${p}.${b.toString('base64url')}`; };
 const kinds = (r) => r.hops.map((h) => h.kind);
+// The hops that ran: the not-in-path hops (verdict skip, listed after them) are left out.
+const ran = (r) => r.hops.filter((h) => h.verdict !== 'skip');
+const ranKinds = (r) => ran(r).map((h) => h.kind);
+const FRAME = ['website', 'sign-in', 'prompt', 'agent-receive', 'tools-list-challenge', 'tools-list', 'llm-plan'];
 const strip = (r) => JSON.parse(JSON.stringify(r, (k, v) => (typeof v === 'string' ? v.replace(/eyJ[\w-]+\.[\w-]+\.[\w-]+/g, (m) => m.split('.').slice(0, 2).join('.')) : v)));
 
 test('all 87 use cases run in mock in all three full verticals and the COMPUTED outcome equals the manifest expectedOutcome', () => {
@@ -60,17 +64,18 @@ test('a run is deterministic: two runs match exactly apart from the ECDSA signat
   assert.notEqual(go('UC1', 'banking').traceId, go('UC1', 'retail').traceId);
 });
 
-test('W3C traceparent on EVERY hop: one trace id per run, a new span id per hop, flags 01', () => {
+test('W3C traceparent on EVERY hop that ran: one trace id per run, a new span id per hop, flags 01; a not-in-path hop has none', () => {
   for (const uc of MANIFEST.usecases) {
     const r = go(uc.id);
     const spans = new Set();
-    for (const h of r.hops) {
+    for (const h of r.hops.filter((x) => x.verdict === 'skip')) assert.equal(h.traceparent, undefined, `${uc.id} hop ${h.n} did not run`);
+    for (const h of ran(r)) {
       assert.match(h.traceparent, /^00-[0-9a-f]{32}-[0-9a-f]{16}-01$/, `${uc.id} hop ${h.n}`);
       assert.equal(h.request.headers.traceparent, h.traceparent);
       assert.equal(h.traceparent.split('-')[1], r.traceId);
       spans.add(h.traceparent.split('-')[2]);
     }
-    assert.equal(spans.size, r.hops.length, `${uc.id}: span ids are unique`);
+    assert.equal(spans.size, ran(r).length, `${uc.id}: span ids are unique`);
     assert.match(r.traceparent, /^00-[0-9a-f]{32}-[0-9a-f]{16}-01$/);
   }
 });
@@ -102,20 +107,21 @@ test('UC1: the exchanged token carries act = the agent and sub = the customer; t
   assert.equal(user.claims.act, undefined);
   assert.equal(ex.claims.sub, user.claims.sub);
   assert.deepEqual(ex.claims.act, { sub: VERTICALS.banking.castAgent });
-  assert.deepEqual(kinds(r), ['sign-in', 'consent', 'actor-token', 'token-exchange', 'gateway-check', 'authorize-decision', 'tool-dispatched']);
-  assert.equal(r.hops.at(-1).request.body.params.name, 'get_account_balance');
+  assert.deepEqual(ranKinds(r), [...FRAME, 'consent', 'actor-token', 'token-exchange', 'authorize-decision', 'tools-call-challenge', 'gateway-check', 'tool-dispatched', 'api-call', 'agent-reply']);
+  assert.equal(r.hops.find((h) => h.kind === 'tool-dispatched').request.body.params.name, 'get_account_balance');
 });
 
 test('A2A: the act chain is nested and scope is carried through; the second exchange names both agents', () => {
   const r = go('UC2');
   const final = r.tokens.filter((t) => /exchanged/.test(t.label)).at(-1);
   assert.deepEqual(final.claims.act, { sub: VERTICALS.banking.castAgent2, act: { sub: VERTICALS.banking.castAgent } });
-  assert.deepEqual(kinds(r).filter((k) => k.startsWith('a2a')), ['a2a-exchange-1', 'a2a-exchange-2']);
+  assert.deepEqual(kinds(r).filter((k) => k.startsWith('a2a')), ['a2a-exchange-1', 'a2a-exchange-2', 'a2a-agent-card', 'a2a-protocol-message']);
   assert.equal(go('UC2.5').outcome, 'DELEGATE_AND_EXECUTE');
   const six = go('UC2.6');
   assert.equal(six.outcome, 'PERMIT_THEN_DENY');
-  assert.deepEqual(kinds(six).slice(-2), ['tool-dispatched', 'a2a-mismatch-probe']);
-  assert.equal(six.hops.at(-1).response.status, 403);
+  const probe = 'a2a-mismatch-probe';
+  assert.deepEqual(ranKinds(six).slice(-4), ['tool-dispatched', 'api-call', probe, 'agent-reply']);
+  assert.equal(six.hops.find((h) => h.kind === 'a2a-mismatch-probe').response.status, 403);
 });
 
 test('the persona changes the token subject and the group claim', () => {
@@ -128,18 +134,21 @@ test('denials stop the chain: no tool is dispatched, the last hop is a refusal w
   const expected = { UC5: 403, UC6: 403, UC10: 403, UC11: 401, UC12: 401, UC13: 403, UC14: 403, UC15: 401, UC16: 401, UC16b: 403, UC18: 429, UC29: 503, UC31: 403, UC42: 403, UC9: 403 };
   for (const [id, status] of Object.entries(expected)) {
     const r = go(id);
-    assert.ok(!kinds(r).includes('tool-dispatched'), id);
-    assert.equal(r.hops.at(-1).kind, id === 'UC16b' ? 'tool-refused' : 'tool-refused', id);
-    assert.equal(r.hops.at(-1).response.status, status, id);
+    // UC12: the first use of the DPoP-bound token is accepted and reaches the tool; only the replay is refused.
+    if (id === 'UC12') { const k = ranKinds(r); assert.equal(k.filter((x) => x === 'tool-dispatched').length, 1); assert.ok(k.indexOf('tool-dispatched') < k.lastIndexOf('gateway-check')); }
+    else assert.ok(!kinds(r).includes('tool-dispatched'), id);
+    assert.equal(ran(r).at(-1).kind, 'tool-refused', id);
+    assert.equal(ran(r).at(-1).response.status, status, id);
+    assert.ok(!kinds(r).includes('agent-reply'), `${id}: a refused run has no reply`);
     assert.match(r.outcome, /^DENY/);
   }
   assert.equal(go('UC18').hops.find((h) => h.response.status === 429).response.headers['retry-after'], '60');
 });
 
 test('obligations hold the write: STEP_UP and HITL_REQUIRED never dispatch; CIBA is satisfied by the poll and then dispatches', () => {
-  for (const id of ['UC7', 'UC8', 'UC27', 'UC48']) { const r = go(id); assert.ok(!kinds(r).includes('tool-dispatched'), id); assert.equal(kinds(r).at(-1), 'tool-held'); assert.equal(r.hops.at(-1).response.status, 202); }
+  for (const id of ['UC7', 'UC8', 'UC27', 'UC48']) { const r = go(id); assert.ok(!kinds(r).includes('tool-dispatched'), id); assert.equal(ranKinds(r).at(-1), 'tool-held'); assert.equal(ran(r).at(-1).response.status, 202); assert.ok(!kinds(r).includes('agent-reply'), `${id}: a held run has no reply`); }
   const ciba = go('UC22');
-  assert.deepEqual(kinds(ciba).slice(-3), ['ciba-authorize', 'ciba-poll', 'tool-dispatched']);
+  assert.deepEqual(ranKinds(ciba).slice(-7), ['ciba-authorize', 'ciba-poll', 'tools-call-challenge', 'gateway-check', 'tool-dispatched', 'api-call', 'agent-reply']);
   assert.equal(ciba.outcome, 'PERMIT');
   const forged = go('UC27');
   assert.equal(forged.outcome, 'STEP_UP');
@@ -199,21 +208,22 @@ test('flag-gated use cases run in mock and say what live feature they need; UC15
 
 test('the enterprise-managed flag replaces consent with group policy; ID-JAG is issued then redeemed', () => {
   assert.ok(!kinds(go('UC25')).includes('consent'));
-  assert.deepEqual(kinds(go('UC40')), ['sign-in', 'enterprise-managed-mode', 'id-jag-issued', 'id-jag-redeemed']);
+  assert.deepEqual(ranKinds(go('UC40')), [...FRAME, 'enterprise-managed-mode', 'actor-token', 'id-jag-issued', 'id-jag-redeemed', 'authorize-decision', 'tools-call-challenge', 'gateway-check', 'tool-dispatched', 'api-call', 'agent-reply']);
   assert.equal(go('UC40').tokens.find((t) => /ID-JAG/.test(t.label)).header.typ, 'oauth-id-jag+jwt');
 });
 
 test('the public catalog call needs no token and no sign-in', () => {
   const r = go('UC24');
-  assert.deepEqual(kinds(r), ['tool-dispatched']); assert.equal(r.tokens.length, 0);
-  assert.equal(r.hops[0].request.headers.authorization, undefined);
+  assert.deepEqual(ranKinds(r), ['website', 'prompt', 'agent-receive', 'tools-list', 'llm-plan', 'tool-dispatched', 'api-call', 'agent-reply']); assert.equal(r.tokens.length, 0);
+  for (const h of ran(r)) assert.equal(h.request.headers.authorization, undefined, h.kind);
 });
 
 test('vertical packs: the tool follows the vertical for the same role, and no {{token}} is left unfilled in any run', () => {
   assert.equal(go('UC6', 'healthcare').hops.find((h) => h.kind === 'authorize-decision').request.body.action, 'pay_bill');
   assert.equal(go('UC6', 'retail').hops.find((h) => h.kind === 'authorize-decision').request.body.action, 'checkout');
-  assert.equal(go('UC21', 'healthcare').hops.at(-1).request.body.params.name, 'sensitive_patient_records');
-  assert.equal(go('UC33', 'retail').hops.at(-1).request.body.params.name, 'show_mortgage', 'a tool with no role passes through');
+  const tool = (r) => r.hops.find((h) => h.kind === 'tool-dispatched').request.body.params.name;
+  assert.equal(tool(go('UC21', 'healthcare')), 'sensitive_patient_records');
+  assert.equal(tool(go('UC33', 'retail')), 'show_mortgage', 'a tool with no role passes through');
   for (const vertical of Object.keys(VERTICALS)) for (const uc of MANIFEST.usecases) assert.ok(!JSON.stringify(go(uc.id, vertical)).includes('{{'), `${vertical}/${uc.id}`);
 });
 

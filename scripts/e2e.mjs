@@ -99,7 +99,7 @@ try {
 
       await pick('UC1'); await t('run').click(); await t('result').waitFor();
       check((await t('outcome').innerText()) === 'PERMIT' && (await t('matches').innerText()).includes('matches the catalog label'), `${tag}: UC1 runs, PERMIT, engine matches the catalog label`);
-      check((await t('hop').count()) === 7, `${tag}: seven ordered hops`);
+      check((await t('hop').count()) === 21 && (await t('hop-verdict').filter({ hasText: /^skip$/ }).count()) === 5 && (await t('hops-count').innerText()) === 'Hops (16, +5 not in this run)', `${tag}: 16 hops that ran, then 5 not in this path (AI-DEMO2's reel order); the count says so`);
       check(/^00-[0-9a-f]{32}-[0-9a-f]{16}-01$/.test(await t('run-traceparent').innerText()), `${tag}: the run has a W3C traceparent`);
       const token = t('token').first();
       check((await token.getByTestId('mock-tag').innerText()) === 'MOCK' && /^eyJ/.test(await token.getByTestId('token-raw').innerText()) && (await token.getByTestId('token-claims').innerText()).includes('"sub"'), `${tag}: the token is labelled MOCK, shown raw and decoded`);

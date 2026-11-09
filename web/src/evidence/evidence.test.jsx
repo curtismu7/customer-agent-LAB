@@ -355,3 +355,66 @@ describe("review fixes", () => {
     expect(list.textContent).toContain(ex.spec.refs[0].url);
   });
 });
+
+// Reel depth: the engine lists AI-DEMO2's not-in-path steps (verdict skip) after the hops that ran. Here one skip sits mid-list
+// on purpose, to prove the screens draw every skip after the hops that ran whatever order they arrive in.
+const SKIP = (n, kind, from, to) => ({ n, kind, label: kind, from, to, verdict: "skip", mock: true, note: `No ${kind}: not in this run.`, request: {}, response: {}, title: kind, narrative: kind, fact: "not in this path", spec: { none: true, why: "No specification governs this.", failure: "Drawing it as if it ran." } });
+const NOT_RUN = [...UC1_RUN.slice(0, 3), SKIP(4, "step-up", "authorize", "hitl"), ...UC1_RUN.slice(3).map((h) => ({ ...h, n: h.n + 1 })), SKIP(10, "database-query", "api", "database")];
+const RAN_NS = [1, 2, 3, 5, 6, 7, 8, 9];
+const ids = (prefix) => [...document.querySelectorAll(`[data-testid^="${prefix}"]`)].map((el) => Number(el.getAttribute("data-testid").slice(prefix.length)));
+
+describe("hops not in this run", () => {
+  test("sequence: hidden by default; the chip (aria-expanded) shows them faint, after every hop that ran", () => {
+    render(<SequenceView hops={NOT_RUN} selected={null} onSelect={() => {}} />);
+    expect(ids("row-")).toEqual(RAN_NS);
+    expect(screen.getByTestId("sequence-svg").getAttribute("aria-label")).toBe("Sequence diagram, 8 steps");
+    const chip = screen.getByRole("button", { name: "+ 2 hops not in this run" });
+    expect(chip.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByTestId("actor-database")).toBeNull();
+    fireEvent.click(chip);
+    expect(chip.getAttribute("aria-expanded")).toBe("true");
+    expect(ids("row-")).toEqual([...RAN_NS, 4, 10]);
+    expect(screen.getByTestId("row-4").getAttribute("data-verdict")).toBe("skip");
+    expect(screen.getByTestId("row-10").getAttribute("aria-label")).toMatch(/not in this path/);
+    expect(screen.getByTestId("actor-database")).toBeTruthy();
+  });
+
+  test("sequence: arrow keys never land on a hidden hop", () => {
+    render(<Harness hops={NOT_RUN} start={3} />);
+    fireEvent.keyDown(screen.getByTestId("row-3"), { key: "ArrowDown" });
+    expect(detail().getAttribute("aria-label")).toBe("Step 5 detail");
+    fireEvent.keyDown(screen.getByTestId("row-5"), { key: "End" });
+    expect(detail().getAttribute("aria-label")).toBe("Step 9 detail");
+    fireEvent.keyDown(screen.getByTestId("row-9"), { key: "ArrowDown" });
+    expect(detail().getAttribute("aria-label")).toBe("Step 9 detail");
+  });
+
+  test("movie reel: same collapse, same order, and the keys skip hidden frames", () => {
+    render(<Harness hops={NOT_RUN} view="reel" start={3} />);
+    expect(ids("frame-")).toEqual(RAN_NS);
+    expect(screen.getByText("step-up, database-query did not run. Click to show them faint.")).toBeTruthy();
+    fireEvent.keyDown(screen.getByTestId("frame-3"), { key: "ArrowRight" });
+    expect(detail().getAttribute("aria-label")).toBe("Step 5 detail");
+    fireEvent.keyDown(screen.getByTestId("frame-5"), { key: "End" });
+    expect(detail().getAttribute("aria-label")).toBe("Step 9 detail");
+    fireEvent.click(screen.getByRole("button", { name: "+ 2 hops not in this run" }));
+    expect(ids("frame-")).toEqual([...RAN_NS, 4, 10]);
+    expect(screen.getByTestId("frame-10").getAttribute("data-verdict")).toBe("skip");
+  });
+
+  test("step detail: Prev / Next stay among the hops that ran; a skipped hop shows its note and walks the full list", () => {
+    function P({ start }) { const [s, setS] = useState(start); return <StepDetailPanel hops={NOT_RUN} selected={s} onSelect={setS} />; }
+    const { unmount } = render(<P start={3} />);
+    fireEvent.click(screen.getByRole("button", { name: "Next step" }));
+    expect(detail().getAttribute("aria-label")).toBe("Step 5 detail");
+    unmount();
+    render(<P start={9} />);
+    expect(screen.getByRole("button", { name: "Next step" }).disabled).toBe(true);
+    cleanup();
+    render(<P start={4} />);
+    expect(screen.getByTestId("sdp-status").textContent).toBe("not in this path");
+    expect(detail().textContent).toContain("No step-up: not in this run.");
+    fireEvent.click(screen.getByRole("button", { name: "Previous step" }));
+    expect(detail().getAttribute("aria-label")).toBe("Step 9 detail");
+  });
+});
