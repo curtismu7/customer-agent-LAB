@@ -7,7 +7,8 @@ import "./evidence.css";
 // Lifeline sequence diagram of one run, ported from AI-DEMO2's SequenceReelDiagram + SequenceActorHeader and driven by
 // demo-hop/1 hops. Presentational: it never fetches. Every box is a button: an actor tile or a lifeline box opens the
 // actor card, a row (arrow, label or note) calls onSelect(n). Arrow keys move between rows.
-const COL = 220;
+const COL = 220;      // lane spacing at 100% (zoomed views)
+const MIN_COL = 96;   // fit mode spreads lanes across the width down to this, keeping text full size
 const BOX_W = 140;
 const ROW = 54;
 const TOP = 80;
@@ -123,9 +124,14 @@ export default function SequenceView({ hops = [], selected = null, onSelect }) {
 
   const labels = shown.map(rowLabel);
   const half = labels.reduce((m, s, i) => Math.max(m, (isNote(shown[i]) ? noteW(s) : labelW(s)) / 2), 0);
-  const pad = Math.max(COL / 2, BOX_W / 2 + 8, half + 8);
-  const colX = (id) => pad + cast.indexOf(id) * COL;
-  const width = pad * 2 + Math.max(cast.length - 1, 0) * COL;
+  // Fit: lay the lanes out across the scroller's width (text stays full size); scale down only if even MIN_COL lanes do not fit.
+  const gaps = Math.max(cast.length - 1, 0);
+  const fitCol = zoom === "fit" && boxW > 0 && gaps > 0 ? Math.max(MIN_COL, Math.min(COL, Math.floor((boxW - 2 * Math.max(BOX_W / 2 + 8, 80)) / gaps))) : COL;
+  const col = fitCol;
+  const laneBox = Math.min(BOX_W, col - 12);
+  const pad = zoom === "fit" && col < COL ? Math.max(laneBox / 2 + 8, 80) : Math.max(COL / 2, BOX_W / 2 + 8, half + 8);
+  const colX = (id) => pad + cast.indexOf(id) * col;
+  const width = pad * 2 + gaps * col;
   const fitPct = boxW > 0 ? Math.max(ZOOM_MIN, Math.min(100, Math.floor((boxW / width) * 100))) : 100;
   const pct = zoom === "fit" ? fitPct : zoom;
   const zoomBy = (d) => setZoom((z) => Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, (z === "fit" ? fitPct : z) + d)));
@@ -200,7 +206,7 @@ export default function SequenceView({ hops = [], selected = null, onSelect }) {
               const a = actorOf(id);
               const box = (y, h, ty, small, where) => (
                 <g role="button" tabIndex={-1} className="sq-lbtn" aria-label={`${a.label} actor details (${where})`} onClick={() => openActor(id)} onKeyDown={(e) => actorKey(e, id)}>
-                  <rect className="sq-lbox" x={x - BOX_W / 2} y={y} width={BOX_W} height={h} rx="7" />
+                  <rect className="sq-lbox" x={x - laneBox / 2} y={y} width={laneBox} height={h} rx="7" />
                   <text className={`sq-lt${small ? " sq-lt--sm" : ""}`} x={x} y={ty} textAnchor="middle">{a.label}</text>
                 </g>
               );
