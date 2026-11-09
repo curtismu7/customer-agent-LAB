@@ -127,8 +127,9 @@ try {
       check((await t('run-announce').innerText()).startsWith('UC9 finished: DENY_403'), `${tag}: the live region holds the outcome line only`);
       await pick('UC-LEARN2'); await t('run').click(); await t('guided-note').waitFor();
       check((await t('guided-note').innerText()) === 'guided, not computed' && (await t('matches').count()) === 0, `${tag}: a guided run says guided, not computed`);
-      check((await page.locator('a[href]').count()) === 0, `${tag}: no link anywhere (link-outs are plain labels)`);
-      await t('nav-page-approval').click(); await t('extra-approval').waitFor();
+      // the one link allowed is the shared Shelf button in the header (a.shelf-link, the family's launcher); link-outs are plain labels
+      check((await page.locator('a[href]:not(.shelf-link)').count()) === 0 && (await page.locator('a.shelf-link').count()) <= 1 && (await page.locator('.shell-bar a.shelf-link').count()) === (await page.locator('a.shelf-link').count()), `${tag}: no link anywhere but the header Shelf button (link-outs are plain labels)`);
+      await t('nav-more').selectOption('page-approval'); await t('extra-approval').waitFor();
       check((await overflow()) <= 0, `${tag}: the extra page does not scroll sideways (${await overflow()} px)`);
       await t('nav-agent').click();
       await t('vertical').selectOption('government'); await pick('UC1'); await t('run').click(); await t('refusal').waitFor();
@@ -172,9 +173,10 @@ try {
       await t('diagram-reset').click(); await sleep(200);
       check((await t('diagram-moved').innerText()).includes('Moved: 0 box'), `${tag}: Reset restores the box positions`);
 
-      await t('theme-dark').click();
+      await t('theme').selectOption('dark');
       check((await page.evaluate(() => document.documentElement.getAttribute('data-theme'))) === 'dark', `${tag}: the theme picker sets data-theme=dark`);
-      await t('theme-auto').click();
+      await t('theme').selectOption('auto');
+      check((await page.evaluate(() => document.documentElement.getAttribute('data-theme'))) === null, `${tag}: the theme picker back on Auto clears data-theme`);
       await t('nav-agent').click(); await page.keyboard.press('p'); await t('presenter-say').waitFor();
       check((await t('nav').count()) === 0 && (await t('banner').isVisible()), `${tag}: presenter mode hides the nav and keeps the banner`);
       check((await overflow()) <= 0, `${tag}: presenter mode does not scroll sideways (${await overflow()} px)`);
@@ -186,6 +188,78 @@ try {
       await t('nav-runs').click(); await t('history-empty').waitFor();
       check(true, `${tag}: Reset emptied the run history`);
       check(external.length === 0, `${tag}: no request to another origin (${external.length})`);
+      check(errors.length === 0, `${tag}: no unexpected console error (${errors.slice(0, 2).join(' | ')})`);
+      await ctx.close();
+    }
+  }
+
+  // ---- The agent page layout (Step 1 review): three columns, fitted sequence, hand-off in the conversation, What to type, one-row header ----
+  for (const [width, height] of [[1280, 900], [1440, 900], [1600, 900]]) {
+    for (const scheme of ['light', 'dark']) {
+      const tag = `agent-${width}-${scheme}`;
+      const ctx = await browser.newContext({ viewport: { width, height }, colorScheme: scheme });
+      const page = await ctx.newPage();
+      const errors = [];
+      page.on('pageerror', (e) => errors.push(e.message));
+      page.on('console', (m) => { if (m.type() === 'error' && !/status of (403|409|501)/.test(m.text())) errors.push(m.text()); });
+      const t = (id) => page.getByTestId(id);
+      const rect = (sel) => page.evaluate((s) => { const r = document.querySelector(s)?.getBoundingClientRect(); return r ? { l: r.left, r: r.right, t: r.top, b: r.bottom, w: r.width, h: r.height } : null; }, sel);
+      // every direct part of the shell bar sits on one row: their vertical ranges all overlap
+      const oneRow = () => page.evaluate(() => {
+        const parts = [...document.querySelectorAll('.shell-bar > *')].map((e) => e.getBoundingClientRect()).filter((r) => r.height > 0);
+        return parts.every((a) => parts.every((b) => a.top < b.bottom && b.top < a.bottom));
+      });
+      await page.goto(`${base}/`);
+      await t('wtt-UC1').waitFor();
+      await t('theme').selectOption(scheme);
+      check(await oneRow(), `${tag}: the shell bar is one row`);
+      const wtt = await t('what-to-type').innerText();
+      check((await t('wtt-heading').innerText()).toUpperCase() === 'WHAT TO TYPE · BANKING · FABRIKAM BANK' && wtt.includes('show my balance'), `${tag}: What to type names the vertical and lists its prompts`);
+      check((await t('wtt-away').getByRole('button').count()) >= 1 && wtt.toLowerCase().includes('opens its own app'), `${tag}: What to type has an Opens its own app group`);
+
+      await t('wtt-UC1').click(); await t('turn-answer').waitFor(); await sleep(300);
+      const [side, agent, ev] = [await rect('.setup'), await rect('.agentcol'), await rect('.evcol')];
+      check(Math.abs(side.t - agent.t) < 2 && Math.abs(agent.t - ev.t) < 2 && side.r <= agent.l && agent.r <= ev.l, `${tag}: sidebar | agent | evidence side by side (lefts ${Math.round(side.l)}, ${Math.round(agent.l)}, ${Math.round(ev.l)})`);
+      check(agent.w >= 370 && agent.w <= 480 && ev.w > agent.w, `${tag}: agent column ${Math.round(agent.w)} px (380-470), evidence wider (${Math.round(ev.w)} px)`);
+      const fit = () => page.evaluate(() => {
+        const sc = document.querySelector('.sq-scroll'); const box = sc.getBoundingClientRect();
+        const lanes = [...sc.querySelectorAll('.sq-lane')].map((g) => g.getBoundingClientRect());
+        return { sw: sc.scrollWidth, cw: sc.clientWidth, zoom: document.querySelector('[data-testid="sequence-svg"]').getAttribute('data-zoom'), lanes: lanes.length, inside: lanes.every((r) => r.left >= box.left - 1 && r.right <= box.right + 1) };
+      });
+      let f = await fit();
+      check(f.zoom === 'fit' && f.sw <= f.cw && f.lanes >= 4 && f.inside, `${tag}: the embedded sequence fits at the default zoom (${f.lanes} lanes, ${f.sw} of ${f.cw} px, all in view)`);
+      await page.getByRole('button', { name: 'Zoom in' }).click(); await page.getByRole('button', { name: 'Zoom in' }).click();
+      check((await page.getByTestId('sequence-svg').getAttribute('data-zoom')) !== 'fit', `${tag}: + overrides the fit`);
+      await t('seq-fit').click(); f = await fit();
+      check(f.zoom === 'fit' && f.sw <= f.cw, `${tag}: Fit returns to the fitted view`);
+      check(await oneRow(), `${tag}: the shell bar is still one row with the More menu (${await t('nav-more').count()})`);
+      await t('wtt-UC7').click(); await t('turn-approval').waitFor();
+      check(await oneRow(), `${tag}: the shell bar is still one row after a second extra page`);
+      check((await page.evaluate(() => [...document.querySelectorAll('[data-testid="nav-more"] option')].length)) === 3, `${tag}: both extra pages are in the More menu`);
+      if (scheme === 'light') await page.screenshot({ path: path.join(shots, `agent-${width}.png`) });
+
+      // a hand-off chip: the reply shows the reasoning and the card in the conversation, in view, and the status reads Ready to hand off
+      const visibleCard = () => page.evaluate(() => {
+        const cards = document.querySelectorAll('[data-testid="turn"] [data-testid="handoff-card"]'); const c = cards[cards.length - 1];
+        if (!c) return { ok: false };
+        const r = c.getBoundingClientRect(); const box = c.closest('.agentcol__scroll').getBoundingClientRect();
+        return { ok: r.top >= box.top - 1 && r.bottom <= box.bottom + 1 && r.bottom <= window.innerHeight, top: Math.round(r.top), bottom: Math.round(r.bottom), box: [Math.round(box.top), Math.round(box.bottom)] };
+      });
+      await t('wtt-away').getByRole('button').first().click(); await sleep(300);
+      let v = await visibleCard();
+      check(v.ok, `${tag}: a hand-off chip shows the hand-off card in the conversation, in view without scrolling (${v.top}-${v.bottom} in ${v.box})`);
+      check((await page.getByTestId('turn').last().getByTestId('turn-reasoning').innerText()).includes('runs in its own app'), `${tag}: the hand-off reply carries its reasoning`);
+      check((await t('agent-status').innerText()) === 'Ready to hand off', `${tag}: the agent status reads Ready to hand off`);
+      await t('search').fill('UC2.6'); await t('uc-UC2.6').click(); await t('search').fill(''); await sleep(300);
+      v = await visibleCard();
+      check(v.ok && (await page.getByTestId('turn').last().getByTestId('turn-said').innerText()).startsWith('UC2.6'), `${tag}: a hand-off picked in the sidebar answers in the conversation with the card in view`);
+      if (scheme === 'light') await page.screenshot({ path: path.join(shots, `agent-${width}-handoff.png`) });
+      check((await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)) <= 0, `${tag}: the agent page does not scroll sideways`);
+
+      await t('full-sequence').click(); await t('page-sequence').waitFor();
+      if (!(await t('sequence-view').count())) { await page.getByTestId('uc-UC1').click(); await t('sequence-view').waitFor(); }
+      f = await fit();
+      check(f.zoom === 'fit' && f.sw <= f.cw && f.inside, `${tag}: the full-page sequence fits at the default zoom (${f.sw} of ${f.cw} px)`);
       check(errors.length === 0, `${tag}: no unexpected console error (${errors.slice(0, 2).join(' | ')})`);
       await ctx.close();
     }
