@@ -5,7 +5,9 @@ export const DIAGRAMS = ["sequence", "reel", "topology"];
 export const VIEWS = [...DIAGRAMS, "tokens"];
 export const VIEW_LABEL = { sequence: "Sequence", reel: "Movie reel", topology: "Topology", tokens: "Tokens" };
 export const TEXT_SIZES = [90, 100, 115, 130];
-export const DEFAULTS = Object.freeze({ brain: "scripted", views: { sequence: "embedded", reel: "off", topology: "off", tokens: "embedded" }, tab: "sequence", text: 100, presenter: false });
+export const BRAINS = ["scripted", "llama"];
+export const ROUTINGS = ["fallback", "llm-only"];
+export const DEFAULTS = Object.freeze({ brain: "scripted", routing: "fallback", views: { sequence: "embedded", reel: "off", topology: "off", tokens: "embedded" }, tab: "sequence", text: 100, presenter: false });
 
 const keyFor = (ws) => `cal.qc.${ws}`;
 const isState = (v) => v === "off" || v === "embedded";
@@ -18,6 +20,8 @@ export function cleanConfig(raw) {
   const first = DIAGRAMS.find((d) => c.views[d] === "embedded");
   for (const d of DIAGRAMS) if (d !== first && c.views[d] === "embedded") c.views[d] = "off"; // a hand-edited store with two embedded keeps the first
   if (VIEWS.includes(raw.tab)) c.tab = raw.tab;
+  if (BRAINS.includes(raw.brain)) c.brain = raw.brain;
+  if (ROUTINGS.includes(raw.routing)) c.routing = raw.routing;
   if (TEXT_SIZES.includes(raw.text)) c.text = raw.text;
   if (typeof raw.presenter === "boolean") c.presenter = raw.presenter;
   return c;

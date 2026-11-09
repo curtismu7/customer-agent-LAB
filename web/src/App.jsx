@@ -84,6 +84,9 @@ export default function App() {
   // If the server does not answer, the mode stays unknown (the chip and the banner say so); a mode it never told us is not claimed.
   const loadMode = useCallback(() => getJson("/api/mode").then((m) => { setMode(m.mode); setModeFailed(false); setLiveReason(m.live === "allowed" ? null : m.liveReason); }, () => setModeFailed(true)), []);
   useEffect(() => { getJson("/api/info").then(setInfo, (e) => setError(e.message)); loadMode(); }, [loadMode]);
+  // The llama.cpp brain: is it configured and up. Asked at start and whenever the visitor picks it; a failed call reads as unavailable.
+  const [brainInfo, setBrainInfo] = useState(null);
+  useEffect(() => { getJson("/api/brain").then(setBrainInfo, () => setBrainInfo({ configured: false, available: false, message: "The server did not answer." })); }, [cfg.brain]);
 
   // The story (banner, talk track, cast) comes from a full vertical; a stub has none, so the last good story stays.
   const verticalInfo = info?.verticals.find((v) => v.id === vertical);
@@ -183,17 +186,36 @@ export default function App() {
   };
   const run = () => startRun(uc, { said: `Run ${uc?.id} (picked from the list)`, how: "picked" });
 
-  // The Scripted brain: the words are matched to one use case of this vertical's What to type list, and the engine runs it.
-  const say = (text, source) => {
-    if (running) return;
-    const said = String(text).slice(0, 400);
-    const m = stub ? null : matchPrompt(said, prompts);
+  // The brain picks one use case of this vertical's What to type list, and the engine runs it. Scripted matches the words here. llama.cpp asks the
+  // server, which returns only an id from that list (or a reason); when it cannot answer, Routing decides: Fallback uses Scripted and says so,
+  // LLM only says so and runs nothing. Neither brain ever writes the answer.
+  const [picking, setPicking] = useState(false);
+  const busy = running || picking;
+  const answer = (said, source, m, brainNote) => {
     const u = m ? allUc.find((x) => x.id === m.uc) : null;
-    if (!u) { const id = ++turnSeq.current; setTurns((ts) => [...ts, { id, said, status: "nomatch", source }]); return; }
+    if (!u) { const id = ++turnSeq.current; setTurns((ts) => [...ts, { id, said, status: "nomatch", source, brainNote }]); return; }
     const who = personaFor(u) || persona;
     setSelectedId(u.id); setSelHop(null); setPersona(who);
-    if (isHandoff(u)) { const id = ++turnSeq.current; setTurns((ts) => [...ts, { id, said, uc: u, vertical, how: m.how, status: "handoff", source }]); return; }
-    startRun(u, { said, how: m.how, source }, who);
+    if (isHandoff(u)) { const id = ++turnSeq.current; setTurns((ts) => [...ts, { id, said, uc: u, vertical, how: m.how, status: "handoff", source, brainNote }]); return; }
+    startRun(u, { said, how: m.how, source, brainNote }, who);
+  };
+  const say = async (text, source) => {
+    if (busy) return;
+    const said = String(text).slice(0, 400);
+    if (stub) return answer(said, source, null);
+    if (cfg.brain !== "llama") return answer(said, source, matchPrompt(said, prompts));
+    const mine = runSeq.current;
+    setPicking(true);
+    const res = await postJson("/api/brain/pick", { vertical, text: said }).catch(() => ({ ok: false, body: {} }));
+    setPicking(false);
+    if (mine !== runSeq.current) return; // a Reset took over
+    const b = res.ok ? res.body : { ok: false, message: res.body?.message || "The server did not answer." };
+    if (b.ok && b.uc && prompts.some((p) => p.uc === b.uc)) return answer(said, source, { uc: b.uc, how: "llm" });
+    if (b.ok) return answer(said, source, null, "llama.cpp found no use case on this list for those words.");
+    const why = `llama.cpp brain unavailable: ${b.message || "no reason given"}`;
+    if (cfg.routing === "llm-only") return answer(said, source, null, `${why} Routing is LLM only, so nothing ran.`);
+    const m = matchPrompt(said, prompts);
+    return answer(said, source, m, `${why} Used the Scripted brain instead.`);
   };
   const preview = (turn) => { setSelectedId(turn.uc.id); startRun(turn.uc, { said: `Preview ${turn.uc.id} here (mock engine)`, how: "picked", preview: true }); };
   const onHop = (turn, n) => {
@@ -310,13 +332,14 @@ export default function App() {
             <div className="agno" data-several={several ? "true" : undefined}>
               {!presenter && (
                 <SetupSidebar onNewChat={() => { setTurns([]); setSelHop(null); }} mode={mode} host={cast.castHost} several={several} setSeveral={setSeveral} agent={cast.castAgent}
-                  vertical={vertical} verticals={verticals} onVertical={setVertical} sessions={sessions} onSession={pick}>
+                  vertical={vertical} verticals={verticals} onVertical={setVertical} sessions={sessions} onSession={pick}
+                  brain={cfg.brain} brainInfo={brainInfo} onBrain={(b) => setCfg((c) => ({ ...c, brain: b }))}>
                   <UseCasePicker catalog={catalog} selectedId={selectedId} onPick={pick} failed={!catalog && !!error} keep={several ? isHandoff : null} />
                 </SetupSidebar>
               )}
               <div className="work">
                 <AgentColumn agent={cast.castAgent} brand={cast.castBrand} userId={userId} vertical={vertical} verticalLabel={verticalLabel} stub={stub} prompts={prompts} turns={turns}
-                  status={running ? "running" : statusOf(lastTurn)} onSay={say} onHop={onHop} onPreview={preview} running={running}>
+                  status={busy ? "running" : statusOf(lastTurn)} onSay={say} onHop={onHop} onPreview={preview} running={busy}>
                   {uc && (
                     <details className="ucpanel" open ref={runRef} data-testid="uc-panel">
                       <summary>Use case {uc.id}: inputs, persona, Run and the raw result</summary>
@@ -326,6 +349,7 @@ export default function App() {
                 </AgentColumn>
                 {qcOpen ? (
                   <QuickConfig id="quick-config" mode={mode} liveReason={liveReason} onMode={chooseMode} config={cfg}
+                    brainInfo={brainInfo} onBrain={(b) => setCfg((c) => ({ ...c, brain: b }))} onRouting={(r) => setCfg((c) => ({ ...c, routing: r }))}
                     onView={(v, s) => setCfg((c) => setView(c, v, s))} onText={(t) => setCfg((c) => ({ ...c, text: t }))} onPresenter={setPresenter}
                     onReset={() => setCfg(cleanConfig(null))} onClose={() => { setQcOpen(false); document.querySelector('[data-testid="qc-open"]')?.focus(); }} />
                 ) : (

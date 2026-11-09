@@ -23,12 +23,13 @@ import { parseTraceparent, randomTraceparent } from './trace.js';
 import { createLive, LiveRefused } from './live.js';
 import { shelfInfo } from './shelfLink.js';
 import { promptsFor, routeOf } from './routes.js';
+import { createBrain, REASONS } from './brain.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const WEB_DIST = process.env.WEB_DIST || path.resolve(HERE, '../../web/dist');
 const CONFIG = process.env.CUSTOMER_CONFIG || path.resolve(HERE, '../../customer.config.json');
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
-const KEYS = Object.freeze({ run: ['vertical', 'persona', 'mode'], mode: ['mode'], reset: [] });
+const KEYS = Object.freeze({ run: ['vertical', 'persona', 'mode'], mode: ['mode'], reset: [], pick: ['vertical', 'text'] });
 
 // What a list or detail answer shows for a use case: the manifest row, plus the tool resolved for the vertical and whether the run is guided (the
 // lab opens the product's page and does not compute the outcome) or computed by the engine. `labInputs` are the lab-invented numbers and events fed to the engine (empty for most).
@@ -36,7 +37,7 @@ const KEYS = Object.freeze({ run: ['vertical', 'persona', 'mode'], mode: ['mode'
 const view = (uc, cast) => ({ ...uc, tool: uc.primaryTool ? toolFor(cast, uc.primaryTool) : null, live: liveNote(uc), guided: !isFlow(uc), labInputs: { ...situationOf(uc.id) }, route: { ...routeOf(uc.id) } });
 
 export function createApp({
-  health = createHealth(), configFile = CONFIG, env = process.env, bind = '127.0.0.1', workspaces = createWorkspaces({ defaultMode: defaultMode() }), webDist = WEB_DIST, live = createLive(),
+  health = createHealth(), configFile = CONFIG, env = process.env, bind = '127.0.0.1', workspaces = createWorkspaces({ defaultMode: defaultMode() }), webDist = WEB_DIST, live = createLive(), brain = createBrain(),
 } = {}) {
   const app = express();
   app.disable('x-powered-by');
@@ -132,6 +133,25 @@ export function createApp({
     staticCatalog(res);
     const v = verticalOf(req.query.vertical, res); if (!v) return;
     res.json({ schema: 'customer-agent-prompts/1', vertical: v, pack: isFullVertical(v) ? 'full' : 'stub', prompts: promptsFor(v) });
+  });
+
+  // The llama.cpp brain (Step 2): is it there, and which use case of the vertical's What to type list fits the words. It returns an id or a
+  // reason, never text of its own; the page runs the engine with the id and writes the reply from the run.
+  api.get('/brain', async (_req, res) => {
+    noStore(res);
+    const s = await brain.status();
+    res.json({ schema: 'customer-agent-brain/1', configured: brain.configured(), available: s.available, label: brain.label(), reason: s.reason, message: s.reason ? REASONS[s.reason] : null });
+  });
+  api.post('/brain/pick', jsonWrites, async (req, res, next) => {
+    try {
+      noStore(res);
+      if (!strict(req, res, KEYS.pick)) return;
+      const body = bodyOf(req);
+      const vertical = verticalOf(body.vertical, res); if (!vertical) return;
+      if (typeof body.text !== 'string' || body.text.length > 400) return res.status(400).json({ error: 'bad_text', detail: 'text must be a string of at most 400 characters' });
+      const r = await brain.pick(body.text, promptsFor(vertical));
+      res.json(r.ok ? { ok: true, uc: r.uc, ms: r.ms ?? null } : { ok: false, reason: r.reason, message: REASONS[r.reason] });
+    } catch (e) { next(e); }
   });
 
   api.get('/usecases/:id', (req, res) => {

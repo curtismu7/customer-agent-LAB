@@ -59,6 +59,7 @@ export default function Turn({ turn, onHop, onPreview, userId, running }) {
       <div className="turn__agent">
         <span className="avatar avatar--agent" aria-hidden="true">AI</span>
         <div className="turn__body">
+          {turn.status === "nomatch" && turn.brainNote && <p className="muted" data-testid="turn-brain-note">{visible(turn.brainNote)}</p>}
           {turn.status === "nomatch" && (
             <p data-testid="turn-nomatch">I have no scripted answer for that. Try one of the prompts under What to type, or pick a use case on the left. (The Scripted brain matches your words to a use case; it never makes an answer up.)</p>
           )}
