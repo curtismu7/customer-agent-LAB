@@ -1,4 +1,3 @@
-// Vendored from AI-DEMO-Standalone shared/floating-dialog @ 808a563; edit there, not here.
 // Pure position and size maths for FloatingDialog (no React, no DOM), so the parent repo's node --test can check it.
 // Ported from AI-DEMO2's useDraggablePanel (clampPosToViewport and the 8-direction resize), without the app-zoom step:
 // standalone apps do not zoom the page.
