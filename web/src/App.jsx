@@ -11,14 +11,13 @@ import FullPageEvidence from "./components/FullPageEvidence";
 import QuickConfig from "./components/QuickConfig";
 import SetupSidebar, { VerticalSelect } from "./components/SetupSidebar";
 import { getJson, postJson, resetWorkspace } from "./api";
-import { EXTRAS, newTraceparent } from "./lib";
+import { EXTRAS, HOSTED_REAL_NOTE, newTraceparent } from "./lib";
 import { matchPrompt } from "./chat";
 import { isHandoff } from "./handoff";
 import { chooseTab, cleanConfig, loadConfig, saveConfig, setView } from "./quickConfig";
 import { workspaceId } from "./workspace";
 import { loadResume, saveResume, takeReturn } from "./resume";
 import ShelfLink from "./components/ShelfLink.jsx";
-import MuseDialog from "./components/MuseDialog.jsx";
 import "./layout.css";
 
 // The nav holds the agent's own areas only. An extra page joins the "More" menu beside it when a run of a use case that opens it succeeds, and
@@ -55,7 +54,6 @@ export default function App() {
   const [mode, setMode] = useState(null);
   const [liveReason, setLiveReason] = useState(null);
   const [modeMsg, setModeMsg] = useState("");
-  const [museOpen, setMuseOpen] = useState(false);
   const [modeFailed, setModeFailed] = useState(false);
   const [vertical, setVertical] = useState(resumed?.vertical || "banking");
   const [persona, setPersona] = useState(resumed?.persona || "standard");
@@ -251,11 +249,10 @@ export default function App() {
   };
 
   // The Mock | Live toggle. The server decides: a refused Live stays Mock and says why, in the server's own words.
-  // The hosted build (info.museConnectorUrl set): Real runs in Meta Muse, so Real opens the dialog that says how; it never asks the server.
-  const museUrl = info?.hosted === true && typeof info.museConnectorUrl === "string" ? info.museConnectorUrl : null;
+  // The hosted build is mock only: its Real button is disabled with a note, and Real never asks the server there.
+  const hostedOnly = info?.hosted === true;
   const chooseMode = async (m) => {
-    if (m === "live" && museUrl) { setMuseOpen(true); return; }
-    if (m === mode) return;
+    if (m === mode || (m === "live" && hostedOnly)) return;
     const res = await postJson("/api/mode", { source: m === "live" ? "real" : "mock" }).catch(() => ({ ok: false, status: 0, body: { detail: "The server did not answer." } }));
     if (res.ok) { setMode(res.body.source === "real" ? "live" : "mock"); setModeMsg(res.body.source === "real" ? "Real selected. A run makes two real calls to your PingOne environment (its discovery document and the agent's own token) and runs nothing else." : "Mock selected."); }
     else setModeMsg(`${m === "live" ? "Real" : "That mode"} was refused (HTTP ${res.status || "none"}): ${res.body?.message || res.body?.detail || "no reason given"}`);
@@ -324,7 +321,10 @@ export default function App() {
         <div className="shell-right">
           <div className="seg" role="group" aria-label="Mode">
             <button type="button" aria-pressed={mode === "mock"} onClick={() => chooseMode("mock")} data-testid="mode-mock" data-mode="mock">Mock</button>
-            <button type="button" aria-pressed={mode === "live"} onClick={() => chooseMode("live")} aria-haspopup={museUrl ? "dialog" : undefined} title={museUrl ? "Real: run it in Meta Muse" : liveReason || "Real: two real calls to your PingOne environment, identity provider only"} data-testid="mode-live" data-mode="live">Real</button>
+            {hostedOnly
+              ? <button type="button" aria-pressed="false" disabled aria-disabled="true" aria-describedby="real-hosted-note" data-testid="mode-live" data-mode="live">Real</button>
+              : <button type="button" aria-pressed={mode === "live"} onClick={() => chooseMode("live")} title={liveReason || "Real: two real calls to your PingOne environment, identity provider only"} data-testid="mode-live" data-mode="live">Real</button>}
+            {hostedOnly && <span className="seg__note" id="real-hosted-note" data-testid="real-hosted-note">{HOSTED_REAL_NOTE}</span>}
             {/* rule 19 (2026-11-03): the conformance gate greps for a mode-real testid in the UI; this hidden marker aliases the Real button. */}
             <span hidden aria-hidden="true" data-testid="mode-real" />
           </div>
@@ -346,7 +346,6 @@ export default function App() {
         {modeMsg && <p className="notice" role="status" data-testid="mode-msg">{modeMsg}</p>}
       </div>
       <p className="sr-only" role="status" aria-live="polite">{resetMsg}</p>
-      {museUrl && <MuseDialog open={museOpen} url={museUrl} onClose={() => setMuseOpen(false)} />}
       <main className="content" id="main" tabIndex={-1}>
         <div id={`panel-${current}`} role="tabpanel" aria-labelledby={extraKey ? "tab-more" : `tab-${current}`}>
           {error && <p className="app-error" role="alert">Could not load the lab ({error}). Is the server running?</p>}
@@ -380,7 +379,7 @@ export default function App() {
                   )}
                 </AgentColumn>
                 {qcOpen ? (
-                  <QuickConfig id="quick-config" mode={mode} liveReason={liveReason} onMode={chooseMode} config={cfg}
+                  <QuickConfig id="quick-config" mode={mode} liveReason={liveReason} hostedOnly={hostedOnly} onMode={chooseMode} config={cfg}
                     brainInfo={brainInfo} onBrain={(b) => setCfg((c) => ({ ...c, brain: b }))} onRouting={(r) => setCfg((c) => ({ ...c, routing: r }))}
                     onView={(v, s) => setCfg((c) => setView(c, v, s))} onText={(t) => setCfg((c) => ({ ...c, text: t }))} onPresenter={setPresenter}
                     onReset={() => setCfg(cleanConfig(null))} onClose={() => { setQcOpen(false); document.querySelector('[data-testid="qc-open"]')?.focus(); }} />

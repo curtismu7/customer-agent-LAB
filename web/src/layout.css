@@ -20,6 +20,7 @@
 .shell-right { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .shell-right button { min-height: 34px; padding: 4px 8px; }
 .shell-bar .shell-theme { color: var(--on-box); }
+.shell-bar .seg__note { color: var(--on-box); font-size: 12px; max-width: 22ch; line-height: 1.3; } /* the hosted build: why Real is disabled */
 .statusline { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 8px 0; }
 .statusline .notice { flex-basis: 100%; margin: 0; }
 .spacer { flex: 1 1 auto; }
