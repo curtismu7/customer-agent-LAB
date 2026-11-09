@@ -44,7 +44,10 @@ test('customer.config.json is git-ignored, and its example only sets the two cas
 
 test('no shipped text names a real customer, company or tenant', () => {
   const skip = new Set(['node_modules', 'dist', '.git', '.data', 'package-lock.json', '.env', 'customer.config.json']); // git-ignored files (local settings: the e2e screenshots are binary; .env holds this Mac's host names)
-  const allowed = { 'docker-compose.yml': ['customer-agent.local.ping-devops.com'] }; // proxy-served lab host (default LAB_ALLOWED_HOSTS): no real tenant or customer
+  const allowed = {
+    'docker-compose.yml': ['customer-agent.local.ping-devops.com'], // proxy-served lab host (default LAB_ALLOWED_HOSTS): no real tenant or customer
+    'server/src/config.js': ['agent-connect.ai-demo.ping-devops.com'], // owner 2026-11-09: the hosted build's default Meta Muse connector (one place)
+  };
   const hits = [];
   const walk = (dir) => {
     for (const name of fs.readdirSync(dir)) {
@@ -136,8 +139,14 @@ test('step 2: the web source has no outbound URL, no eval/Function, no raw HTML 
   const walk = (d) => { for (const e of fs.readdirSync(d, { withFileTypes: true })) { const f = path.join(d, e.name); if (e.isDirectory()) walk(f); else if (/\.(jsx?|css)$/.test(e.name) && !/\.test\./.test(e.name) && e.name !== 'standalone-ui.css' && e.name !== 'testFixtures.js' && e.name !== 'testSetup.js' && f !== path.join(dir, 'evidence/fixtures.js')) files.push(f); } };
   walk(dir);
   assert.ok(files.length >= 10);
+  // owner 2026-11-09: the hosted build's Real dialog links out to Meta Muse. That one file may name exactly https://muse.ai and render that one link.
+  const museLink = path.join(dir, 'components/MuseDialog.jsx');
   for (const f of files) {
-    const t = fs.readFileSync(f, 'utf8');
+    let t = fs.readFileSync(f, 'utf8');
+    if (f === museLink) {
+      assert.equal(t.match(/<a[ >]/g).length, 1, 'MuseDialog.jsx renders exactly one link');
+      t = t.replace('"https://muse.ai"', '""').replace(/<a href=\{MUSE_HOME\} target="_blank" rel="noopener noreferrer"/, '<link-out');
+    }
     assert.ok(!/https?:\/\//.test(t.replace(/\/\/ .*$/gm, '')), `${path.basename(f)} names a URL`);
     assert.ok(!/dangerouslySetInnerHTML|\beval\(|new Function|\binnerHTML\b/.test(t), `${path.basename(f)} injects HTML or evaluates text`);
     assert.ok(!/['"]#[0-9a-fA-F]{3,8}['"]/.test(t), `${path.basename(f)} has a colour literal`);

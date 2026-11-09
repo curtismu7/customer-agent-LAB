@@ -7,7 +7,7 @@ import path from 'node:path';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { brainConfig, createBrain, REASONS } from '../src/brain.js';
-import { deployModeFrom, isHosted, modeFrom } from '../src/config.js';
+import { DEFAULT_MUSE_CONNECTOR_URL, deployModeFrom, isHosted, modeFrom, museConnectorUrlFrom } from '../src/config.js';
 import { HOSTED_BANNER } from '../src/data.js';
 import { HOSTED_LIVE_REFUSAL, liveRefusal, mockSignInRefusal } from '../src/safety.js';
 import { runChecks } from '../src/doctor.js';
@@ -122,4 +122,31 @@ test('banner: /api/info and the served page carry the hosted banner; the local b
       assert.doesNotMatch(await (await get(url, '/')).text(), /HOSTED AND SIMULATED/);
     }, { webDist: dist });
   } finally { fs.rmSync(dist, { recursive: true, force: true }); }
+});
+
+test('Meta Muse connector URL: /api/info carries museConnectorUrl only in the hosted build; https and not loopback', async () => {
+  assert.equal(museConnectorUrlFrom({}), null, 'local: none');
+  assert.equal(museConnectorUrlFrom({ CAL_MUSE_CONNECTOR_URL: 'https://connector.lab.example/mcp' }), null, 'local ignores the variable');
+  assert.equal(museConnectorUrlFrom({ CAL_DEPLOY_MODE: 'hosted' }), DEFAULT_MUSE_CONNECTOR_URL);
+  assert.match(DEFAULT_MUSE_CONNECTOR_URL, /^https:\/\/[^/]+\/mcp$/);
+  assert.equal(museConnectorUrlFrom({ CAL_DEPLOY_MODE: 'hosted', CAL_MUSE_CONNECTOR_URL: 'https://connector.lab.example/mcp' }), 'https://connector.lab.example/mcp');
+  for (const bad of ['http://connector.lab.example/mcp', 'https://localhost/mcp', 'https://127.0.0.1:8443/mcp', 'https://[::1]/mcp', 'https://0.0.0.0/mcp', 'https://a.localhost/mcp', 'https://u:p@connector.lab.example/mcp', 'not a url', 'javascript:alert(1)']) {
+    assert.throws(() => museConnectorUrlFrom({ CAL_DEPLOY_MODE: 'hosted', CAL_MUSE_CONNECTOR_URL: bad }), /CAL_MUSE_CONNECTOR_URL/, bad);
+  }
+  const bad = await runChecks({ env: { ...HOSTED, CAL_MUSE_CONNECTOR_URL: 'http://127.0.0.1/mcp', STANDALONE_ENV: '/nonexistent/.env' } });
+  assert.equal(bad.find((c) => c.id === 'deploy').level, 'fail', 'the doctor refuses a bad connector URL, so the server does not start');
+  await withServer(async (url) => {
+    const info = await (await get(url, '/api/info')).json();
+    assert.equal(info.museConnectorUrl, DEFAULT_MUSE_CONNECTOR_URL);
+    // defence in depth: the server still refuses Real in the hosted build
+    const s = await post(url, '/api/mode', { source: 'real' }, W('w-host5'));
+    assert.equal(s.status, 409); assert.equal((await s.json()).message, HOSTED_LIVE_REFUSAL);
+  }, { env: HOSTED, bind: '0.0.0.0' });
+  await withServer(async (url) => {
+    assert.equal((await (await get(url, '/api/info')).json()).museConnectorUrl, 'https://connector.lab.example/mcp');
+  }, { env: { ...HOSTED, CAL_MUSE_CONNECTOR_URL: 'https://connector.lab.example/mcp' }, bind: '0.0.0.0' });
+  await withServer(async (url) => {
+    const info = await (await get(url, '/api/info')).json();
+    assert.equal(info.hosted, false); assert.ok(!('museConnectorUrl' in info), 'the local build sends no connector URL');
+  }, { env: { CAL_MUSE_CONNECTOR_URL: 'https://connector.lab.example/mcp' } });
 });

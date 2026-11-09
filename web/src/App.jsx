@@ -18,6 +18,7 @@ import { chooseTab, cleanConfig, loadConfig, saveConfig, setView } from "./quick
 import { workspaceId } from "./workspace";
 import { loadResume, saveResume, takeReturn } from "./resume";
 import ShelfLink from "./components/ShelfLink.jsx";
+import MuseDialog from "./components/MuseDialog.jsx";
 import "./layout.css";
 
 // The nav holds the agent's own areas only. An extra page joins the "More" menu beside it when a run of a use case that opens it succeeds, and
@@ -54,6 +55,7 @@ export default function App() {
   const [mode, setMode] = useState(null);
   const [liveReason, setLiveReason] = useState(null);
   const [modeMsg, setModeMsg] = useState("");
+  const [museOpen, setMuseOpen] = useState(false);
   const [modeFailed, setModeFailed] = useState(false);
   const [vertical, setVertical] = useState(resumed?.vertical || "banking");
   const [persona, setPersona] = useState(resumed?.persona || "standard");
@@ -249,7 +251,10 @@ export default function App() {
   };
 
   // The Mock | Live toggle. The server decides: a refused Live stays Mock and says why, in the server's own words.
+  // The hosted build (info.museConnectorUrl set): Real runs in Meta Muse, so Real opens the dialog that says how; it never asks the server.
+  const museUrl = info?.hosted === true && typeof info.museConnectorUrl === "string" ? info.museConnectorUrl : null;
   const chooseMode = async (m) => {
+    if (m === "live" && museUrl) { setMuseOpen(true); return; }
     if (m === mode) return;
     const res = await postJson("/api/mode", { source: m === "live" ? "real" : "mock" }).catch(() => ({ ok: false, status: 0, body: { detail: "The server did not answer." } }));
     if (res.ok) { setMode(res.body.source === "real" ? "live" : "mock"); setModeMsg(res.body.source === "real" ? "Real selected. A run makes two real calls to your PingOne environment (its discovery document and the agent's own token) and runs nothing else." : "Mock selected."); }
@@ -319,7 +324,7 @@ export default function App() {
         <div className="shell-right">
           <div className="seg" role="group" aria-label="Mode">
             <button type="button" aria-pressed={mode === "mock"} onClick={() => chooseMode("mock")} data-testid="mode-mock" data-mode="mock">Mock</button>
-            <button type="button" aria-pressed={mode === "live"} onClick={() => chooseMode("live")} title={liveReason || "Real: two real calls to your PingOne environment, identity provider only"} data-testid="mode-live" data-mode="live">Real</button>
+            <button type="button" aria-pressed={mode === "live"} onClick={() => chooseMode("live")} aria-haspopup={museUrl ? "dialog" : undefined} title={museUrl ? "Real: run it in Meta Muse" : liveReason || "Real: two real calls to your PingOne environment, identity provider only"} data-testid="mode-live" data-mode="live">Real</button>
             {/* rule 19 (2026-11-03): the conformance gate greps for a mode-real testid in the UI; this hidden marker aliases the Real button. */}
             <span hidden aria-hidden="true" data-testid="mode-real" />
           </div>
@@ -341,6 +346,7 @@ export default function App() {
         {modeMsg && <p className="notice" role="status" data-testid="mode-msg">{modeMsg}</p>}
       </div>
       <p className="sr-only" role="status" aria-live="polite">{resetMsg}</p>
+      {museUrl && <MuseDialog open={museOpen} url={museUrl} onClose={() => setMuseOpen(false)} />}
       <main className="content" id="main" tabIndex={-1}>
         <div id={`panel-${current}`} role="tabpanel" aria-labelledby={extraKey ? "tab-more" : `tab-${current}`}>
           {error && <p className="app-error" role="alert">Could not load the lab ({error}). Is the server running?</p>}

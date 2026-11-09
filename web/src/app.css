@@ -100,3 +100,12 @@ summary { cursor: pointer; font-weight: 700; font-size: 14px; }
   .dhint { display: block; }
   .seg { gap: 4px; }
 }
+
+/* The hosted build's Real dialog (Meta Muse): theme tokens only; the URL wraps so it fits at 375px. */
+.muse-dialog p { margin: 0 0 10px; color: var(--text); }
+.muse-dialog .muse-dialog__label { font-weight: 600; margin-bottom: 4px; }
+.muse-dialog__url { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.muse-dialog__url code { flex: 1 1 220px; min-width: 0; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface-2); color: var(--text); font-family: var(--font-mono); font-size: 13px; overflow-wrap: anywhere; user-select: all; }
+.muse-dialog .muse-dialog__copied { min-height: 1.2em; font-size: 13px; color: var(--muted); }
+.muse-dialog__steps { margin: 0 0 10px; padding-left: 20px; color: var(--text); }
+.muse-dialog .muse-dialog__note { font-size: 13px; color: var(--muted); }
