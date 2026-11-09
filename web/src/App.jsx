@@ -16,6 +16,7 @@ import { matchPrompt } from "./chat";
 import { isHandoff } from "./handoff";
 import { chooseTab, cleanConfig, loadConfig, saveConfig, setView } from "./quickConfig";
 import { workspaceId } from "./workspace";
+import { loadResume, saveResume, takeReturn } from "./resume";
 import ShelfLink from "./components/ShelfLink.jsx";
 import "./layout.css";
 
@@ -44,17 +45,19 @@ const resultKey = (id, vertical, persona, mode) => `${id}|${vertical}|${persona}
 const focusHop = (run) => (run?.hops || []).find((h) => h.decision || (h.verdict && h.verdict !== "ok" && h.verdict !== "skip"))?.n ?? null;
 
 export default function App() {
+  // Resume (rule: sessionStorage per workspace, ids and shown text only; see resume.js): read once, before the first render.
+  const [resumed] = useState(() => loadResume(workspaceId()));
   const [info, setInfo] = useState(null);
   const [story, setStory] = useState(null);
   const [mode, setMode] = useState(null);
   const [liveReason, setLiveReason] = useState(null);
   const [modeMsg, setModeMsg] = useState("");
   const [modeFailed, setModeFailed] = useState(false);
-  const [vertical, setVertical] = useState("banking");
-  const [persona, setPersona] = useState("standard");
+  const [vertical, setVertical] = useState(resumed?.vertical || "banking");
+  const [persona, setPersona] = useState(resumed?.persona || "standard");
   const [catalog, setCatalog] = useState(null);
   const [prompts, setPrompts] = useState([]);
-  const [selectedId, setSelectedId] = useState(null);
+  const [selectedId, setSelectedId] = useState(resumed?.selectedId ?? null);
   const [results, setResults] = useState({});
   const [running, setRunning] = useState(false);
   const [opened, setOpened] = useState({});
@@ -64,7 +67,7 @@ export default function App() {
   const [theme, setThemeState] = useState(savedTheme);
   const [cfg, setCfg] = useState(() => loadConfig(workspaceId()));
   const [qcOpen, setQcOpen] = useState(false);
-  const [turns, setTurns] = useState([]);
+  const [turns, setTurns] = useState(resumed?.turns || []);
   const [selHop, setSelHop] = useState(null);
   const [several, setSeveral] = useState(false);
   const [sessions, setSessions] = useState([]);
@@ -73,7 +76,19 @@ export default function App() {
   const [error, setError] = useState(null);
   const runRef = useRef(null);
   const runSeq = useRef(0);
-  const turnSeq = useRef(0);
+  const turnSeq = useRef(resumed?.turns.length || 0);
+  useEffect(() => { saveResume(workspaceId(), { turns, selectedId, vertical, persona }); }, [turns, selectedId, vertical, persona]);
+  // Back from a hand-off (?returned=<app>&uc=<id>): the chat above is already restored; add a short note, select the use case, clean the address bar.
+  const returnDone = useRef(false);
+  useEffect(() => {
+    if (returnDone.current) return;
+    returnDone.current = true;
+    const r = takeReturn();
+    if (!r) return;
+    setSelectedId(r.uc);
+    const id = ++turnSeq.current;
+    setTurns((ts) => [...ts, { id, status: "note", said: `Back from ${r.app} (${r.uc})` }]);
+  }, []);
 
   const presenter = cfg.presenter;
   const setPresenter = useCallback((f) => setCfg((c) => ({ ...c, presenter: typeof f === "function" ? f(c.presenter) : f })), []);
@@ -136,6 +151,8 @@ export default function App() {
   const select = (id) => { setView_(id); try { window.history.replaceState(null, "", `#${id}`); } catch { /* ignore */ } };
 
   const allUc = catalog?.tracks.flatMap((t) => t.usecases) || [];
+  // A restored turn holds a use case id only; it gets the use case back from this vertical's catalog (another vertical's turn stays text only).
+  const shownTurns = turns.map((t) => (t.restored && !t.uc && t.ucId && t.vertical === vertical ? { ...t, uc: allUc.find((u) => u.id === t.ucId) } : t));
   const uc = allUc.find((u) => u.id === selectedId) || null;
   const personas = info?.personas || ["standard", "premium"];
   const result = uc ? results[resultKey(uc.id, vertical, persona, mode)] : null;
@@ -268,7 +285,7 @@ export default function App() {
   const sayIds = PRESENTER_TALK[extraKey ? "extra" : current] || [];
   const verticalLabel = verticalInfo?.label || vertical;
   const verticalSelect = <VerticalSelect vertical={vertical} verticals={verticals} onChange={setVertical} />;
-  const lastTurn = turns[turns.length - 1];
+  const lastTurn = shownTurns[shownTurns.length - 1];
   const showHandoff = Boolean(uc && isHandoff(uc) && !evRun);
   return (
     <div className="app" data-presenter={presenter ? "true" : undefined} data-text={cfg.text}>
@@ -346,7 +363,7 @@ export default function App() {
                 </SetupSidebar>
               )}
               <div className="work">
-                <AgentColumn agent={cast.castAgent} brand={cast.castBrand} userId={userId} vertical={vertical} verticalLabel={verticalLabel} stub={stub} prompts={prompts} turns={turns}
+                <AgentColumn agent={cast.castAgent} brand={cast.castBrand} userId={userId} vertical={vertical} verticalLabel={verticalLabel} stub={stub} prompts={prompts} turns={shownTurns}
                   status={busy ? "running" : statusOf(lastTurn)} onSay={say} onHop={onHop} onPreview={preview} running={busy}>
                   {uc && (
                     <details className="ucpanel" open ref={runRef} data-testid="uc-panel">
