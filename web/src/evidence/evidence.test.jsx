@@ -118,15 +118,35 @@ describe("sequence view", () => {
   test("zoom and text size change the drawing and Reset puts them back", () => {
     render(<SequenceView hops={UC1_RUN} selected={null} onSelect={() => {}} />);
     const svg = screen.getByTestId("sequence-svg");
-    const w = Number(svg.getAttribute("width"));
+    const w = Number(svg.getAttribute("viewBox").split(" ")[2]);
     fireEvent.click(screen.getByRole("button", { name: "Zoom in" }));
     expect(screen.getByTestId("seq-zoom").textContent).toBe("110%");
     expect(Number(svg.getAttribute("width"))).toBeCloseTo(w * 1.1, 5);
     fireEvent.click(screen.getByRole("button", { name: "large text" }));
     expect(screen.getByTestId("sequence-view").getAttribute("data-font")).toBe("large");
     fireEvent.click(screen.getByRole("button", { name: "Reset" }));
-    expect(screen.getByTestId("seq-zoom").textContent).toBe("100%");
+    expect(svg.getAttribute("data-zoom")).toBe("fit");
     expect(screen.getByTestId("sequence-view").getAttribute("data-font")).toBe("medium");
+  });
+
+  test("the drawing opens fitted to the width (every lane in view); − / + override it and Fit returns to it", () => {
+    render(<SequenceView hops={UC1_RUN} selected={null} onSelect={() => {}} />);
+    const svg = screen.getByTestId("sequence-svg");
+    const w = Number(svg.getAttribute("viewBox").split(" ")[2]);
+    expect(svg.getAttribute("data-zoom")).toBe("fit");
+    expect(svg.getAttribute("width")).toBeNull();
+    expect(svg.style.width).toBe("100%");
+    expect(svg.style.maxWidth).toBe(`${w}px`); // never scaled above its natural size
+    expect(screen.getByTestId("seq-fit").getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: "Zoom out" }));
+    expect(svg.getAttribute("data-zoom")).toBe("90");
+    expect(Number(svg.getAttribute("width"))).toBeCloseTo(w * 0.9, 5);
+    expect(screen.getByTestId("seq-fit").getAttribute("aria-pressed")).toBe("false");
+    fireEvent.click(screen.getByTestId("seq-zoom"));
+    expect(svg.getAttribute("data-zoom")).toBe("100");
+    fireEvent.click(screen.getByTestId("seq-fit"));
+    expect(svg.getAttribute("data-zoom")).toBe("fit");
+    expect(svg.style.width).toBe("100%");
   });
 });
 
