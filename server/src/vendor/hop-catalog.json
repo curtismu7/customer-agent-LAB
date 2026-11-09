@@ -577,6 +577,56 @@
         "failure": "Using the user token as the agent identity. The user and the agent collapse into one party, and the act claim made next proves nothing."
       }
     },
+    "pingcli-run-request": {
+      "title": "Run request",
+      "fact": "one allow-listed key",
+      "spec": {
+        "none": true,
+        "why": "The page sends only a command key; the lab looks it up in a fixed allow-list and refuses anything else with 400 before a process starts. No specification governs this lab-internal call.",
+        "failure": "Accepting a command string from the browser. Any page that can reach the lab could then run arbitrary pingcli arguments with the worker's credentials."
+      }
+    },
+    "pingcli-spawn": {
+      "title": "Start pingcli",
+      "fact": "no shell, fixed args",
+      "spec": {
+        "none": true,
+        "why": "The lab starts the pinned pingcli binary without a shell, with fixed arguments, a private profile and a minimal environment, and scrubs the client id and secret from every byte it sends back.",
+        "failure": "Passing PINGONE_* variables through to the child: they take priority over the config file and conflict with it (observed in AI-DEMO2), and they leak the secret to anything the child starts."
+      }
+    },
+    "pingcli-auth-login": {
+      "title": "Worker token",
+      "fact": "worker token issued",
+      "spec": {
+        "refs": [
+          {
+            "label": "RFC 6749 §4.4",
+            "title": "Client credentials grant",
+            "url": "https://www.rfc-editor.org/rfc/rfc6749#section-4.4"
+          }
+        ],
+        "mandate": "A confidential client authenticates with its own credentials and receives an access token for itself, with no user in it.",
+        "why": "pingcli pingone auth login turns the worker profile into a stored token once, so every later command reuses it instead of sending the secret again.",
+        "failure": "Giving the worker more roles than the commands need. Every pingcli command then runs with that full power."
+      }
+    },
+    "pingcli-management-api": {
+      "title": "Management API",
+      "fact": "JSON under data._embedded",
+      "spec": {
+        "refs": [
+          {
+            "label": "RFC 6750 §2.1",
+            "title": "Bearer token in the Authorization header",
+            "url": "https://www.rfc-editor.org/rfc/rfc6750#section-2.1"
+          }
+        ],
+        "mandate": "The client presents the access token as a Bearer credential in the Authorization header.",
+        "why": "pingcli pingone api calls the PingOne management API with the stored worker token and prints the JSON response (lists under data._embedded).",
+        "failure": "Reading a 200 with an empty list as success: a worker without the right role or environment sees nothing, not an error."
+      }
+    },
     "website": {
       "title": "Website",
       "fact": "cookie only, no token",

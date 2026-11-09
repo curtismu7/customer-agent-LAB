@@ -1,4 +1,4 @@
-// Vendored from AI-DEMO-Standalone shared/hop-detail/hopDetail.mjs @ 9b8785a. Edit the shared copy first, then re-copy.
+// Vendored from AI-DEMO-Standalone shared/hop-detail/hopDetail.mjs @ 63c0741. Edit the shared copy first, then re-copy.
 // hop-detail (shared, vendored): enrich a raw engine hop into demo-hop/1 using the hop catalog.
 // Copy this file into an app as-is; see README.md in AI-DEMO-Standalone/shared/hop-detail. No dependencies.
 
