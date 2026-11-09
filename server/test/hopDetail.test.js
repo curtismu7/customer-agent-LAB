@@ -1,4 +1,4 @@
-// Vendored from AI-DEMO-Standalone shared/hop-detail/hopDetail.test.mjs @ 26888ea (paths adjusted).
+// Vendored from AI-DEMO-Standalone shared/hop-detail/hopDetail.test.mjs @ 2b36a2f (paths adjusted).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
