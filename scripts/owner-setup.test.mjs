@@ -211,6 +211,16 @@ test('setup run: an unusable default sign-on policy and a missing act mapping be
   assert.equal(p1.state.attrs.length, 1);
 });
 
+test('a PingOne 400 names the rejected field and the reason, with ids hidden and no secret', async () => {
+  const { envFile, credFile } = labFiles(); const p1 = fakePingOne();
+  const body = { code: 'INVALID_DATA', message: 'The request could not be completed.', details: [{ code: 'INVALID_VALUE', target: 'redirectUris', message: 'http://127.0.0.1:5603/callback must use https for 11111111-2222-3333-4444-555555555555' }] };
+  const fetchImpl = async (url, o) => (o?.method === 'POST' && /\/applications$/.test(String(url)) ? new Response(JSON.stringify(body), { status: 400, headers: { 'content-type': 'application/json' } }) : p1.fetchImpl(url, o));
+  await assert.rejects(setup.run(setup.parseArgs(['--apply', '--env-file', envFile]), { fetchImpl, log: () => {}, credFile, confirm: async () => false }), (e) => {
+    assert.match(e.message, /POST \/applications -> HTTP 400 INVALID_DATA INVALID_VALUE \(redirectUris\) http:\/\/127\.0\.0\.1:5603\/callback must use https for <id>/);
+    assert.ok(!/11111111-2222/.test(e.message) && !/admin-secret/.test(e.message)); return true;
+  });
+});
+
 test('region codes: na and com are the same region, ap and asia too; different regions still stop the run', () => {
   const cred = (r) => ({ PINGONE_REGION: r, PINGONE_ADMIN_ENV_ID: 'a', PINGONE_ADMIN_CLIENT_ID: 'b', PINGONE_ADMIN_CLIENT_SECRET: 'c' });
   const lab = (r) => ({ PINGONE_ENVIRONMENT_ID: IDS.env, PINGONE_REGION: r });

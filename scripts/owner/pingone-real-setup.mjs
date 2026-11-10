@@ -144,8 +144,11 @@ export function client(target, fetchImpl = fetch) {
     const text = await r.text();
     let json = {}; try { json = text ? JSON.parse(text) : {}; } catch { /* keep {} */ }
     if (!r.ok) {
-      const code = json.code || ''; const detail = (json.details || []).map((d) => d.code || d.message).filter(Boolean).join(', ');
-      throw new Error(`${method} ${p.replace(/[0-9a-f]{8}-[0-9a-f-]{27}/g, '<id>')} -> HTTP ${r.status} ${code} ${detail}`.trim());
+      // PingOne names the rejected field in details[].target and says why in details[].message: show both (ids hidden), so a 400 is fixable.
+      const code = json.code || '';
+      const detail = (json.details || []).map((d) => [d.code, d.target ? `(${d.target})` : '', d.message].filter(Boolean).join(' ')).filter(Boolean).join('; ');
+      const hide = (t) => String(t).replace(/[0-9a-f]{8}-[0-9a-f-]{27}/g, '<id>');
+      throw new Error(hide(`${method} ${p} -> HTTP ${r.status} ${code} ${detail}`).trim());
     }
     return json;
   }
