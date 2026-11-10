@@ -211,13 +211,25 @@ test('setup run: an unusable default sign-on policy and a missing act mapping be
   assert.equal(p1.state.attrs.length, 1);
 });
 
+test('region codes: na and com are the same region, ap and asia too; different regions still stop the run', () => {
+  const cred = (r) => ({ PINGONE_REGION: r, PINGONE_ADMIN_ENV_ID: 'a', PINGONE_ADMIN_CLIENT_ID: 'b', PINGONE_ADMIN_CLIENT_SECRET: 'c' });
+  const lab = (r) => ({ PINGONE_ENVIRONMENT_ID: IDS.env, PINGONE_REGION: r });
+  assert.equal(setup.resolveTarget(lab('na'), cred('na')).region, 'com');
+  assert.equal(setup.resolveTarget(lab('na'), cred('com')).region, 'com');
+  assert.equal(setup.resolveTarget(lab('NA'), cred('na')).region, 'com');
+  assert.equal(setup.resolveTarget(lab('ap'), cred('asia')).region, 'asia');
+  assert.equal(setup.resolveTarget(lab('eu'), cred('eu')).region, 'eu');
+  assert.throws(() => setup.resolveTarget(lab('na'), cred('eu')), /different regions/);
+  assert.throws(() => setup.resolveTarget(lab('na'), cred('nope')), /must be na/);
+});
+
 test('setup run: the gateway resource is found by audience; no user, a placeholder environment or a region mismatch stop the run', async () => {
   const { envFile, credFile } = labFiles();
   await assert.rejects(setup.run(setup.parseArgs(['--env-file', envFile, '--user', 'nobody']), { fetchImpl: fakePingOne().fetchImpl, log: () => {}, credFile }), /no user with username "nobody"/);
   const ph = labFiles({ envText: 'PINGONE_ENVIRONMENT_ID=00000000-0000-0000-0000-000000000000\n' });
   await assert.rejects(setup.run(setup.parseArgs(['--env-file', ph.envFile]), { fetchImpl: fakePingOne().fetchImpl, log: () => {}, credFile: ph.credFile }), /no PINGONE_ENVIRONMENT_ID/);
   assert.throws(() => setup.resolveTarget({ PINGONE_ENVIRONMENT_ID: IDS.env, PINGONE_REGION: 'eu' }, { PINGONE_REGION: 'com', PINGONE_ADMIN_ENV_ID: 'a', PINGONE_ADMIN_CLIENT_ID: 'b', PINGONE_ADMIN_CLIENT_SECRET: 'c' }), /different regions/);
-  assert.throws(() => setup.resolveTarget({ PINGONE_ENVIRONMENT_ID: IDS.env, PINGONE_REGION: 'evil.example' }, {}), /must be com, eu, ca or asia/);
+  assert.throws(() => setup.resolveTarget({ PINGONE_ENVIRONMENT_ID: IDS.env, PINGONE_REGION: 'evil.example' }, {}), /must be na \(or com\), eu, ca or ap \(or asia\)/);
   const src = fs.readFileSync(path.join(root, 'scripts/owner/pingone-real-setup.mjs'), 'utf8');
   assert.ok(!/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/.test(src.replace(/0{8}-0{4}-0{4}-0{4}-0{12}/g, '')), 'no hardcoded id');
   assert.match(src, /r\.audience === GATEWAY_AUDIENCE/);
@@ -242,12 +254,12 @@ test('ingress manifest: Certificate + Ingress for the one host, /mcp Prefix and 
 });
 
 // ---------- the ingress script (stub kubectl and curl) ----------
-function stubBin({ diffExit = 1, otherIngress = '' } = {}) {
+function stubBin({ diffExit = 1, otherIngress = '', svcError = '', svcPorts = '8080 8085' } = {}) {
   const dir = tmp(); const log = path.join(dir, 'calls.log');
   fs.writeFileSync(path.join(dir, 'kubectl'), `#!/bin/sh
 printf "%s\\n" "$*" >> "${log}"
 case "$*" in
-  *"get service ping-gateway"*) printf '8080 8085' ;;
+  *"get service ping-gateway"*) ${svcError ? `echo '${svcError}' >&2; exit 1` : `printf '${svcPorts}'`} ;;
   *"get ingress"*) printf 'cimd-lab cimd-lab.example\\n${otherIngress}' ;;
   *" diff "*) echo "diff output"; exit ${diffExit} ;;
 esac
@@ -282,6 +294,14 @@ test('ingress script: the default is a dry run: preflight + diff with explicit c
   assert.ok(calls.some((c) => / diff -f .*deploy\/k8s-owner\/agent-gateway-ingress\.yaml$/.test(c)));
   assert.ok(!calls.some((c) => / apply /.test(c) || c.startsWith('curl')));
   assert.equal(ingress(['--context', 'us', '--namespace', 'ping-devops-cmuir'], stubBin()).status, 0, 'the allowed values are accepted when named');
+});
+
+test('ingress script: the preflight shows kubectl\'s own error, and names the ports it saw when 8080 is missing', () => {
+  const bad = stubBin({ svcError: 'error: You must be logged in to the server (token expired)' }); const r = ingress([], bad);
+  assert.equal(r.status, 2); assert.match(r.stderr, /kubectl could not read service ping-gateway: error: You must be logged in/);
+  const wrong = stubBin({ svcPorts: '9090 9091' }); const r2 = ingress([], wrong);
+  assert.equal(r2.status, 2); assert.match(r2.stderr, /no port 8080 \(ports seen: '9090 9091'/);
+  assert.ok(!/ apply /.test(wrong.calls()), 'nothing was applied');
 });
 
 test('ingress script: refuses when another ingress already serves the host, or kubectl diff errors', () => {
