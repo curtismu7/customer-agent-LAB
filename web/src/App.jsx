@@ -12,7 +12,7 @@ import QuickConfig from "./components/QuickConfig";
 import SetupSidebar, { VerticalSelect } from "./components/SetupSidebar";
 import { getJson, postJson, resetWorkspace } from "./api";
 import { EXTRAS, HOSTED_REAL_NOTE, newTraceparent } from "./lib";
-import { matchPrompt } from "./chat";
+import { matchPrompt, reasoningOf } from "./chat";
 import { isHandoff } from "./handoff";
 import { chooseTab, cleanConfig, loadConfig, saveConfig, setView } from "./quickConfig";
 import { workspaceId } from "./workspace";
@@ -156,6 +156,9 @@ export default function App() {
   const personas = info?.personas || ["standard", "premium"];
   const result = uc ? results[resultKey(uc.id, vertical, persona, mode)] : null;
   const evRun = result?.ok ? result.body.run : null;
+  // The Why line above the evidence tabs: how the turn that made this run chose its use case, then what the run did (the chat shows the reply only).
+  const evTurn = evRun ? [...turns].reverse().find((t) => t.result?.ok && t.result.body.run === evRun) : null;
+  const why = evRun && uc ? reasoningOf(evTurn ? { ...evTurn, uc } : { uc, how: "picked" }, evRun) : null;
   const cast = story?.cast || {};
   const userId = persona === "premium" ? cast.castUser2 : cast.castUser;
   const verticals = info?.verticals || [];
@@ -243,7 +246,7 @@ export default function App() {
   const preview = (turn) => { setSelectedId(turn.uc.id); startRun(turn.uc, { said: `Preview ${turn.uc.id} here (mock engine)`, how: "picked", preview: true }); };
   const onHop = (turn, n) => {
     if (turn?.uc && turn.uc.id !== selectedId) setSelectedId(turn.uc.id);
-    setSelHop(n);
+    setSelHop(n ?? (turn?.result?.ok ? focusHop(turn.result.body.run) : null)); // See evidence (no hop): the run's own focus hop
     if (!["sequence", "reel"].includes(cfg.tab) || cfg.views[cfg.tab] !== "embedded") setCfg((c) => chooseTab(c, "sequence"));
     setQcOpen(false);
   };
@@ -385,7 +388,7 @@ export default function App() {
                     onReset={() => setCfg(cleanConfig(null))} onClose={() => { setQcOpen(false); document.querySelector('[data-testid="qc-open"]')?.focus(); }} />
                 ) : (
                   <EvidenceColumn run={evRun} selHop={selHop} onSelect={setSelHop} config={cfg} onTab={(v) => setCfg((c) => chooseTab(c, v))} onFull={select}
-                    vertical={vertical} resetSignal={resetSignal} lastRun={last} uc={uc} catalog={catalog} userId={userId} showHandoff={showHandoff} />
+                    vertical={vertical} resetSignal={resetSignal} lastRun={last} uc={uc} catalog={catalog} userId={userId} showHandoff={showHandoff} why={why} />
                 )}
               </div>
             </div>

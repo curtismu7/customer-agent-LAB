@@ -40,8 +40,8 @@ function api(state = {}) {
     const path = String(url).split("?")[0];
     const q = new URLSearchParams(String(url).split("?")[1] || "");
     const json = (status, body) => Promise.resolve({ ok: status < 300, status, json: () => Promise.resolve(body) });
-    if (path === "/api/usecases") { inner(url, opts); return json(200, routed(q.get("vertical") || "banking")); }
-    if (path === "/api/prompts") { inner(url, opts); const v = q.get("vertical") || "banking"; return json(200, { vertical: v, pack: v === "government" ? "stub" : "full", prompts: v === "government" ? [] : PROMPTS }); }
+    if (path === "/api/usecases") { inner(url, opts); const c = routed(q.get("vertical") || "banking"); if (state.extraUc) { c.tracks[0].usecases.push(...state.extraUc); c.total += state.extraUc.length; } return json(200, c); }
+    if (path === "/api/prompts") { inner(url, opts); const v = q.get("vertical") || "banking"; return json(200, { vertical: v, pack: v === "government" ? "stub" : "full", prompts: v === "government" ? [] : state.prompts || PROMPTS }); }
     if (path === "/api/story") return inner(url, opts).then(async (r) => (r.ok ? json(200, { ...(await r.json()), cast: STORY_CAST }) : r));
     if (path === "/api/brain") { inner(url, opts); return json(200, { schema: "customer-agent-brain/1", configured: false, available: false, label: null, reason: "off", message: "No local model is configured for this lab (CAL_BRAIN_URL is not set).", ...(state.brain || {}) }); }
     if (path === "/api/brain/pick") { inner(url, opts); return json(200, state.pick ? state.pick(JSON.parse(opts.body)) : { ok: false, reason: "off", message: "No local model is configured for this lab (CAL_BRAIN_URL is not set)." }); }
@@ -60,6 +60,15 @@ const boot = async (state) => {
   return view;
 };
 const posts = (id) => A.calls.filter((c) => c.method === "POST" && c.path === `/api/run/${id}`);
+// A chat turn shows the message and one reply only: no reasoning, token cards or hop pills (they are in the evidence column).
+const onlyReply = (turn) => {
+  for (const id of ["turn-reasoning", "turn-tokens", "turn-pills", "turn-not-run"]) expect(within(turn).queryByTestId(id), id).toBeNull();
+  expect(within(turn).queryAllByRole("button", { name: /^Hop \d/ })).toHaveLength(0);
+  expect(turn.textContent).not.toMatch(/Reasoning|Tokens used|Step 1|routing table|sub alex\.morgan/);
+  expect([...turn.children].map((c) => c.className)).toEqual(["turn__you", "turn__agent"]);
+  expect(within(turn).getAllByTestId("turn-said")).toHaveLength(1);
+  expect(within(turn).getAllByTestId("turn-reply")).toHaveLength(1);
+};
 
 beforeEach(() => { window.location.hash = ""; window.sessionStorage.clear(); window.localStorage.clear(); forgetWorkspace(); document.documentElement.removeAttribute("data-theme"); });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); window.history.replaceState(null, "", "/"); });
@@ -116,10 +125,14 @@ describe("What to type and the Scripted brain", () => {
     expect(posts("UC1")).toHaveLength(1);
     expect(posts("UC1")[0].body).toEqual({ vertical: "banking", persona: "standard", said: "show my balance", brain: "scripted" });
     expect(within(turn).getByTestId("turn-said").textContent).toBe("show my balance");
-    expect(within(turn).getByTestId("turn-reasoning").textContent).toMatch(/Matched your words to UC1 Delegated access/);
-    expect(within(turn).getByTestId("turn-tokens").textContent).toMatch(/sub alex\.morgan/);
-    expect(within(turn).getAllByRole("button", { name: /^Hop \d/ })).toHaveLength(4);
+    onlyReply(turn);
+    expect(within(turn).getByTestId("turn-who").textContent).toBe("Agent");
     expect(within(turn).getByTestId("turn-outcome").textContent).toBe("PERMIT");
+    // the reasoning, the hops and the tokens are still in the evidence column
+    expect(screen.getByTestId("evidence-why").textContent).toMatch(/Matched your words to UC1 Delegated access/);
+    expect(screen.getByTestId("evidence-count").textContent).toMatch(/UC1 · 4 hops/);
+    await u.click(screen.getByTestId("evtab-tokens"));
+    expect(screen.getByTestId("evidence-tokens").textContent).toMatch(/user token \(MOCK\)/);
     expect(screen.getByTestId("agent-status").textContent).toBe("Done");
     expect(screen.queryByTestId("starters")).toBeNull();
     expect(screen.getByTestId("what-to-type")).toBeTruthy(); // always visible
@@ -138,7 +151,7 @@ describe("What to type and the Scripted brain", () => {
     expect(screen.getAllByTestId("turn-said")[1].textContent).toMatch(/^<img src=x/);
   });
 
-  test("hops not in this run get no pill and no count: the turn and the evidence header say +M not in this run", async () => {
+  test("hops not in this run: the chat shows no pill and no count; the evidence header says +M not in this run and the Why counts the hops that ran", async () => {
     const base = runBody().run.hops;
     const skips = ["step-up", "vault-key-inject"].map((kind, i) => ({ ...base[0], n: base.length + i + 1, kind, label: kind, verdict: "skip", traceparent: undefined, request: {}, response: {} }));
     await boot({ runAnswer: (id) => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(runBody(id, { hops: [...base, ...skips] })) }) });
@@ -146,15 +159,12 @@ describe("What to type and the Scripted brain", () => {
     await u.click(screen.getByTestId("wtt-UC1"));
     const turn = await screen.findByTestId("turn");
     await within(turn).findByTestId("turn-answer");
-    const pills = within(turn).getByTestId("turn-pills");
-    expect(within(pills).getAllByRole("button")).toHaveLength(base.length);
-    for (const k of skips) expect(within(pills).queryByTestId(`pill-${k.n}`)).toBeNull();
-    expect(within(turn).getByTestId("turn-not-run").textContent).toBe("+2 not in this run");
-    expect(within(turn).getByTestId("turn-reasoning").textContent).toMatch(new RegExp(`Ran ${base.length} hops in the mock engine`));
+    onlyReply(turn);
+    expect(screen.getByTestId("evidence-why").textContent).toMatch(new RegExp(`Ran ${base.length} hops in the mock engine`));
     expect(screen.getByTestId("evidence-count").textContent).toMatch(new RegExp(`· ${base.length} hops · \\+2 not in this run`));
   });
 
-  test("a step-up outcome is an approval card that says the hold is simulated, and the header says Waiting for you", async () => {
+  test("a step-up outcome is an approval card labelled Authorize that says the hold is simulated, and the header says Waiting for you", async () => {
     await boot({ runAnswer: (id) => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(runBody(id, { outcome: "STEP_UP", hops: [...runBody().run.hops.slice(0, 3), { ...runBody().run.hops[3], verdict: "obligation" }] })) }) });
     const u = userEvent.setup();
     await u.click(screen.getByTestId("wtt-UC7"));
@@ -163,9 +173,13 @@ describe("What to type and the Scripted brain", () => {
     expect(card.textContent).toMatch(/simulated/);
     expect(screen.queryByTestId("turn-answer")).toBeNull();
     expect(screen.getByTestId("agent-status").textContent).toBe("Waiting for you");
-    const pill = screen.getByTestId("pill-4");
-    expect(pill.getAttribute("data-state")).toBe("warn");
-    expect(pill.textContent).toMatch(/needs approval/);
+    const turn = screen.getByTestId("turn");
+    onlyReply(turn);
+    expect(within(turn).getByTestId("turn-who").textContent).toBe("Authorize");
+    expect(card.textContent).not.toMatch(/engine computed/); // the narration is not repeated in the card
+    // the held hop is still in the evidence: See evidence opens it
+    await u.click(within(turn).getByTestId("turn-evidence"));
+    expect((await screen.findByTestId("step-detail")).getAttribute("aria-label")).toBe("Step 4 detail");
   });
 
   test("a stub vertical says it has no demo pack yet and shows no chips", async () => {
@@ -176,15 +190,16 @@ describe("What to type and the Scripted brain", () => {
     expect(screen.queryAllByTestId(/^wtt-UC/)).toHaveLength(0);
   });
 
-  test("a tool-call pill opens that hop in the evidence column", async () => {
+  test("See evidence on a turn brings the evidence column back to that run's sequence", async () => {
     await boot();
     const u = userEvent.setup();
     await u.click(screen.getByTestId("wtt-UC1"));
     await screen.findByTestId("turn-answer");
-    await u.click(screen.getByTestId("pill-3"));
-    const detail = await screen.findByTestId("step-detail");
-    expect(detail.getAttribute("aria-label")).toBe("Step 3 detail");
+    await u.click(screen.getByTestId("evtab-tokens"));
+    expect(screen.getByTestId("evtab-sequence").getAttribute("aria-pressed")).toBe("false");
+    await u.click(screen.getByTestId("turn-evidence"));
     expect(screen.getByTestId("evtab-sequence").getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByTestId("evidence-count").textContent).toMatch(/^UC1 · 4 hops/);
   });
 
   test("New chat clears the conversation and brings the starter cards back; sessions list this workspace's runs", async () => {
@@ -220,24 +235,25 @@ describe("the matcher on the real data: every shown prompt runs its use case", (
 });
 
 describe("hand-off and go deeper", () => {
-  test("a hand-off picked in the sidebar answers in the conversation: reasoning, the card inline, Ready to hand off; ids only, no link off the proxy, and Preview here runs the mock engine", async () => {
+  test("a hand-off picked in the sidebar answers in one line with Open (or Start from the Shelf) and Preview here; why, the ids and the basis are in the evidence summary", async () => {
     await boot();
     const u = userEvent.setup();
     await u.click(screen.getByTestId("uc-UC2.6"));
     const turn = screen.getByTestId("turn");
     expect(within(turn).getByTestId("turn-said").textContent).toBe("UC2.6 A2A generalist mismatch (picked from the list)");
-    const why = within(turn).getByTestId("turn-reasoning").textContent;
-    expect(why).toMatch(/You picked UC2\.6 A2A generalist mismatch from the list/);
+    onlyReply(turn);
+    expect(within(turn).getByTestId("turn-handoff-say").textContent).toBe("This is handled in a2a-lab, its own app.");
+    const why = screen.getByTestId("handoff-why").textContent;
     expect(why).toMatch(/UC2\.6 needs several agents or the product's own pages, so it runs in its own app/);
     expect(why).toMatch(/Its home is a2a-lab \(routing table: named in lab entry\)/);
-    expect(within(turn).getByTestId("turn-handoff-say").textContent).toMatch(/^This one runs in its own app/);
     expect(screen.getByTestId("agent-status").textContent).toBe("Ready to hand off");
     expect(screen.getAllByTestId("handoff-card")).toHaveLength(1); // in the reply, not repeated in the use case panel
     const card = within(turn).getByTestId("handoff-card");
-    expect(card.textContent).toMatch(/a2a-lab/);
-    expect(card.textContent).toMatch(/named in lab entry/);
-    expect(within(card).getByRole("list", { name: "Carried in the link" }).textContent).toBe("from=customer-agentuc=UC2.6vertical=bankinguser=alex.morgan");
-    expect(card.textContent).toMatch(/Never carried: tokens, secrets or keys, cookies/);
+    expect(card.textContent).not.toMatch(/named in lab entry|Carried|Never carried/);
+    const summary = screen.getByTestId("handoff-summary");
+    expect([...summary.querySelectorAll("dt")].map((d) => `${d.textContent}=${d.nextElementSibling.textContent}`).join("")).toBe("from=customer-agentuc=UC2.6vertical=bankinguser=alex.morgan");
+    expect(summary.textContent).toMatch(/Never carried/);
+    expect(within(screen.getByTestId("uc-UC2.6")).getByTestId("route-tag").getAttribute("title")).toMatch(/routing table: named in lab entry/);
     expect(within(card).getByTestId("handoff-open-shelf").textContent).toMatch(/Start a2a-lab from the Shelf/);
     expect(within(card).queryByTestId("handoff-open")).toBeNull();
     expect(screen.getByTestId("handoff-summary").textContent).toMatch(/Hands off · 2/);
@@ -254,7 +270,8 @@ describe("hand-off and go deeper", () => {
     await u.click(within(screen.getByTestId("wtt-away")).getByTestId("wtt-UC2.6"));
     const turn = screen.getByTestId("turn");
     expect(turn.getAttribute("data-status")).toBe("handoff");
-    expect(within(turn).getByTestId("turn-reasoning").textContent).toMatch(/Matched your words to UC2\.6 A2A generalist mismatch.*runs in its own app/);
+    onlyReply(turn);
+    expect(within(turn).getByTestId("turn-handoff-say").textContent).toBe("This is handled in a2a-lab, its own app.");
     expect(within(turn).getByTestId("handoff-card")).toBeTruthy();
     expect(screen.getByTestId("agent-status").textContent).toBe("Ready to hand off");
     expect(A.calls.filter((c) => c.method === "POST" && c.path.startsWith("/api/run/"))).toHaveLength(0);
@@ -276,11 +293,9 @@ describe("hand-off and go deeper", () => {
     const open = screen.getByTestId("handoff-open");
     expect(open.textContent).toBe("Open a2a-lab");
     expect(open.getAttribute("data-href")).toBe("../a2a-lab/?from=customer-agent&uc=UC2.6&vertical=banking&user=alex.morgan");
-    // the card lists exactly what the link carries, in order
-    const listed = within(screen.getByTestId("handoff-card")).getByRole("list", { name: "Carried in the link" }).querySelectorAll("li");
-    expect([...listed].map((li) => li.textContent)).toEqual([...new URLSearchParams(open.getAttribute("data-href").split("?")[1])].map(([k, v]) => `${k}=${v}`));
+    // the evidence summary lists exactly what the link carries, in order
     const summary = screen.getByTestId("handoff-summary");
-    expect([...summary.querySelectorAll("dt")].map((d) => `${d.textContent}=${d.nextElementSibling.textContent}`)).toEqual([...listed].map((li) => li.textContent));
+    expect([...summary.querySelectorAll("dt")].map((d) => `${d.textContent}=${d.nextElementSibling.textContent}`)).toEqual([...new URLSearchParams(open.getAttribute("data-href").split("?")[1])].map(([k, v]) => `${k}=${v}`));
     await u.click(screen.getByTestId("wtt-UC1"));
     await screen.findByTestId("turn-answer");
     expect(within(screen.getAllByTestId("turn")[1]).getByTestId("deeper-open").getAttribute("data-href")).toBe("../delegation-lab/?from=customer-agent&uc=UC1&vertical=banking&user=alex.morgan");
@@ -330,7 +345,7 @@ describe("hand-off and go deeper", () => {
     const uc = { id: "UC39", route: { route: "Hand off", app: "agent-kill-switch", also: "agent-registry-demo", basis: "owner decision 2026-11-09" } };
     window.history.replaceState(null, "", "/customer-agent/");
     render(<HandoffCard uc={uc} vertical="banking" userId="alex.morgan" />);
-    expect(screen.getByTestId("handoff-card").querySelector("h3").textContent).toMatch(/^agent-kill-switch or agent-registry-demo/);
+    expect(screen.getByTestId("turn-handoff-say").textContent).toBe("This is handled in agent-kill-switch or agent-registry-demo, its own app.");
     expect(screen.getByTestId("handoff-open").getAttribute("data-href")).toBe("../agent-kill-switch/?from=customer-agent&uc=UC39&vertical=banking&user=alex.morgan");
     expect(screen.getByTestId("handoff-open-also").textContent).toBe("Or open agent-registry-demo");
     expect(screen.getByTestId("handoff-open-also").getAttribute("data-href")).toBe("../agent-registry-demo/?from=customer-agent&uc=UC39&vertical=banking&user=alex.morgan");
@@ -385,7 +400,8 @@ describe("the llama.cpp brain (Step 2)", () => {
     expect(picks()[0].body).toEqual({ vertical: "banking", text: "how much money do I have" });
     expect(posts("UC1")[0].body).toEqual({ vertical: "banking", persona: "standard", said: "how much money do I have", brain: "llama" });
     await screen.findByTestId("turn-answer");
-    expect(screen.getByTestId("turn-reasoning").textContent).toMatch(/llama\.cpp picked UC1 Delegated access \(consent only\) from this vertical's list/);
+    onlyReply(screen.getByTestId("turn"));
+    expect(screen.getByTestId("evidence-why").textContent).toMatch(/llama\.cpp picked UC1 Delegated access \(consent only\) from this vertical's list/);
   });
 
   test("model down with Routing = Fallback: the agent says it is unavailable and the Scripted brain answers", async () => {
@@ -396,8 +412,9 @@ describe("the llama.cpp brain (Step 2)", () => {
     await waitFor(() => expect(posts("UC1")).toHaveLength(1));
     expect(posts("UC1")[0].body.brain).toBe("scripted"); // the brain actually used after the fallback
     await screen.findByTestId("turn-answer");
-    expect(screen.getByTestId("turn-reasoning").textContent).toMatch(/llama\.cpp brain unavailable: The local model did not answer\. Is llama\.cpp running\? Used the Scripted brain instead\./);
-    expect(screen.getByTestId("turn-reasoning").textContent).toMatch(/Matched your words to UC1/);
+    onlyReply(screen.getByTestId("turn"));
+    expect(screen.getByTestId("evidence-why").textContent).toMatch(/llama\.cpp brain unavailable: The local model did not answer\. Is llama\.cpp running\? Used the Scripted brain instead\./);
+    expect(screen.getByTestId("evidence-why").textContent).toMatch(/Matched your words to UC1/);
   });
 
   test("model down with Routing = LLM only: it says so and nothing runs", async () => {
@@ -666,5 +683,83 @@ describe("resume after a hand-off", () => {
     await screen.findByTestId("turn-answer");
     await u.click(screen.getByTestId("reset"));
     await waitFor(() => expect(JSON.parse(window.sessionStorage.getItem(`cal.resume.${workspaceId()}`)).turns).toEqual([]));
+  });
+});
+
+describe("a chat turn is the message and one reply (owner, 2026-11-09)", () => {
+  // Hop shapes as server/src/flow.js builds them: the agent-reply hop carries the reply, a tool-refused hop names who refused and why.
+  const base = () => runBody().run.hops;
+  const hopOf = (n, kind, status, body, verdict = "ok") => ({ ...base()[0], n, kind, label: kind, verdict, response: { status, body } });
+  const answer = (over) => (id) => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(runBody(id, over(id))) });
+  const UC6 = { ...HANDOFF_UC, id: "UC6", title: "Transfer over the limit", trigger: { type: "chip", text: "transfer $2500 from checking to savings" }, expectedOutcome: "DENY", needs: ["authz"], route: { route: "Here + go deeper", app: "mock-authorize", basis: "matches lab description" } };
+  const P6 = { uc: "UC6", text: "transfer $2500 from checking to savings", title: UC6.title, track: "controls", expectedOutcome: "DENY", route: "Here + go deeper" };
+
+  test("PERMIT (UC1 show my balance): the reply is the agent's answer from the run, labelled Agent", async () => {
+    const reply = "Here is what I found: mock result of get_account_balance for account data (synthetic).";
+    await boot({ runAnswer: answer(() => ({ hops: [...base(), hopOf(5, "agent-reply", 200, { reply })] })) });
+    const u = userEvent.setup();
+    await u.type(screen.getByTestId("composer-input"), "show my balance{Enter}");
+    const turn = await screen.findByTestId("turn");
+    await within(turn).findByTestId("turn-answer");
+    onlyReply(turn);
+    expect(within(turn).getByTestId("turn-who").textContent).toBe("Agent");
+    expect(within(turn).getByTestId("turn-answer-text").textContent).toBe(reply);
+    expect(within(turn).getByTestId("turn-outcome").textContent).toBe("PERMIT");
+    expect(within(turn).getByTestId("go-deeper")).toBeTruthy();
+    expect(screen.getByTestId("evidence-count").textContent).toMatch(/^UC1 · 5 hops/);
+  });
+
+  test("DENY (UC6 transfer $2500): the reply is Authorize's refusal in plain words, with the run's own reason and amount", async () => {
+    const refusal = { dispatched: false, refused_by: "authorize", outcome: "DENY", reason: "amount 2500 is in the DENY band (lab-invented threshold 2000)" };
+    await boot({ extraUc: [UC6], prompts: [...PROMPTS, P6], runAnswer: answer(() => ({ outcome: "DENY", hops: [...base().slice(0, 3), hopOf(4, "authorize-decision", 403, { decision: "DENY" }, "deny"), hopOf(5, "tool-refused", 403, refusal, "deny")] })) });
+    const u = userEvent.setup();
+    await u.type(screen.getByTestId("composer-input"), "transfer $2500 from checking to savings{Enter}");
+    const turn = await screen.findByTestId("turn");
+    await within(turn).findByTestId("turn-answer");
+    expect(posts("UC6")).toHaveLength(1);
+    onlyReply(turn);
+    expect(within(turn).getByTestId("turn-who").textContent).toBe("Authorize");
+    expect(within(turn).getByTestId("turn-answer-text").textContent).toBe("Authorize refused this request (HTTP 403): amount 2500 is in the DENY band (lab-invented threshold 2000). Nothing was sent to the tool.");
+    expect(within(turn).getByTestId("turn-outcome").textContent).toBe("DENY");
+    expect(screen.getByTestId("agent-status").textContent).toBe("Done");
+    expect(screen.getByTestId("evidence-why").textContent).toMatch(/Matched your words to UC6/);
+  });
+
+  test("a gateway refusal (UC5 wrong scope) is labelled Gateway and says why in plain words", async () => {
+    const refusal = { dispatched: false, refused_by: "gateway", outcome: "DENY_403", reason: "insufficient_scope" };
+    await boot({ runAnswer: answer(() => ({ outcome: "DENY_403", hops: [...base().slice(0, 3), hopOf(4, "tool-refused", 403, refusal, "deny")] })) });
+    const u = userEvent.setup();
+    await u.click(screen.getByTestId("wtt-UC5"));
+    const turn = await screen.findByTestId("turn");
+    await within(turn).findByTestId("turn-answer");
+    onlyReply(turn);
+    expect(within(turn).getByTestId("turn-who").textContent).toBe("Gateway");
+    expect(within(turn).getByTestId("turn-answer-text").textContent).toBe("The gateway refused this request (HTTP 403): the token does not carry the scope this tool needs. Nothing was sent to the tool.");
+    expect(within(turn).getByTestId("turn-outcome").textContent).toBe("DENY_403");
+  });
+
+  test("a step-up turn keeps its approval card (the hold the customer must act on) and its See evidence control, nothing else", async () => {
+    await boot({ runAnswer: answer(() => ({ outcome: "STEP_UP", hops: [...base().slice(0, 3), hopOf(4, "tool-held", 202, { dispatched: false, waiting_for: "STEP_UP" }, "held")] })) });
+    const u = userEvent.setup();
+    await u.click(screen.getByTestId("wtt-UC7"));
+    const turn = await screen.findByTestId("turn");
+    const card = await within(turn).findByTestId("turn-approval");
+    onlyReply(turn);
+    expect(within(turn).getByTestId("turn-who").textContent).toBe("Authorize");
+    expect(card.textContent).toMatch(/^STEP_UP Step-up needed/);
+    expect(within(turn).getAllByRole("button").map((b) => b.textContent)).toEqual(["See evidence →"]);
+  });
+
+  test("a hand-off turn (UC2.6, UC2 runs here since #24) is one line plus the Open button and Preview here", async () => {
+    window.history.replaceState(null, "", "/customer-agent/");
+    await boot();
+    const u = userEvent.setup();
+    await u.type(screen.getByTestId("composer-input"), "simulate an agent identity mismatch{Enter}");
+    const turn = await screen.findByTestId("turn");
+    onlyReply(turn);
+    const reply = within(turn).getByTestId("turn-reply");
+    expect([...reply.querySelectorAll("p")].map((x) => x.textContent)).toEqual(["Agent", "This is handled in a2a-lab, its own app."]);
+    expect(within(turn).getAllByRole("button").map((b) => b.textContent)).toEqual(["Open a2a-lab", "Preview here (mock)"]);
+    expect(screen.getByTestId("handoff-why").textContent).toMatch(/Its home is a2a-lab \(routing table: named in lab entry\)/);
   });
 });

@@ -235,6 +235,14 @@ try {
       check((await t('wtt-away').getByRole('button').count()) >= 1 && wtt.toLowerCase().includes('opens its own app'), `${tag}: What to type has an Opens its own app group`);
 
       await t('wtt-UC1').click(); await t('turn-answer').waitFor(); await sleep(300);
+      // a chat turn is the message and one reply (owner 2026-11-09): no reasoning, token cards or hop pills; those stay in the evidence column
+      const lastTurn = () => page.getByTestId('turn').last();
+      const onlyReply = async () => { const tx = await lastTurn().innerText(); return (await lastTurn().getByRole('button', { name: /^Hop \d/ }).count()) === 0 && !/Reasoning|Tokens used|Step 1|routing table/i.test(tx); };
+      check(await onlyReply() && (await lastTurn().getByTestId('turn-who').innerText()).toUpperCase() === 'AGENT' && (await lastTurn().getByTestId('turn-answer-text').innerText()).startsWith('Here is what I found: mock result of get_account_balance'), `${tag}: UC1 is the message and the agent's answer only`);
+      check((await t('evidence-why').innerText()).includes('Matched your words to UC1') && (await t('evidence-count').innerText()).startsWith('UC1 ·'), `${tag}: the reasoning and the hops are in the evidence column`);
+      await t('wtt-UC6').click(); await page.getByTestId('turn').nth(1).getByTestId('turn-answer').waitFor();
+      check(await onlyReply() && (await lastTurn().getByTestId('turn-who').innerText()).toUpperCase() === 'AUTHORIZE' && (await lastTurn().getByTestId('turn-answer-text').innerText()).startsWith('Authorize refused this request (HTTP 403): amount 2500'), `${tag}: UC6 is Authorize's refusal in plain words`);
+      await t('wtt-UC1').click(); await page.getByTestId('turn').nth(2).getByTestId('turn-answer').waitFor(); await sleep(300);
       const [side, agent, ev] = [await rect('.setup'), await rect('.agentcol'), await rect('.evcol')];
       check(Math.abs(side.t - agent.t) < 2 && Math.abs(agent.t - ev.t) < 2 && side.r <= agent.l && agent.r <= ev.l, `${tag}: sidebar | agent | evidence side by side (lefts ${Math.round(side.l)}, ${Math.round(agent.l)}, ${Math.round(ev.l)})`);
       check(agent.w >= 370 && agent.w <= 480 && ev.w > agent.w, `${tag}: agent column ${Math.round(agent.w)} px (380-470), evidence wider (${Math.round(ev.w)} px)`);
@@ -285,11 +293,12 @@ try {
       await page.keyboard.press('Escape');
       check((await page.getByRole('dialog').count()) === 0, `${tag}: Escape closes the actor card`);
       await t('wtt-UC7').click(); await t('turn-approval').waitFor();
+      check(await onlyReply() && (await lastTurn().getByTestId('turn-who').innerText()).toUpperCase() === 'AUTHORIZE', `${tag}: the step-up hold is labelled Authorize and carries no reasoning or pills`);
       check(await oneRow(), `${tag}: the shell bar is still one row after a second extra page`);
       check((await page.evaluate(() => [...document.querySelectorAll('[data-testid="nav-more"] option')].length)) === 3, `${tag}: both extra pages are in the More menu`);
       if (scheme === 'light') await page.screenshot({ path: path.join(shots, `agent-${width}.png`) });
 
-      // a hand-off chip: the reply shows the reasoning and the card in the conversation, in view, and the status reads Ready to hand off
+      // a hand-off chip: the reply is one line and the card's buttons in the conversation, in view; why it hands off is in the evidence column
       const visibleCard = () => page.evaluate(() => {
         const cards = document.querySelectorAll('[data-testid="turn"] [data-testid="handoff-card"]'); const c = cards[cards.length - 1];
         if (!c) return { ok: false };
@@ -299,7 +308,7 @@ try {
       await t('wtt-away').getByRole('button').first().click(); await sleep(300);
       let v = await visibleCard();
       check(v.ok, `${tag}: a hand-off chip shows the hand-off card in the conversation, in view without scrolling (${v.top}-${v.bottom} in ${v.box})`);
-      check((await page.getByTestId('turn').last().getByTestId('turn-reasoning').innerText()).includes('runs in its own app'), `${tag}: the hand-off reply carries its reasoning`);
+      check(await onlyReply() && (await lastTurn().getByTestId('turn-handoff-say').innerText()).startsWith('This is handled in ') && (await t('handoff-why').innerText()).includes('runs in its own app'), `${tag}: the hand-off reply is one line; its reasoning is in the evidence column`);
       check((await t('agent-status').innerText()) === 'Ready to hand off', `${tag}: the agent status reads Ready to hand off`);
       await t('search').fill('UC2.6'); await t('uc-UC2.6').click(); await t('search').fill(''); await sleep(300);
       v = await visibleCard();
@@ -346,6 +355,20 @@ try {
     const kinds = ['a2a-exchange-1', 'a2a-exchange-2', 'a2a-agent-card', 'a2a-protocol-message'];
     const pageOk = async () => { const x = await text(); return x.includes('Agent to agent') && x.includes('Opened by UC2: A2A delegation') && x.includes('agent-card, delegation and trust hops') && x.includes('PERMIT') && x.includes('Hops for this page (4)') && kinds.every((k) => x.includes(`(${k})`)) && !x.includes('(gateway-check)') && !x.includes('(tool-dispatched)'); };
     check((await page.evaluate(() => window.location.hash)) === '#page-a2a' && (await pageOk()), `${tag}: the page shows its label, what it is, the outcome and only UC2's four delegation hops`);
+    // the More menu shows the selected page's whole label (it was cut to "Agent to a"), and the shell bar still fits at 1280 and 375 px
+    const moreLabel = () => page.evaluate(() => {
+      const sel = document.querySelector('[data-testid="nav-more"]'); const cs = getComputedStyle(sel);
+      const c = document.createElement('canvas').getContext('2d'); c.font = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+      const need = c.measureText(sel.selectedOptions[0].textContent).width + parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight) + 16; // + the arrow
+      const bar = document.querySelector('.shell-bar').getBoundingClientRect();
+      return { label: sel.selectedOptions[0].textContent, need: Math.ceil(need), have: Math.floor(sel.getBoundingClientRect().width), inBar: sel.getBoundingClientRect().right <= bar.right + 1, noSideScroll: document.documentElement.scrollWidth <= document.documentElement.clientWidth };
+    });
+    for (const w of [1280, 375]) {
+      await page.setViewportSize({ width: w, height: 900 }); await page.waitForTimeout(150);
+      const m = await moreLabel();
+      check(m.label === 'Agent to agent' && m.have >= m.need && m.inBar && m.noSideScroll, `${tag}: at ${w} px the More menu shows "${m.label}" whole (${m.have} px for ${m.need}) inside the shell bar, no sideways scroll`);
+    }
+    await page.setViewportSize({ width: 1280, height: 900 });
     await t('nav-agent').click(); await t('agent-column').waitFor();
     await page.goto(`${base}/#page-a2a`); await a2a.waitFor();
     check(await pageOk(), `${tag}: opening ${base}/#page-a2a after the run shows the page`);

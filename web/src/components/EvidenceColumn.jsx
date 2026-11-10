@@ -8,6 +8,19 @@ import { DIAGRAMS, VIEWS, VIEW_LABEL } from "../quickConfig";
 import { appsOf, handoffCarry, routeOf } from "../handoff";
 import { Tag } from "./Bits";
 import { notRunText, ranCount } from "../lib";
+import { HANDOFF_WHY } from "../chat";
+import { visible } from "../safeText";
+
+// Why this run went the way it did: how the use case was chosen, then what the run did (chat.js reasoningOf). The chat shows only the reply.
+function Why({ steps, testId }) {
+  if (!steps?.length) return null;
+  return (
+    <div className="evwhy" data-testid={testId}>
+      <p className="kicker">Why</p>
+      <ol className="steps">{steps.map((s, i) => <li key={i}><span className="steps__n">Step {i + 1}</span> {visible(s)}</li>)}</ol>
+    </div>
+  );
+}
 
 // The hand-off summary the evidence column shows while a Hand off use case is selected and has not been previewed.
 export function HandoffSummary({ uc, catalog, vertical, userId }) {
@@ -17,6 +30,7 @@ export function HandoffSummary({ uc, catalog, vertical, userId }) {
   const same = all.filter((u) => routeOf(u).route === "Hand off" && appsOf(routeOf(u)).some((a) => mine.includes(a)));
   return (
     <section className="evsum" aria-label="Hand-off" data-testid="handoff-summary">
+      <Why steps={HANDOFF_WHY(uc)} testId="handoff-why" />
       <ul className="card-grid evsum__cards">
         <li className="card card--ok"><h3>Runs here · {n((r) => r === "Here" || r === "Here + go deeper")}</h3><p className="muted">One agent; the mock engine decides.</p></li>
         <li className="card"><h3>Hands off · {n((r) => r === "Hand off")}</h3><p className="muted">Opens its own standalone app, same tab.</p></li>
@@ -36,12 +50,12 @@ export function HandoffSummary({ uc, catalog, vertical, userId }) {
       </div>
       <p className="kicker">Everything this lab hands to {mine.map((a, i) => <Fragment key={a}>{i ? " or " : ""}<code>{a}</code></Fragment>)}</p>
       <ul className="evsum__list">{same.map((u) => <li key={u.id} data-current={u.id === uc.id ? "true" : undefined}><span className="mono">{u.id}</span> {u.title}</li>)}</ul>
-      <p className="muted">This app does not check whether the other one is running (no outbound calls). If it does not load, start it from the Shelf.</p>
+      <p className="muted">Open goes in this tab; this chat is kept. This app does not check whether the other one is running (no outbound calls). If it does not load, start it from the Shelf.</p>
     </section>
   );
 }
 
-export default function EvidenceColumn({ run, selHop, onSelect, config, onTab, onFull, vertical, resetSignal, lastRun, uc, catalog, userId, showHandoff }) {
+export default function EvidenceColumn({ run, selHop, onSelect, config, onTab, onFull, vertical, resetSignal, lastRun, uc, catalog, userId, showHandoff, why }) {
   const hops = run?.hops || [];
   const tabs = VIEWS.filter((v) => DIAGRAMS.includes(v) || config.views.tokens === "embedded");
   const tab = tabs.includes(config.tab) && (config.tab === "tokens" || config.views[config.tab] === "embedded") ? config.tab : null;
@@ -55,6 +69,7 @@ export default function EvidenceColumn({ run, selHop, onSelect, config, onTab, o
       </header>
       {showHandoff ? <HandoffSummary uc={uc} catalog={catalog} vertical={vertical} userId={userId} /> : (
         <>
+          {run && <Why steps={why} testId="evidence-why" />}
           {/* A segmented control, not a second tablist: the page's tabpanel is the agent area itself. Pressed = the view on show. */}
           <div className="evtabs seg" role="group" aria-label="Evidence view" data-testid="evidence-tabs">
             {tabs.map((v) => (

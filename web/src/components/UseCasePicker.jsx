@@ -6,9 +6,9 @@ import { Tag } from "./Bits";
 // The route tag on a row: the catalog outcome for a use case that runs here, "Opens <app>" for a hand-off, "Guide" for a guide. Always a word.
 export function RouteTag({ u }) {
   const r = routeOf(u);
-  if (r.route === "Hand off") return <Tag state="info" testId="route-tag" title={`Hands off to ${appsText(r)}, ${r.also ? "separate standalone apps" : "a separate standalone app"}`}>Opens {appsText(r)}</Tag>;
+  if (r.route === "Hand off") return <Tag state="info" testId="route-tag" title={`Hands off to ${appsText(r)}, ${r.also ? "separate standalone apps" : "a separate standalone app"}${r.basis ? ` (routing table: ${r.basis})` : ""}`}>Opens {appsText(r)}</Tag>;
   if (r.route === "Guide") return <Tag state="info" testId="route-tag" title="A learning page or script: no lab yet">Guide</Tag>;
-  return <Tag state={outcomeState(u.expectedOutcome)} testId="route-tag" title={r.route === "Here + go deeper" ? `Runs here; go deeper in ${r.app}` : "Runs here"}>{u.expectedOutcome}{r.route === "Here + go deeper" ? " +" : ""}</Tag>;
+  return <Tag state={outcomeState(u.expectedOutcome)} testId="route-tag" title={r.route === "Here + go deeper" ? `Runs here; go deeper in ${r.app}${r.basis ? ` (routing table: ${r.basis})` : ""}` : "Runs here"}>{u.expectedOutcome}{r.route === "Here + go deeper" ? " +" : ""}</Tag>;
 }
 
 // The use case list, grouped by the eight tracks, searchable. Each row shows what the use case needs (badges) and its flag.
