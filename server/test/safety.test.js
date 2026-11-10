@@ -66,7 +66,7 @@ test('IDP is chosen per mode: unset allows both the mock sign-in and Real; mock 
 
 test('the not-configured how-to names the missing settings (never a value) and where to fill them', () => {
   assert.match(notConfiguredText(['PINGONE_ENVIRONMENT_ID', 'PINGONE_CLIENT_SECRET']), /^Real is not configured: fill PINGONE_ENVIRONMENT_ID, PINGONE_CLIENT_SECRET in this app's \.env/);
-  assert.match(notConfiguredText(), /valid PINGONE_\* values/);
+  assert.match(notConfiguredText(), /fill the full-Real settings/); assert.match(notConfiguredText([], 'the app .env has no valid CAL_GATEWAY_SCOPE'), /no valid CAL_GATEWAY_SCOPE; fix it/);
 });
 
 test('only .example and .invalid hosts pass the host scan; fake keys must be sk-MOCK-', () => {

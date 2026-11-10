@@ -166,4 +166,4 @@ export function liveRefusal({ env, bind, headers }) {
 }
 
 // The how-to the Real button shows (and the 409 says) when the guards hold but the PingOne settings are missing. Names only, never a value.
-export const notConfiguredText = (missing = []) => `Real is not configured: fill ${missing.length ? missing.join(', ') : 'valid PINGONE_* values'} in this app's .env beside docker-compose.yml (copy .env.example; PINGONE_REGION is com, eu, ca or asia), then start the lab again (Docker: docker compose up -d).`;
+export const notConfiguredText = (missing = [], problem = null) => `Real is not configured: ${missing.length ? `fill ${missing.join(', ')}` : problem ? `${problem}; fix it` : 'fill the full-Real settings'} in this app's .env beside docker-compose.yml (copy .env.example; PINGONE_REGION is com, eu, ca or asia), then start the lab again (Docker: docker compose up -d).`;

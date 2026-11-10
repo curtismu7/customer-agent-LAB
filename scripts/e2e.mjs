@@ -13,7 +13,10 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
-import { CLIENT_ID, CLIENT_SECRET, FAKE_TOKEN, settingsFor, startFakePingOne } from '../server/test/fakePingone.js';
+import { AGENT_CLIENT_SECRET, CLIENT_ID, CLIENT_SECRET, DEMO_PASSWORD, DEMO_USERNAME, FAKE_TOKEN, USER_CLIENT_SECRET, fullSettingsFor, settingsFor, startFakePingOne } from '../server/test/fakePingone.js';
+import { TRUSTED_HEADERS } from '../server/src/mcpClient.js';
+import { REAL_KEYS } from '../server/src/settings.js';
+import { startFakeGateway } from '../server/test/fakeGateway.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const shots = process.env.E2E_SHOTS || path.join(root, '.data', 'e2e-screenshots');
@@ -22,7 +25,7 @@ let failures = 0; let checks = 0;
 const check = (ok, what) => { checks += 1; console.log(`${ok ? 'PASS' : 'FAIL'}  ${what}`); if (!ok) failures += 1; };
 
 const port = Number(process.env.E2E_PORT) || 5690;
-if (port < 5603 || port > 5697) { console.error('E2E_PORT must be inside 5603-5697 (the live and hosted instances take the next two ports)'); process.exit(2); }
+if (port < 5603 || port > 5696) { console.error('E2E_PORT must be inside 5603-5696 (the live, hosted and full-Real instances take the next three ports)'); process.exit(2); }
 const base = `http://127.0.0.1:${port}`;
 if (!fs.existsSync(path.join(root, 'web', 'dist', 'index.html'))) { console.error('Run `npm run build` first.'); process.exit(2); }
 // The Mock instance has no PingOne settings (an empty settings file, like a fresh clone or CI with no .env) and no IDP pin, so Real is disabled by
@@ -31,7 +34,7 @@ const noEnvDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cal-e2e-none-'));
 const noEnvFile = path.join(noEnvDir, '.env');
 fs.writeFileSync(noEnvFile, '', { mode: 0o600 });
 const env = { ...process.env, PORT: String(port), ALLOW_MOCK_SIGNIN: '1', CAL_ENV_FILE: noEnvFile };
-for (const k of ['CALAB_BIND', 'CAL_ALLOW_LIVE', 'CAL_LAB_MODE', 'IDP', 'CAL_LIVE_FROM_ENV', 'CAL_LIVE_TEST_BASE', 'PINGONE_ENVIRONMENT_ID', 'PINGONE_REGION', 'PINGONE_CLIENT_ID', 'PINGONE_CLIENT_SECRET']) delete env[k];
+for (const k of ['CALAB_BIND', 'CAL_ALLOW_LIVE', 'CAL_LAB_MODE', 'IDP', 'CAL_LIVE_FROM_ENV', 'CAL_LIVE_TEST_BASE', ...REAL_KEYS]) delete env[k];
 const server = spawn(process.execPath, ['server/src/index.js'], { cwd: root, env, stdio: 'inherit' });
 let up = false;
 for (let i = 0; i < 160 && !up; i++) { try { up = (await fetch(`${base}/api/health`)).ok; } catch { await sleep(250); } }
@@ -75,6 +78,21 @@ const hostedServer = spawn(process.execPath, ['server/src/index.js'], { cwd: roo
 let hostedUp = false;
 for (let i = 0; i < 160 && !hostedUp; i++) { try { hostedUp = (await fetch(`${hostedBase}/api/health`)).ok; } catch { await sleep(250); } }
 if (!hostedUp) { server.kill(); liveServer.kill(); hostedServer.kill(); console.error('hosted server did not start'); process.exit(2); }
+
+// Full Real (owner, 2026-11-10): a fourth instance with the full-Real settings (fake values), the fake PingOne (pi.flow, flows API, code, client
+// credentials, token exchange with act) and the fake Agent Gateway (MCP). Still no real tenant and no SE: both fakes are on loopback.
+const fullPort = port + 3;
+const fullBase = `http://127.0.0.1:${fullPort}`;
+const fullP1 = await startFakePingOne();
+const fullGw = await startFakeGateway({ isDelegated: (tok) => fullP1.issued.delegated.has(tok) });
+const fullFile = path.join(settingsDir, 'full.env');
+fs.writeFileSync(fullFile, `${Object.entries({ ...settingsFor(), ...fullSettingsFor(fullGw.url) }).map(([k, v]) => `${k}=${v}`).join('\n')}\n`, { mode: 0o600 });
+const fullEnv = { ...process.env, PORT: String(fullPort), ALLOW_MOCK_SIGNIN: '1', CAL_ENV_FILE: fullFile, CAL_LIVE_TEST_BASE: fullP1.base };
+for (const k of ['CALAB_BIND', 'CAL_LAB_MODE', 'IDP', 'CAL_ALLOW_LIVE', 'CAL_LIVE_FROM_ENV']) delete fullEnv[k];
+const fullServer = spawn(process.execPath, ['server/src/index.js'], { cwd: root, env: fullEnv, stdio: 'inherit' });
+let fullUp = false;
+for (let i = 0; i < 160 && !fullUp; i++) { try { fullUp = (await fetch(`${fullBase}/api/health`)).ok; } catch { await sleep(250); } }
+if (!fullUp) { server.kill(); liveServer.kill(); hostedServer.kill(); fullServer.kill(); console.error('full-Real server did not start'); process.exit(2); }
 
 const healthOf = async (b) => (await (await fetch(`${b}/api/health`)).json()).runtime;
 check((await healthOf(liveBase)) === 'live' && (await healthOf(base)) === 'offline', 'health: the live instance reports runtime live, the mock one offline');
@@ -159,7 +177,7 @@ try {
       check((await t('refusal').getAttribute('data-code')) === 'vertical_stub' && (await t('refusal').innerText()).includes('Not built'), `${tag}: a stub vertical shows the honest not built state (HTTP 501)`);
       await t('vertical').selectOption('banking');
       await page.waitForFunction(() => document.querySelector('[data-testid="mode-live"]').disabled === true);
-      check(/^Real is not configured: fill PINGONE_ENVIRONMENT_ID, PINGONE_CLIENT_ID, PINGONE_CLIENT_SECRET in this app's \.env/.test(await t('mode-live').getAttribute('title')) && (await t('mode-live').getAttribute('aria-disabled')) === 'true' && (await t('mode').innerText()).includes('mock'), `${tag}: with no .env Real is disabled, its tooltip says what to fill in, and the page stays Mock`);
+      check(/^Real is not configured: fill PINGONE_ENVIRONMENT_ID, CAL_USER_CLIENT_ID, CAL_USER_CLIENT_SECRET, CAL_AGENT_CLIENT_ID, CAL_AGENT_CLIENT_SECRET, CAL_DEMO_USERNAME, CAL_AGENT_GATEWAY_URL, CAL_GATEWAY_AUDIENCE, CAL_GATEWAY_SCOPE in this app's \.env/.test(await t('mode-live').getAttribute('title')) && (await t('mode-live').getAttribute('aria-disabled')) === 'true' && (await t('mode').innerText()).includes('mock'), `${tag}: with no .env Real is disabled, its tooltip says what to fill in, and the page stays Mock`);
       check((await overflow()) <= 0, `${tag}: the agent page does not scroll sideways (${await overflow()} px)`);
       if (tag === 'desktop-light') await page.screenshot({ path: path.join(shots, 'run.png'), fullPage: true });
 
@@ -404,16 +422,16 @@ try {
       const overflow = () => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
       await page.goto(`${liveBase}/`);
       await t('uc-UC1').waitFor();
-      check((await t('mode-live').getAttribute('title')).includes('two real calls'), `${tag}: Live is allowed (the title says what a live run does)`);
+      check((await t('mode-live').getAttribute('title')).includes('identity provider only: two real calls'), `${tag}: Live is allowed (the title says what a live run does: identity provider only)`);
       await t('mode-live').click(); await page.waitForFunction(() => document.querySelector('[data-testid="mode"]').textContent.includes('Mode: live'));
-      await page.waitForFunction(() => document.querySelector('[data-testid="banner"]').textContent.startsWith('LIVE mode'));
+      await page.waitForFunction(() => document.querySelector('[data-testid="banner"]').textContent.startsWith('REAL mode'));
       check((await t('banner').getAttribute('data-state')) === 'live' && (await t('mode').innerText()).includes('identity provider only'), `${tag}: the banner and the chip say LIVE, identity provider only`);
       check((await t('mode-msg').innerText()).includes('two real calls'), `${tag}: selecting Live says what a run does`);
       await t('search').fill('UC7'); await page.locator('[data-testid="uc-UC7"]').click(); await t('search').fill('');
       check(await t('live-persona-note').isVisible() && (await t('persona').count()) === 0 && (await t('lab-inputs').count()) === 0, `${tag}: the persona and the lab inputs are hidden in live and the note says why`);
       await t('run').click(); await t('result').waitFor();
       check((await t('outcome').innerText()) === 'LIVE_OK' && (await t('live-note-tag').innerText()) === 'live, identity provider only' && (await t('matches').count()) === 0, `${tag}: UC7 live is LIVE_OK, labelled identity provider only, with no engine-match claim`);
-      check((await t('hop').count()) === 2 && (await t('hops').getByTestId('live-tag').count()) === 2 && (await t('hops').getByTestId('mock-tag').count()) === 0, `${tag}: two hops, both LIVE, none MOCK`);
+      check((await t('hop').count()) === 2 && (await t('hops').getByTestId('real-tag').count()) === 2 && (await t('hops').getByTestId('mock-tag').count()) === 0 && (await t('hops').innerText()).includes('identity provider only [REAL]'), `${tag}: two hops, both REAL (identity provider only), none MOCK`);
       check((await t('token-raw').innerText()) === `${FAKE_TOKEN.slice(0, 6)}...${FAKE_TOKEN.slice(-4)}` && (await t('token-claims').innerText()).includes(CLIENT_ID), `${tag}: the token is masked (first 6, last 4) and its claims are decoded`);
       const not = await t('not-run').innerText();
       check(not.includes('Not run in live mode') && not.includes('authorize-decision') && not.includes('identity provider only') && (await t('not-run').getByRole("listitem").count()) >= 1, `${tag}: the steps that were not run are listed`);
@@ -443,6 +461,67 @@ try {
       check(errors.every((e) => /status of (403|409)/.test(e)), `${tag}: no unexpected console error (${errors.filter((e) => !/status of (403|409)/.test(e)).slice(0, 2).join(' | ')})`);
       await ctx.close();
     }
+  }
+
+  // ---- Full Real against the fakes: sign in through the modal (pi.flow), run a Real use case, see REAL hops and the reply, a DENY, then Mock ----
+  for (const [width, height, name, scheme] of [[1280, 900, 'desktop', 'light'], [375, 800, 'phone', 'dark']]) {
+    const tag = `full-${name}-${scheme}`;
+    fullGw.seen.length = 0; fullGw.state.behaviour = 'ok';
+    const ctx = await browser.newContext({ viewport: { width, height }, colorScheme: scheme });
+    const page = await ctx.newPage();
+    const external = []; const errors = []; const navs = [];
+    page.on('request', (r) => { if (!r.url().startsWith(fullBase) && !/^(data|blob):/.test(r.url())) external.push(r.url()); });
+    page.on('framenavigated', (f) => { if (f === page.mainFrame()) navs.push(f.url()); });
+    page.on('pageerror', (e) => errors.push(e.message));
+    page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+    const t = (id) => page.getByTestId(id);
+    const overflow = () => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    await page.goto(`${fullBase}/`);
+    await t('uc-UC1').waitFor();
+    check((await t('mode-live').getAttribute('title')).includes('sign-in (pi.flow), agent token, token exchange and the Agent Gateway'), `${tag}: Real is available and its title says what a run does`);
+    await t('mode-live').click(); await page.waitForFunction(() => document.querySelector('[data-testid="mode"]').textContent.includes('real: sign-in, token exchange, Agent Gateway'));
+    check(await t('signin-open').isVisible(), `${tag}: Real shows the Sign in button`);
+    await t('search').fill('UC1'); await page.locator('[data-testid="uc-UC1"]').click(); await t('search').fill('');
+    await t('run').click();
+    await t('signin-dialog').waitFor();
+    check((await t('signin-username').inputValue()) === DEMO_USERNAME && (await t('signin-username').getAttribute('readonly')) !== null, `${tag}: a Real run before sign-in opens the Sign in modal with the username filled in, read-only`);
+    check((await t('signin-password').getAttribute('type')) === 'password' && (await t('signin-dialog').getAttribute('role')) === 'dialog', `${tag}: the modal is a dialog with a password field`);
+    if (tag === 'full-desktop-light' || tag === 'full-phone-dark') await page.screenshot({ path: path.join(shots, `${tag}-signin.png`), fullPage: false });
+    await t('signin-password').fill(DEMO_PASSWORD);
+    await t('signin-submit').click();
+    await page.waitForFunction(() => document.querySelector('[data-testid="outcome"]')?.textContent === 'REAL_PERMIT', null, { timeout: 20000 });
+    check((await t('signin-dialog').count()) === 0 && (await t('signed-in-user').innerText()).includes(DEMO_USERNAME), `${tag}: signed in, the modal closed and the header names the user`);
+    const authz = fullP1.seen.filter((x) => x.url.includes('/as/authorize'));
+    check(authz.length >= 1 && authz.every((x) => new URL(x.url, 'http://x').searchParams.get('response_mode') === 'pi.flow' && new URL(x.url, 'http://x').searchParams.get('code_challenge_method') === 'S256'), `${tag}: the sign-in was pi.flow with PKCE S256`);
+    check(navs.length === 1 && navs[0].startsWith(fullBase), `${tag}: the page never navigated (no redirect login): ${navs.join(' | ')}`);
+    const srcs = await t('hop-source').evaluateAll((els) => els.map((e) => e.getAttribute('data-source')));
+    check(srcs.length === 8 && srcs.every((x) => x === 'real'), `${tag}: Where each hop ran lists eight hops, every one REAL (${srcs.join(',')})`);
+    check((await t('hops').getByTestId('real-tag').count()) === 8 && (await t('hops').getByTestId('mock-tag').count()) === 0, `${tag}: the hop list tags all eight REAL, none MOCK`);
+    check((await t('turn-answer-text').last().innerText()).includes('balance 1200.5') && (await t('turn-who').last().textContent()) === 'Agent', `${tag}: the reply is the real tool result, in the Agent's voice`);
+    check(fullGw.seen.map((c) => c.rpc.method).join(',') === 'initialize,notifications/initialized,tools/list,tools/call,tools/call', `${tag}: the gateway saw initialize, tools/list and tools/call`);
+    check(fullGw.seen.every((c) => TRUSTED_HEADERS.every((h) => c.headers[h] === undefined) && c.headers['x-token-validation'] === 'jwks'), `${tag}: no trusted-caller header reached the gateway`);
+    await t('hops-toggle').click();
+    const body = await page.locator('body').innerText();
+    check(![DEMO_PASSWORD, USER_CLIENT_SECRET, AGENT_CLIENT_SECRET, CLIENT_SECRET].some((x) => body.includes(x)) && !(await page.content()).includes(DEMO_PASSWORD), `${tag}: the page holds no password and no client secret`);
+    check((await overflow()) <= 0, `${tag}: the Real result does not scroll sideways (${await overflow()} px)`);
+    await page.screenshot({ path: path.join(shots, `${tag}.png`), fullPage: true });
+    fullGw.state.behaviour = 'deny';
+    await t('run').click();
+    await page.waitForFunction(() => document.querySelector('[data-testid="outcome"]')?.textContent === 'REAL_DENY', null, { timeout: 20000 });
+    check((await t('turn-who').last().textContent()) === 'Authorize' && (await t('turn-answer-text').last().innerText()).startsWith('Authorize denied this request (HTTP 403'), `${tag}: a 403 from the gateway is the Authorize DENY reply`);
+    fullGw.state.behaviour = 'down';
+    await t('run').click();
+    await page.waitForFunction(() => document.querySelector('[data-testid="outcome"]')?.textContent === 'REAL_UNREACHABLE', null, { timeout: 20000 });
+    check((await t('turn-answer-text').last().innerText()).includes('SE is down or scaled down'), `${tag}: a 503 says SE is down or scaled down; switch to Mock`);
+    const seen = fullGw.seen.length;
+    await t('mode-mock').click(); await page.waitForFunction(() => document.querySelector('[data-testid="mode"]').textContent.includes('Mode: mock'));
+    await t('run').click();
+    await page.waitForFunction(() => { const o = document.querySelector('[data-testid="outcome"]'); return o && !o.textContent.startsWith('REAL_'); });
+    const msrc = await t('hop-source').evaluateAll((els) => els.map((e) => e.getAttribute('data-source')));
+    check(fullGw.seen.length === seen && msrc.length > 0 && msrc.every((x) => x === 'mock' || x === 'not-run'), `${tag}: back in Mock without a restart: no gateway call and every hop MOCK`);
+    check(external.length === 0, `${tag}: the browser made no request to another origin (${external.length})`);
+    check(errors.every((e) => /status of (401|403|409)/.test(e)), `${tag}: no unexpected console error (${errors.filter((e) => !/status of (401|403|409)/.test(e)).slice(0, 2).join(' | ')})`);
+    await ctx.close();
   }
 
   // ---- The hosted build: Real is disabled with a note (a click or Enter makes no /api/mode request, no error, the page stays Mock) ----------
@@ -483,6 +562,6 @@ try {
       await ctx.close();
     }
   }
-} finally { if (browser) await browser.close(); server.kill(); liveServer.kill(); hostedServer.kill(); await fake.close(); fs.rmSync(settingsDir, { recursive: true, force: true }); fs.rmSync(noEnvDir, { recursive: true, force: true }); }
+} finally { if (browser) await browser.close(); server.kill(); liveServer.kill(); hostedServer.kill(); fullServer.kill(); await fake.close(); await fullP1.close(); await fullGw.close(); fs.rmSync(settingsDir, { recursive: true, force: true }); fs.rmSync(noEnvDir, { recursive: true, force: true }); }
 console.log(`\n${checks - failures} of ${checks} checks passed`);
 process.exit(failures ? 1 : 0);

@@ -6,7 +6,7 @@ import DiagramView from "./DiagramView";
 import TokenView from "./TokenView";
 import { DIAGRAMS, VIEWS, VIEW_LABEL } from "../quickConfig";
 import { appsOf, handoffCarry, routeOf } from "../handoff";
-import { Tag } from "./Bits";
+import { SourceTag, Tag } from "./Bits";
 import { notRunText, ranCount } from "../lib";
 import { HANDOFF_WHY } from "../chat";
 import { visible } from "../safeText";
@@ -56,6 +56,27 @@ export function HandoffSummary({ uc, catalog, vertical, userId }) {
   );
 }
 
+// Where each hop of this run ran: REAL (a real server), MOCK (this lab's engine) or NOT RUN, one tag per hop (rule 19: never mixed within a hop).
+export function HopSources({ run }) {
+  const hops = run?.hops || [];
+  if (!hops.length) return null;
+  const real = run.kind === "real" || run.kind === "live";
+  return (
+    <div className="evwhy" data-testid="hop-sources">
+      <p className="kicker">Where each hop ran</p>
+      {run.realGate && run.realGate.real === false && <p className="muted" data-testid="hop-sources-why">Real mode, but this use case runs Mock: {visible(run.realGate.reason)}.</p>}
+      {run.kind === "live" && <p className="muted">Real, identity provider only: two calls with the old worker client, nothing past the identity provider.</p>}
+      <ol className="steps">
+        {hops.map((h) => (
+          <li key={`${h.n}-${h.kind}`} data-testid="hop-source" data-source={h.source || (h.mock ? "mock" : real ? "real" : "mock")}>
+            <span className="steps__n">{h.n}</span> {visible(h.title || h.kind)} <SourceTag source={h.source || (h.mock ? "mock" : real ? "real" : "mock")} />
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+}
+
 // `children`: the selected use case's panel (inputs, persona, Run and the raw result), at the bottom of the column (owner, 2026-11-09).
 export default function EvidenceColumn({ run, selHop, onSelect, config, onTab, onFull, vertical, resetSignal, lastRun, uc, catalog, userId, showHandoff, why, children }) {
   const hops = run?.hops || [];
@@ -65,7 +86,7 @@ export default function EvidenceColumn({ run, selHop, onSelect, config, onTab, o
     <section className="evcol" aria-label="Evidence" data-testid="evidence-column">
       <header className="evcol__head">
         <h2 className="evcol__title">Evidence</h2>
-        <span className="muted" data-testid="evidence-count">{run ? `${run.useCase?.id} · ${ranCount(hops)} hops${notRunText(hops)}${run.mode === "mock" ? " · MOCK engine" : run.mode === "live" ? " · LIVE" : ""}` : "nothing run yet"}</span>
+        <span className="muted" data-testid="evidence-count">{run ? `${run.useCase?.id} · ${ranCount(hops)} hops${notRunText(hops)}${run.kind === "real" ? " · REAL" : run.mode === "mock" ? " · MOCK engine" : run.mode === "live" ? " · LIVE, identity provider only" : ""}` : "nothing run yet"}</span>
         <span className="spacer" />
         <button type="button" onClick={() => onFull("sequence")} data-testid="full-sequence" title="The sequence view on a page of its own">Full page</button>
       </header>
@@ -74,6 +95,7 @@ export default function EvidenceColumn({ run, selHop, onSelect, config, onTab, o
           {/* A Here + go deeper use case: the lab that covers this run in depth (moved out of the chat, owner 2026-11-09). */}
           {run && uc && run.useCase?.id === uc.id && <GoDeeper uc={uc} vertical={vertical} userId={userId} />}
           {run && <Why steps={why} testId="evidence-why" />}
+          {run && <HopSources run={run} />}
           {/* A segmented control, not a second tablist: the page's tabpanel is the agent area itself. Pressed = the view on show. */}
           <div className="evtabs seg" role="group" aria-label="Evidence view" data-testid="evidence-tabs">
             {tabs.map((v) => (
@@ -89,7 +111,7 @@ export default function EvidenceColumn({ run, selHop, onSelect, config, onTab, o
             {tab === "topology" && <DiagramView vertical={vertical} resetSignal={resetSignal} lastRun={lastRun} />}
             {tab === "tokens" && (
               <div data-testid="evidence-tokens">
-                <p className="muted">The tokens this run used, raw and decoded. {run?.mode === "live" ? "A live token is masked: the server never sends its raw value." : <>Every one is a MOCK token <Tag state="info">MOCK</Tag> issued by this lab and signed with a public mock key; showing it raw is the point (education).</>}</p>
+                <p className="muted">The tokens this run used, raw and decoded. {run?.kind === "real" ? <>Every one is a REAL token <Tag state="ok">REAL</Tag> from your PingOne environment, shown raw for teaching; they expire in minutes. Client secrets and your password are never sent to this page.</> : run?.mode === "live" ? "A live token is masked: the server never sends its raw value." : <>Every one is a MOCK token <Tag state="info">MOCK</Tag> issued by this lab and signed with a public mock key; showing it raw is the point (education).</>}</p>
                 {run ? <TokenView tokens={run.tokens} /> : <p className="muted">Run a use case to see its tokens.</p>}
               </div>
             )}

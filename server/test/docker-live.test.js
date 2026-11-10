@@ -7,8 +7,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { LIVE_KEYS, liveSettingsFor, takeLiveSettingsFromEnv } from '../src/settings.js';
-import { settingsFor } from './fakePingone.js';
+import { LIVE_KEYS, REAL_KEYS, liveSettingsFor, takeLiveSettingsFromEnv } from '../src/settings.js';
+import { fullSettingsFor, settingsFor } from './fakePingone.js';
 
 const entry = fileURLToPath(new URL('../src/index.js', import.meta.url));
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cal-docker-'));
@@ -19,7 +19,7 @@ test.after(() => fs.rmSync(dir, { recursive: true, force: true }));
 // Starts the lab like the container does (no settings file: CAL_ENV_FILE is an empty one), waits for it, returns its first log line and /api/info.
 async function boot(port, extra) {
   const env = { ...process.env, PORT: String(port), CAL_ENV_FILE: empty, ALLOW_MOCK_SIGNIN: '1', ...extra };
-  for (const k of ['CALAB_BIND', 'CAL_LAB_MODE', 'IDP', 'CAL_ALLOW_LIVE', 'CAL_LIVE_TEST_BASE', 'CAL_DEPLOY_MODE', ...LIVE_KEYS]) if (!(k in extra)) delete env[k];
+  for (const k of ['CALAB_BIND', 'CAL_LAB_MODE', 'IDP', 'CAL_ALLOW_LIVE', 'CAL_LIVE_TEST_BASE', 'CAL_DEPLOY_MODE', ...REAL_KEYS]) if (!(k in extra)) delete env[k];
   const child = spawn(process.execPath, [entry], { env, stdio: ['ignore', 'pipe', 'ignore'] });
   let out = ''; child.stdout.on('data', (c) => { out += c; });
   try {
@@ -49,15 +49,32 @@ test('Docker with the PingOne settings: Real is available, Mock sign-in too, and
   const r = await boot(5680, { CAL_LIVE_FROM_ENV: '1', CAL_PUBLISH: 'loopback', ...settingsFor() });
   assert.equal(r.info.realAvailable, true); assert.equal(r.info.guards.live, 'allowed'); assert.equal(r.info.guards.mockSignIn, 'allowed');
   assert.equal(r.mode.liveReason, null);
-  assert.match(r.log, /live is on: outbound only to https:\/\/auth\.pingone\.com\)/, 'the one host the netguard allows');
+  assert.match(r.log, /Real \(identity provider only\) is on: outbound only to https:\/\/auth\.pingone\.com\)/, 'the one host the netguard allows');
+  assert.equal(r.info.real.level, 'idp-only', 'no CAL_* settings: the old two-call path, labelled identity provider only');
   assert.doesNotMatch(r.log, new RegExp(settingsFor().PINGONE_ENVIRONMENT_ID), 'the log names the host, never the environment id');
 });
 
 test('Docker with no .env (compose passes empty values): Mock only, Real disabled with the how-to, and the netguard allows nothing', async () => {
-  const blank = Object.fromEntries(LIVE_KEYS.map((k) => [k, '']));
+  const blank = Object.fromEntries(REAL_KEYS.map((k) => [k, '']));
   const r = await boot(5681, { CAL_LIVE_FROM_ENV: '1', CAL_PUBLISH: 'loopback', CAL_ALLOW_LIVE: '', ...blank });
   assert.equal(r.info.realAvailable, false); assert.equal(r.info.guards.mockSignIn, 'allowed');
-  assert.match(r.mode.liveReason, /^Real is not configured: fill PINGONE_ENVIRONMENT_ID, PINGONE_CLIENT_ID, PINGONE_CLIENT_SECRET in this app's \.env/);
+  assert.match(r.mode.liveReason, /^Real is not configured: fill PINGONE_ENVIRONMENT_ID, CAL_USER_CLIENT_ID, CAL_USER_CLIENT_SECRET, CAL_AGENT_CLIENT_ID, CAL_AGENT_CLIENT_SECRET, CAL_DEMO_USERNAME, CAL_AGENT_GATEWAY_URL, CAL_GATEWAY_AUDIENCE, CAL_GATEWAY_SCOPE in this app's \.env/);
+  assert.deepEqual(r.info.real.missing, ['PINGONE_ENVIRONMENT_ID', 'CAL_USER_CLIENT_ID', 'CAL_USER_CLIENT_SECRET', 'CAL_AGENT_CLIENT_ID', 'CAL_AGENT_CLIENT_SECRET', 'CAL_DEMO_USERNAME', 'CAL_AGENT_GATEWAY_URL', 'CAL_GATEWAY_AUDIENCE', 'CAL_GATEWAY_SCOPE']);
+  assert.match(r.log, /no outbound network/);
+});
+
+test('Docker with the full-Real settings (and the old worker client too): full Real, the netguard allows the PingOne and gateway hosts only, the worker client ignored', async () => {
+  const r = await boot(5685, { CAL_LIVE_FROM_ENV: '1', CAL_PUBLISH: 'loopback', ...settingsFor(), ...fullSettingsFor('https://gw.lab-test.net/mcp') });
+  assert.equal(r.info.realAvailable, true); assert.equal(r.info.real.level, 'full'); assert.deepEqual(r.info.real.missing, []);
+  assert.equal(r.info.liveSettings.configured, false, 'the old worker-client path is not built');
+  assert.match(r.log, /full Real is on: outbound only to https:\/\/auth\.pingone\.com and https:\/\/gw\.lab-test\.net\)/);
+  assert.doesNotMatch(r.log, new RegExp(settingsFor().PINGONE_ENVIRONMENT_ID), 'the log names hosts, never the environment id');
+});
+
+test('Docker with only some full-Real settings: Real disabled, the missing ones named, the worker client ignored', async () => {
+  const partial = { ...fullSettingsFor('https://gw.lab-test.net/mcp') }; delete partial.CAL_AGENT_CLIENT_SECRET; delete partial.CAL_GATEWAY_SCOPE;
+  const r = await boot(5686, { CAL_LIVE_FROM_ENV: '1', CAL_PUBLISH: 'loopback', ...settingsFor(), ...partial });
+  assert.equal(r.info.realAvailable, false); assert.deepEqual(r.info.real.missing, ['CAL_AGENT_CLIENT_SECRET', 'CAL_GATEWAY_SCOPE']);
   assert.match(r.log, /no outbound network/);
 });
 

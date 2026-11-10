@@ -48,7 +48,9 @@ export function outcomeState(outcome) {
   const o = String(outcome || "");
   if (o.startsWith("DENY") || o === "PERMIT_THEN_DENY") return "bad";
   if (o === "STEP_UP" || o === "HITL_REQUIRED" || o === "CIBA") return "warn";
-  if (o === "PERMIT" || o === "DELEGATE_AND_EXECUTE" || o === "LIVE_OK") return "ok";
+  if (o === "PERMIT" || o === "DELEGATE_AND_EXECUTE" || o === "LIVE_OK" || o === "REAL_PERMIT") return "ok";
+  if (o === "REAL_HOLD") return "warn";
+  if (o.startsWith("REAL_")) return "bad";
   if (o.startsWith("LIVE_")) return "bad";
   return "info";
 }

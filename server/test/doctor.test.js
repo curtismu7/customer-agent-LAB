@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { allPassed, runChecks } from '../src/doctor.js';
+import { fullSettingsFor } from './fakePingone.js';
 import { createHealth } from '../src/health.js';
 
 test('every doctor check passes on a clean default environment', async () => {
@@ -50,10 +51,12 @@ test('owner 2026-11-09: the doctor says which file it reads (the app\'s own .env
     const at = async () => (await runChecks({ env: { CAL_ENV_FILE: f } })).find((x) => x.id === 'settings-file');
     const none = await at(); assert.equal(none.level, 'info'); assert.ok(none.detail.includes(`reads ${f} (CAL_ENV_FILE): not there`)); assert.match(none.detail, /copy \.env\.example to \.env/);
     fs.writeFileSync(f, 'PINGONE_ENVIRONMENT_ID=11111111-2222-4333-8444-555555555555\nPINGONE_CLIENT_SECRET=hunter2hunter2\n', { mode: 0o600 });
-    const partial = await at(); assert.equal(partial.level, 'pass'); assert.match(partial.detail, /Live settings missing: PINGONE_CLIENT_ID$|Live settings missing: PINGONE_CLIENT_ID \(/);
+    const partial = await at(); assert.equal(partial.level, 'pass'); assert.match(partial.detail, /full-Real settings missing: CAL_USER_CLIENT_ID, .*CAL_GATEWAY_SCOPE \(/); assert.doesNotMatch(partial.detail, /PINGONE_ENVIRONMENT_ID/, 'a set name is not listed');
     assert.ok(!/hunter2|11111111/.test(partial.detail), 'no value printed');
     fs.writeFileSync(f, 'PINGONE_ENVIRONMENT_ID=11111111-2222-4333-8444-555555555555\nPINGONE_CLIENT_ID=cid\nPINGONE_CLIENT_SECRET=hunter2hunter2\n', { mode: 0o600 });
-    const full = await at(); assert.match(full.detail, /the Live settings are all set/); assert.ok(!/hunter2|11111111|cid\b/.test(full.detail));
+    const full = await at(); assert.match(full.detail, /full-Real settings missing: CAL_USER_CLIENT_ID/, 'the old worker client is not the full-Real settings'); assert.ok(!/hunter2|11111111|cid\b/.test(full.detail));
+    fs.writeFileSync(f, `${Object.entries(fullSettingsFor('https://gw.lab-test.net/mcp')).map(([k, v]) => `${k}=${v}`).join('\n')}\n`, { mode: 0o600 });
+    const all = await at(); assert.match(all.detail, /the full-Real settings are all set/); assert.ok(!all.detail.includes(fullSettingsFor('').CAL_USER_CLIENT_SECRET));
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
@@ -85,14 +88,18 @@ test('step 3 (option a): the live check is a pass when Real is not configured or
   try {
     const live = async (env) => (await runChecks({ env: { CAL_ENV_FILE: f, ...env } })).find((x) => x.id === 'live');
     fs.writeFileSync(f, '', { mode: 0o600 });
-    assert.equal((await live({})).level, 'pass'); assert.match((await live({})).detail, /Real is not configured \(.*PINGONE_ENVIRONMENT_ID\): Mock only/);
+    assert.equal((await live({})).level, 'pass'); assert.match((await live({})).detail, /Real is not configured \(full Real needs PINGONE_ENVIRONMENT_ID, CAL_USER_CLIENT_ID.*\): Mock only/);
     fs.writeFileSync(f, `PINGONE_ENVIRONMENT_ID=11111111-2222-4333-8444-555555555555\nPINGONE_CLIENT_ID=cid\nPINGONE_CLIENT_SECRET=${secret}\n`, { mode: 0o600 });
     const off = await live({ CAL_ALLOW_LIVE: '0' }); assert.equal(off.level, 'pass'); assert.match(off.detail, /switched off \(CAL_ALLOW_LIVE=0\)/);
-    const refused = await live({ IDP: 'mock' }); assert.equal(refused.level, 'info'); assert.match(refused.detail, /configured but refused: Real is off: IDP is pinned to mock/);
+    const refused = await live({ IDP: 'mock' }); assert.equal(refused.level, 'info'); assert.match(refused.detail, /Real \(identity provider only\) is configured but refused: Real is off: IDP is pinned to mock/);
     assert.equal((await live({})).level, 'pass', 'complete settings and no opt-in: Real is on');
     const ok = await live({ CAL_ALLOW_LIVE: '1', IDP: 'pingone' });
-    assert.equal(ok.level, 'pass'); assert.match(ok.detail, /only to https:\/\/auth\.pingone\.com \(/);
-    assert.match((await live({})).detail, /Real is on: .*only to https:\/\/auth\.pingone\.com \(/);
+    assert.equal(ok.level, 'pass'); assert.match(ok.detail, /only to https:\/\/auth\.pingone\.com;/);
+    assert.match((await live({})).detail, /Real, identity provider only \(the old worker client.*\): two calls, only to https:\/\/auth\.pingone\.com;/);
+    fs.writeFileSync(f, `${Object.entries(fullSettingsFor('https://gw.lab-test.net/mcp')).map(([k, v]) => `${k}=${v}`).join('\n')}\nPINGONE_CLIENT_ID=cid\nPINGONE_CLIENT_SECRET=${secret}\n`, { mode: 0o600 });
+    const fullOn = await live({}); assert.equal(fullOn.level, 'pass'); assert.match(fullOn.detail, /full Real is on: .*at https:\/\/auth\.pingone\.com, MCP to https:\/\/gw\.lab-test\.net/);
+    fs.writeFileSync(f, 'CAL_USER_CLIENT_ID=u1\nPINGONE_ENVIRONMENT_ID=11111111-2222-4333-8444-555555555555\nPINGONE_CLIENT_ID=cid\nPINGONE_CLIENT_SECRET=x\n', { mode: 0o600 });
+    const part = await live({}); assert.equal(part.level, 'info'); assert.match(part.detail, /full Real is not configured yet: missing CAL_USER_CLIENT_SECRET, .*the old PINGONE_CLIENT_\* path is ignored/);
     assert.ok(!JSON.stringify(await runChecks({ env: { CAL_ENV_FILE: f, CAL_ALLOW_LIVE: '1', IDP: 'pingone' } })).match(/hunter2|11111111-2222|cid/), 'no environment id, client or secret in any line');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });

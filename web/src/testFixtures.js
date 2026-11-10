@@ -58,6 +58,26 @@ export const liveBody = (ucId = "UC1", over = {}) => ({
     traceId: "a".repeat(32), traceparent: `00-${"a".repeat(32)}-${"b".repeat(16)}-01`, narration: "Live, identity provider only: the discovery document and the token came from your PingOne environment.", ...over,
   },
 });
+// Full Real (owner, 2026-11-10): the eight hops, each REAL or NOT RUN, real tokens shown raw, and the reply the server wrote.
+const REAL_KINDS = [["sign-in", "Sign-in", "browser", "idp"], ["actor-token", "Agent token", "agent", "idp"], ["token-exchange", "Token exchange", "bff", "idp"], ["gateway-check", "Agent Gateway", "agent", "gateway"], ["authorize-decision", "Authorize decision", "gateway", "authorize"], ["tool-dispatched", "MCP tool", "gateway", "mcp"], ["api-call", "API", "mcp", "api"], ["agent-reply", "Agent reply", "agent", "page"]];
+export const REAL_RAW = "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ1LTEiLCJhY3QiOnsic3ViIjoiYWdlbnQtMSJ9fQ.c2ln";
+export const realBody = (ucId = "UC1", { stopAt = null, outcome = "REAL_PERMIT", reply = { who: "Agent", text: "Here is what get_account_balance returned: balance 1200.5, currency USD." } } = {}) => ({
+  ok: true, workspace: "w-test", seq: 1,
+  run: {
+    schema: "customer-agent-run/1", mode: "live", kind: "real", useCase: { id: ucId, track: "foundations", title: "t", maturity: "works", flag: null }, vertical: "banking", expectedOutcome: "PERMIT",
+    real: { level: "full", tool: "get_account_balance" }, labSimulated: false, computed: false, persona: null, outcome, matchesExpected: null, reply,
+    hops: REAL_KINDS.map(([kind, label, from, to], i) => {
+      const ran = stopAt === null || i <= stopAt;
+      return { ...hop(i + 1, kind, { from, to }), title: label, label: `${label} [${ran ? "REAL" : "NOT RUN"}]`, mock: false, live: false, source: ran ? "real" : "not-run", verdict: !ran ? "skip" : i === stopAt ? "deny" : "ok", ...(kind === "authorize-decision" && ran ? { decision: { outcome: stopAt === 4 ? "DENY" : "PERMIT", by: "the Agent Gateway (REAL)" } } : {}) };
+    }),
+    tokens: [{ label: "delegated token (REAL, RFC 8693 exchange)", mock: false, live: false, real: true, notice: "REAL delegated token, shown raw for teaching.", raw: REAL_RAW, header: { alg: "RS256" }, claims: { sub: "u-1", act: { sub: "agent-1" } } }],
+    traceId: "a".repeat(32), traceparent: `00-${"a".repeat(32)}-${"b".repeat(16)}-01`, narration: reply.text || "",
+  },
+});
+export const denyBody = (ucId = "UC1") => realBody(ucId, { stopAt: 4, outcome: "REAL_DENY", reply: { who: "Authorize", text: "Authorize denied this request (HTTP 403 from the Agent Gateway, decision DENY). Nothing was sent to the tool." } });
+export const mockInRealBody = (ucId = "UC2") => runBody(ucId, { realGate: { real: false, reason: "agent-to-agent (A2A) multi-hop runs on the agent-service, which is scaled to 0 on SE" }, hops: runBody(ucId).run.hops.map((h) => ({ ...h, source: "mock", label: `${h.label} [MOCK]` })) });
+export const FULL_INFO = { real: { level: "full", label: "Real: sign-in (pi.flow), agent token, token exchange and the Agent Gateway", missing: [], redirectUri: "https://local.example/cb", origins: [] } };
+
 export const guidedBody = () => runBody("UC-LEARN2", { kind: "guided", computed: false, matchesExpected: null, outcome: "GUIDED_LEARNING", expectedOutcome: "GUIDED_LEARNING", hops: [hop(1, "guided", { from: "browser", to: "page" })], tokens: [] });
 export const DIAGRAM = {
   names: ["delegation-chain", "gateway-refusals"],
@@ -96,14 +116,28 @@ export function mockApi(state = {}) {
       if (want === "live" && s.live !== "allowed") return json(409, { error: "conflict", message: s.liveReason });
       s.mode = want; return json(200, { source: body.source, workspace: "w-test" });
     }
+    if (path === "/api/signin" && method === "GET") return json(200, { available: Boolean(s.full), reason: s.full ? null : "Real is not configured", method: "pi.flow", redirect: false, username: s.full ? "lab-demo-user" : null, signedIn: Boolean(s.signedIn), user: s.signedIn ? { name: "lab-demo-user" } : null });
+    if (path === "/api/signin" && method === "POST") {
+      const body = JSON.parse(opts.body);
+      if (body.password !== s.password) return json(401, { error: "signin_rejected", message: "PingOne did not accept the username or password." });
+      s.signedIn = true; return json(200, { signedIn: true, user: { name: "lab-demo-user" }, steps: [] });
+    }
+    if (path === "/api/signout") { s.signedIn = false; return json(200, { signedIn: false }); }
     if (path === "/api/diagram") return json(200, DIAGRAM);
     if (path === "/api/shelf") return json(200, { shelfUrl: null }); // ShelfLink: null -> the button renders nothing
     if (path === "/api/runs") return json(200, { ...RUNS, count: s.runs.length, runs: s.runs });
-    if (path === "/api/reset") { s.runs = []; s.mode = "mock"; return json(200, { reset: "ok", workspace: "w-test" }); }
+    if (path === "/api/reset") { s.runs = []; s.mode = "mock"; s.signedIn = false; return json(200, { reset: "ok", workspace: "w-test" }); }
     if (path.startsWith("/api/run/")) {
       if (s.runAnswer) return s.runAnswer(path.slice(9), JSON.parse(opts.body));
       const id = decodeURIComponent(path.slice(9));
       if (JSON.parse(opts.body).vertical === "government") return json(501, { error: "vertical_stub", detail: "this vertical is a data stub: it has a name and no pack yet" });
+      if (s.mode === "live" && s.full) {
+        if (s.realAnswer) return json(200, s.realAnswer(id));
+        if (!s.signedIn) return json(401, { error: "sign_in_required", detail: "Sign in first: Real runs as you." });
+        const rb = realBody(id);
+        s.runs.push({ seq: s.runs.length + 1, id, vertical: "banking", persona: null, outcome: rb.run.outcome, matchesExpected: null, traceId: rb.run.traceId });
+        return json(200, rb);
+      }
       if (s.mode === "live") {
         if (s.liveConfigured === false) return json(503, { error: "live_not_configured", detail: "the app's .env has no valid PINGONE_ENVIRONMENT_ID" });
         const lb = liveBody(id);

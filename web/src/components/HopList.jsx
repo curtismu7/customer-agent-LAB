@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { notRunText, ranCount, verdictState } from "../lib";
-import { Json, LiveTag, MockTag, Tag } from "./Bits";
+import { Json, LiveTag, MockTag, SourceTag, Tag } from "./Bits";
 
 // The ordered hops of a run. Each hop shows the raw request and response and its own traceparent (rule 14).
 export default function HopList({ hops, traceparent, title = "Hops" }) {
@@ -18,7 +18,7 @@ export default function HopList({ hops, traceparent, title = "Hops" }) {
             <details className="hop" open={allOpen} data-testid="hop">
               <summary className="hop__summary">
                 <span className="hop__n">{h.n}.</span> <span className="hop__label">{h.label}</span>
-                {" "}<Tag state={verdictState(h.verdict)} testId="hop-verdict">{h.verdict}</Tag>{h.mock && <> <MockTag /></>}{h.live && <> <LiveTag /></>}
+                {" "}<Tag state={verdictState(h.verdict)} testId="hop-verdict">{h.verdict}</Tag>{h.source ? <> <SourceTag source={h.source} /></> : <>{h.mock && <> <MockTag /></>}{h.live && <> <LiveTag /></>}</>}
               </summary>
               <p className="muted">{h.from} to {h.to} <span className="mono">({h.kind})</span></p>
               {h.note && <p className="muted">{h.note}</p>}
