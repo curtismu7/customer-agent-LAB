@@ -1,0 +1,64 @@
+{
+ "schema": "customer-agent-replies/1",
+ "about": "What the agent says in the chat after a MOCK tool call, per vertical and per tool, plus what it says when a write is held for approval. Every value is LAB-INVENTED and fixed per vertical and persona, so a run repeats exactly; nothing here is a real balance, order or record (the simulation banner and the MOCK labels stay on every page). {{name}} is filled from the vertical's cast (server/src/cast.js), the values below (persona first, then common), the run's amount and the tool arguments. A vertical reply wins over a shared one; a tool with neither gets the fallback. A test proves every tool any vertical runs has a reply and every {{name}} is filled.",
+ "values": {
+  "banking": {
+   "common": { "defaultAmount": 250, "fee": "$15.00", "mortgageDue": "December 1" },
+   "standard": { "checking": "$4,250.00", "savings": "$12,800.00", "mortgageBalance": "$312,450.00", "mortgageRate": "5.25% fixed", "mortgagePayment": "$1,985.00", "portfolioValue": "$86,300.00", "portfolioChange": "up 2.4% this month", "portfolioMix": "60% stocks, 30% bonds and 10% cash", "accountLast4": "4821" },
+   "premium": { "checking": "$18,940.00", "savings": "$52,300.00", "mortgageBalance": "$512,000.00", "mortgageRate": "4.875% fixed", "mortgagePayment": "$2,940.00", "portfolioValue": "$402,150.00", "portfolioChange": "up 1.8% this month", "portfolioMix": "70% stocks, 20% bonds and 10% cash", "accountLast4": "9036" }
+  },
+  "healthcare": {
+   "common": { "defaultAmount": 120, "fee": "$25.00", "dentalMax": "$1,500.00" },
+   "standard": { "plan": "Silver PPO", "deductible": "$2,000.00", "deductibleMet": "$640.00", "coinsurance": "20%", "dentalLeft": "$1,200.00", "bloodType": "O+", "allergies": "penicillin and latex", "lastVisit": "October 14" },
+   "premium": { "plan": "Gold PPO", "deductible": "$1,000.00", "deductibleMet": "$820.00", "coinsurance": "10%", "dentalLeft": "$1,350.00", "bloodType": "A-", "allergies": "peanuts", "lastVisit": "November 2" }
+  },
+  "retail": {
+   "common": { "defaultAmount": 85, "fee": "$12.00" },
+   "standard": { "orderNo": "#48213", "order1": "#48213, running shoes for $129.00, shipped November 6", "order2": "#48190, a rain jacket for $89.00, delivered", "order3": "#48102, two pairs of socks for $18.00, delivered", "giftCard": "$75.00", "storeCredit": "$320.00", "orderCount": "42", "cardLast4": "7730" },
+   "premium": { "orderNo": "#51877", "order1": "#51877, a road bike helmet for $149.00, shipped November 7", "order2": "#51802, a duffel bag for $96.00, delivered", "order3": "#51760, a water bottle for $24.00, delivered", "giftCard": "$150.00", "storeCredit": "$1,240.00", "orderCount": "118", "cardLast4": "3318" }
+  }
+ },
+ "replies": {
+  "shared": {
+   "get_weather": "The outlook for {{state}} is partly cloudy, with a high of 74°F and a 20% chance of rain.",
+   "brave_news_search": "I found three recent articles on \"{{query}}\"; the newest one is from this morning.",
+   "code_search": "I found 3 matches in the code base; the closest one is in the accounts service.",
+   "redeem_miles": "Done: 25,000 miles redeemed for a $250.00 travel credit.",
+   "book_airline_flight": "Booked: your flight leaves Friday at 8:15 am, and the confirmation code is LAB7Q2."
+  },
+  "banking": {
+   "get_account_balance": "Your checking balance is {{checking}}, and your savings balance is {{savings}}.",
+   "create_transfer": "Done: {{amount}} moved from checking to savings.",
+   "show_mortgage": "Your mortgage balance is {{mortgageBalance}} at {{mortgageRate}}. Your next payment of {{mortgagePayment}} is due {{mortgageDue}}.",
+   "get_portfolio_summary": "Your portfolio is worth {{portfolioValue}}, {{portfolioChange}}, split {{portfolioMix}}.",
+   "get_sensitive_account_details": "Your checking account ending {{accountLast4}} is in good standing, with direct deposit set up and no holds. Full account numbers stay masked in chat.",
+   "get_branch_hours": "The nearest branch, Main Street, is open 9 am to 5 pm on weekdays and 9 am to 1 pm on Saturdays.",
+   "request_fee_waiver": "Done: the {{fee}} monthly maintenance fee on your checking account is waived this month."
+  },
+  "healthcare": {
+   "view_coverage": "You are on the {{plan}} plan: {{deductibleMet}} of your {{deductible}} deductible is met, and you pay {{coinsurance}} coinsurance after that.",
+   "pay_bill": "Done: {{amount}} paid toward your patient bill.",
+   "show_mortgage": "Your dental coverage pays 100% for two cleanings a year and 80% for fillings; {{dentalLeft}} of your {{dentalMax}} annual maximum is left.",
+   "sensitive_patient_records": "Your records are on file: blood type {{bloodType}}, allergies to {{allergies}}, last visit {{lastVisit}}. Full records stay in the patient portal.",
+   "get_branch_hours": "The nearest clinic, Riverside, is open 8 am to 6 pm on weekdays and 9 am to noon on Saturdays.",
+   "request_fee_waiver": "Done: the {{fee}} late fee on your patient bill is waived."
+  },
+  "retail": {
+   "list_orders": "You have 3 recent orders: {{order1}}; {{order2}}; and {{order3}}.",
+   "checkout": "Done: your {{amount}} order is placed and paid with store credit.",
+   "show_mortgage": "Your gift card balance is {{giftCard}}, and you have {{storeCredit}} in store credit.",
+   "sensitive_order_history": "Your order history has {{orderCount}} orders since 2023, and the card on file ends {{cardLast4}}. Full card numbers stay masked in chat.",
+   "get_branch_hours": "The nearest store, Downtown, is open 10 am to 9 pm every day.",
+   "request_fee_waiver": "Done: the {{fee}} restocking fee on order {{orderNo}} is waived."
+  }
+ },
+ "proposals": {
+  "banking": { "create_transfer": "I'm ready to move {{amount}} from checking to savings." },
+  "healthcare": { "pay_bill": "I'm ready to pay {{amount}} toward your patient bill." },
+  "retail": { "checkout": "I'm ready to check out {{amount}} with store credit." }
+ },
+ "fallback": "Done: I checked your {{castAsset}} and everything is in order.",
+ "proposalFallback": "I have this request ready to go.",
+ "probeDenied": "A different agent then tried the same call for you and was refused, so it got nothing.",
+ "defaults": { "state": "your area", "query": "that topic" }
+}

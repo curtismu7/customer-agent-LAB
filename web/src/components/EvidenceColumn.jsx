@@ -10,6 +10,7 @@ import { Tag } from "./Bits";
 import { notRunText, ranCount } from "../lib";
 import { HANDOFF_WHY } from "../chat";
 import { visible } from "../safeText";
+import { GoDeeper } from "./HandoffCard";
 
 // Why this run went the way it did: how the use case was chosen, then what the run did (chat.js reasoningOf). The chat shows only the reply.
 function Why({ steps, testId }) {
@@ -55,7 +56,8 @@ export function HandoffSummary({ uc, catalog, vertical, userId }) {
   );
 }
 
-export default function EvidenceColumn({ run, selHop, onSelect, config, onTab, onFull, vertical, resetSignal, lastRun, uc, catalog, userId, showHandoff, why }) {
+// `children`: the selected use case's panel (inputs, persona, Run and the raw result), at the bottom of the column (owner, 2026-11-09).
+export default function EvidenceColumn({ run, selHop, onSelect, config, onTab, onFull, vertical, resetSignal, lastRun, uc, catalog, userId, showHandoff, why, children }) {
   const hops = run?.hops || [];
   const tabs = VIEWS.filter((v) => DIAGRAMS.includes(v) || config.views.tokens === "embedded");
   const tab = tabs.includes(config.tab) && (config.tab === "tokens" || config.views[config.tab] === "embedded") ? config.tab : null;
@@ -69,6 +71,8 @@ export default function EvidenceColumn({ run, selHop, onSelect, config, onTab, o
       </header>
       {showHandoff ? <HandoffSummary uc={uc} catalog={catalog} vertical={vertical} userId={userId} /> : (
         <>
+          {/* A Here + go deeper use case: the lab that covers this run in depth (moved out of the chat, owner 2026-11-09). */}
+          {run && uc && run.useCase?.id === uc.id && <GoDeeper uc={uc} vertical={vertical} userId={userId} />}
           {run && <Why steps={why} testId="evidence-why" />}
           {/* A segmented control, not a second tablist: the page's tabpanel is the agent area itself. Pressed = the view on show. */}
           <div className="evtabs seg" role="group" aria-label="Evidence view" data-testid="evidence-tabs">
@@ -92,6 +96,7 @@ export default function EvidenceColumn({ run, selHop, onSelect, config, onTab, o
           </div>
         </>
       )}
+      {children}
     </section>
   );
 }

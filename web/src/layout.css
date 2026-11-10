@@ -112,7 +112,7 @@
 .approval { display: grid; gap: 6px; }
 .approval__head { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 
-.ucpanel { margin: 16px 0 0; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); }
+.ucpanel { margin: 0; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); }
 .ucpanel > summary { padding: 8px 12px; font-size: 13px; }
 .ucpanel > .panel { border: 0; border-radius: 0 0 10px 10px; }
 
@@ -126,11 +126,11 @@
 .composer { display: flex; gap: 8px; }
 .composer input { flex: 1 1 auto; min-width: 0; }
 
-/* hand-off card and go deeper */
+/* hand-off card; go deeper (a box in the evidence column) */
 .handoff { display: grid; gap: 6px; }
 .handoff p { margin: 0; }
 .handoff__actions { display: flex; flex-wrap: wrap; gap: 8px; }
-.deeper { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding-top: 6px; border-top: 1px dashed var(--border); }
+.deeper { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); }
 .deeper .kicker { margin: 0; }
 .deeper p { margin: 0; }
 

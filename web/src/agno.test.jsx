@@ -298,15 +298,19 @@ describe("hand-off and go deeper", () => {
     expect([...summary.querySelectorAll("dt")].map((d) => `${d.textContent}=${d.nextElementSibling.textContent}`)).toEqual([...new URLSearchParams(open.getAttribute("data-href").split("?")[1])].map(([k, v]) => `${k}=${v}`));
     await u.click(screen.getByTestId("wtt-UC1"));
     await screen.findByTestId("turn-answer");
-    expect(within(screen.getAllByTestId("turn")[1]).getByTestId("deeper-open").getAttribute("data-href")).toBe("../delegation-lab/?from=customer-agent&uc=UC1&vertical=banking&user=alex.morgan");
+    // go deeper lives in the evidence column for that run, not in the reply (owner, 2026-11-09)
+    expect(within(screen.getAllByTestId("turn")[1]).queryByTestId("go-deeper")).toBeNull();
+    expect(within(screen.getByTestId("evidence-column")).getByTestId("deeper-open").getAttribute("data-href")).toBe("../delegation-lab/?from=customer-agent&uc=UC1&vertical=banking&user=alex.morgan");
   });
 
-  test("a Here + go deeper reply names the deeper lab; off the proxy it says to start it from the Shelf", async () => {
+  test("a Here + go deeper run names the deeper lab in the evidence column (not the reply); off the proxy it says to start it from the Shelf", async () => {
     await boot();
     const u = userEvent.setup();
     await u.click(screen.getByTestId("wtt-UC1"));
     await screen.findByTestId("turn-answer");
-    const deeper = within(screen.getByTestId("turn")).getByTestId("go-deeper");
+    expect(within(screen.getByTestId("turn")).queryByTestId("go-deeper")).toBeNull();
+    expect(within(screen.getByTestId("agent-column")).queryByTestId("go-deeper")).toBeNull();
+    const deeper = within(screen.getByTestId("evidence-column")).getByTestId("go-deeper");
     expect(deeper.textContent).not.toMatch(/user=/);
     expect(deeper.textContent).toMatch(/Go deeper in delegation-lab/);
     expect(deeper.textContent).toMatch(/Start delegation-lab from the Shelf/);
@@ -489,8 +493,10 @@ describe("Agent to agent page (owner, 2026-11-09: keep it)", () => {
     expect(turn.getAttribute("data-status")).toBe("done");
     expect(within(turn).queryByTestId("handoff-card")).toBeNull();
     expect(posts("UC2")).toHaveLength(1);
-    expect(within(turn).getByTestId("go-deeper").textContent).toMatch(/Go deeper in a2a-lab/);
-    expect(within(turn).getByTestId("deeper-open").getAttribute("data-href")).toBe("../a2a-lab/?from=customer-agent&uc=UC2&vertical=banking&user=alex.morgan");
+    expect(within(turn).queryByTestId("go-deeper")).toBeNull();
+    const ev = screen.getByTestId("evidence-column");
+    expect(within(ev).getByTestId("go-deeper").textContent).toMatch(/Go deeper in a2a-lab/);
+    expect(within(ev).getByTestId("deeper-open").getAttribute("data-href")).toBe("../a2a-lab/?from=customer-agent&uc=UC2&vertical=banking&user=alex.morgan");
     expect(screen.getByTestId("nav-page-a2a").textContent).toBe("Agent to agent"); // the page's entry under More pages
     await u.selectOptions(screen.getByTestId("nav-more"), "page-a2a");
     expect(window.location.hash).toBe("#page-a2a");
@@ -695,7 +701,8 @@ describe("a chat turn is the message and one reply (owner, 2026-11-09)", () => {
   const P6 = { uc: "UC6", text: "transfer $2500 from checking to savings", title: UC6.title, track: "controls", expectedOutcome: "DENY", route: "Here + go deeper" };
 
   test("PERMIT (UC1 show my balance): the reply is the agent's answer from the run, labelled Agent", async () => {
-    const reply = "Here is what I found: mock result of get_account_balance for account data (synthetic).";
+    // The sentence server/src/flow.js produces for UC1 in banking, standard persona (server/test/replies.test.js pins it).
+    const reply = "Your checking balance is $4,250.00, and your savings balance is $12,800.00.";
     await boot({ runAnswer: answer(() => ({ hops: [...base(), hopOf(5, "agent-reply", 200, { reply })] })) });
     const u = userEvent.setup();
     await u.type(screen.getByTestId("composer-input"), "show my balance{Enter}");
@@ -705,7 +712,8 @@ describe("a chat turn is the message and one reply (owner, 2026-11-09)", () => {
     expect(within(turn).getByTestId("turn-who").textContent).toBe("Agent");
     expect(within(turn).getByTestId("turn-answer-text").textContent).toBe(reply);
     expect(within(turn).getByTestId("turn-outcome").textContent).toBe("PERMIT");
-    expect(within(turn).getByTestId("go-deeper")).toBeTruthy();
+    expect(within(turn).queryByTestId("go-deeper")).toBeNull();
+    expect(within(screen.getByTestId("evidence-column")).getByTestId("go-deeper")).toBeTruthy();
     expect(screen.getByTestId("evidence-count").textContent).toMatch(/^UC1 · 5 hops/);
   });
 
@@ -739,7 +747,7 @@ describe("a chat turn is the message and one reply (owner, 2026-11-09)", () => {
   });
 
   test("a step-up turn keeps its approval card (the hold the customer must act on) and its See evidence control, nothing else", async () => {
-    await boot({ runAnswer: answer(() => ({ outcome: "STEP_UP", hops: [...base().slice(0, 3), hopOf(4, "tool-held", 202, { dispatched: false, waiting_for: "STEP_UP" }, "held")] })) });
+    await boot({ runAnswer: answer(() => ({ outcome: "STEP_UP", hops: [...base().slice(0, 3), hopOf(4, "tool-held", 202, { dispatched: false, waiting_for: "STEP_UP", proposed: "I'm ready to move $600 from checking to savings." }, "held")] })) });
     const u = userEvent.setup();
     await u.click(screen.getByTestId("wtt-UC7"));
     const turn = await screen.findByTestId("turn");
@@ -747,7 +755,64 @@ describe("a chat turn is the message and one reply (owner, 2026-11-09)", () => {
     onlyReply(turn);
     expect(within(turn).getByTestId("turn-who").textContent).toBe("Authorize");
     expect(card.textContent).toMatch(/^STEP_UP Step-up needed/);
+    expect(within(card).getByTestId("turn-approval-say").textContent).toBe("I'm ready to move $600 from checking to savings.");
+    expect(within(turn).queryByTestId("go-deeper")).toBeNull();
     expect(within(turn).getAllByRole("button").map((b) => b.textContent)).toEqual(["See evidence →"]);
+  });
+
+  // The sentences server/src/flow.js produces for these use cases in banking, standard persona (server/test/replies.test.js pins them).
+  const REAL = {
+    UC1: "Your checking balance is $4,250.00, and your savings balance is $12,800.00.",
+    UC33: "Your mortgage balance is $312,450.00 at 5.25% fixed. Your next payment of $1,985.00 is due December 1.",
+    UC2: "Your portfolio is worth $86,300.00, up 2.4% this month, split 60% stocks, 30% bonds and 10% cash.",
+  };
+  const UC33 = { ...HANDOFF_UC, id: "UC33", title: "Show mortgage", trigger: { type: "chip", text: "show my mortgage" }, route: { route: "Here", app: null, basis: null } };
+  const P33 = { uc: "UC33", text: "show my mortgage", title: "Show mortgage", track: "foundations", expectedOutcome: "PERMIT", route: "Here" };
+
+  test("balance, mortgage, portfolio and the held $600 transfer read as real sentences with amounts; nothing in the chat says mock result of", async () => {
+    const held = { dispatched: false, waiting_for: "STEP_UP", proposed: "I'm ready to move $600 from checking to savings." };
+    await boot({ extraUc: [UC33], prompts: [...PROMPTS, P33], runAnswer: answer((id) => {
+      const uc = decodeURIComponent(id);
+      if (uc === "UC7") return { outcome: "STEP_UP", hops: [...base().slice(0, 3), hopOf(4, "tool-held", 202, held, "held")] };
+      return { hops: [...base(), hopOf(5, "agent-reply", 200, { reply: REAL[uc] })] };
+    }) });
+    const u = userEvent.setup();
+    for (const [text, n] of [["show my balance", 1], ["show my mortgage", 2], ["hand off to a specialist", 3], ["transfer $600 from checking to savings", 4]]) {
+      await u.type(screen.getByTestId("composer-input"), `${text}{Enter}`);
+      await waitFor(() => expect(screen.getAllByTestId("turn")).toHaveLength(n));
+      await waitFor(() => expect(screen.getAllByTestId("turn")[n - 1].getAttribute("data-status")).toBe("done"));
+    }
+    const turns = screen.getAllByTestId("turn");
+    expect(within(turns[0]).getByTestId("turn-answer-text").textContent).toBe(REAL.UC1);
+    expect(within(turns[1]).getByTestId("turn-answer-text").textContent).toBe(REAL.UC33);
+    expect(within(turns[2]).getByTestId("turn-answer-text").textContent).toBe(REAL.UC2);
+    expect(within(turns[3]).getByTestId("turn-approval-say").textContent).toMatch(/\$600 from checking to savings/);
+    for (const t of turns) { onlyReply(t); expect(within(t).queryByTestId("go-deeper")).toBeNull(); expect(within(t).queryByTestId("uc-panel")).toBeNull(); }
+    const chat = screen.getByTestId("agent-column").textContent;
+    expect(chat).not.toMatch(/mock result of|Here is what I found|\(synthetic\)/);
+  });
+
+  test("the use case panel (inputs, persona, Run, raw result) sits in the evidence column, not the chat, and its Run still works", async () => {
+    await boot();
+    const u = userEvent.setup();
+    await u.click(screen.getByTestId("uc-UC1"));
+    const ev = screen.getByTestId("evidence-column");
+    const panel = within(ev).getByTestId("uc-panel");
+    expect(panel.tagName).toBe("DETAILS");
+    expect(panel.querySelector("summary").textContent).toBe("Use case UC1: inputs, persona, Run and the raw result");
+    expect(within(screen.getByTestId("agent-column")).queryByTestId("uc-panel")).toBeNull();
+    expect(within(screen.getByTestId("agent-column")).queryByTestId("run-panel")).toBeNull();
+    for (const id of ["run-title", "lab-inputs", "persona", "run"]) expect(within(panel).getByTestId(id)).toBeTruthy();
+    // What to type and the input stay in the chat column
+    expect(within(screen.getByTestId("agent-column")).getByTestId("what-to-type")).toBeTruthy();
+    expect(within(screen.getByTestId("agent-column")).getByTestId("composer-input")).toBeTruthy();
+    await u.click(within(panel).getByTestId("run"));
+    expect(await within(panel).findByTestId("result")).toBeTruthy();
+    expect(posts("UC1")).toHaveLength(1);
+    // the panel follows into the hand-off summary too: a Hand off use case keeps its panel below the summary
+    await u.click(screen.getByTestId("uc-UC2.6"));
+    expect(within(screen.getByTestId("evidence-column")).getByTestId("handoff-summary")).toBeTruthy();
+    expect(within(screen.getByTestId("evidence-column")).getByTestId("uc-panel")).toBeTruthy();
   });
 
   test("a hand-off turn (UC2.6, UC2 runs here since #24) is one line plus the Open button and Preview here", async () => {

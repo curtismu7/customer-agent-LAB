@@ -373,14 +373,7 @@ export default function App() {
               )}
               <div className="work">
                 <AgentColumn agent={cast.castAgent} brand={cast.castBrand} userId={userId} vertical={vertical} verticalLabel={verticalLabel} stub={stub} prompts={prompts} turns={shownTurns}
-                  status={busy ? "running" : statusOf(lastTurn)} onSay={say} onHop={onHop} onPreview={preview} running={busy}>
-                  {uc && (
-                    <details className="ucpanel" open ref={runRef} data-testid="uc-panel">
-                      <summary>Use case {uc.id}: inputs, persona, Run and the raw result</summary>
-                      <RunPanel uc={uc} vertical={vertical} verticals={verticals} persona={persona} setPersona={setPersona} personas={personas} onRun={run} running={busy} result={result} mode={mode} />
-                    </details>
-                  )}
-                </AgentColumn>
+                  status={busy ? "running" : statusOf(lastTurn)} onSay={say} onHop={onHop} onPreview={preview} running={busy} />
                 {qcOpen ? (
                   <QuickConfig id="quick-config" mode={mode} liveReason={liveReason} hostedOnly={hostedOnly} onMode={chooseMode} config={cfg}
                     brainInfo={brainInfo} onBrain={(b) => setCfg((c) => ({ ...c, brain: b }))} onRouting={(r) => setCfg((c) => ({ ...c, routing: r }))}
@@ -388,7 +381,14 @@ export default function App() {
                     onReset={() => setCfg(cleanConfig(null))} onClose={() => { setQcOpen(false); document.querySelector('[data-testid="qc-open"]')?.focus(); }} />
                 ) : (
                   <EvidenceColumn run={evRun} selHop={selHop} onSelect={setSelHop} config={cfg} onTab={(v) => setCfg((c) => chooseTab(c, v))} onFull={select}
-                    vertical={vertical} resetSignal={resetSignal} lastRun={last} uc={uc} catalog={catalog} userId={userId} showHandoff={showHandoff} why={why} />
+                    vertical={vertical} resetSignal={resetSignal} lastRun={last} uc={uc} catalog={catalog} userId={userId} showHandoff={showHandoff} why={why}>
+                    {uc && (
+                      <details className="ucpanel" open ref={runRef} data-testid="uc-panel">
+                        <summary>Use case {uc.id}: inputs, persona, Run and the raw result</summary>
+                        <RunPanel uc={uc} vertical={vertical} verticals={verticals} persona={persona} setPersona={setPersona} personas={personas} onRun={run} running={busy} result={result} mode={mode} />
+                      </details>
+                    )}
+                  </EvidenceColumn>
                 )}
               </div>
             </div>

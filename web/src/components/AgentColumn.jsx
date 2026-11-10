@@ -72,7 +72,7 @@ function Starters({ agent, brand, prompts, onSay, stub }) {
   );
 }
 
-export default function AgentColumn({ agent, brand, userId, vertical, verticalLabel, stub, prompts, turns, status, onSay, onHop, onPreview, running, children }) {
+export default function AgentColumn({ agent, brand, userId, vertical, verticalLabel, stub, prompts, turns, status, onSay, onHop, onPreview, running }) {
   const [text, setText] = useState("");
   const endRef = useRef(null);
   // Keep the newest reply in view inside the column's own scroller (never scrollIntoView, which would also scroll the page).
@@ -102,7 +102,6 @@ export default function AgentColumn({ agent, brand, userId, vertical, verticalLa
           </ol>
         )}
         <div ref={endRef} />
-        {children}
       </div>
       <div className="agentcol__foot">
         <WhatToType prompts={prompts} vertical={vertical} verticalLabel={verticalLabel} stub={stub} onSay={onSay} disabled={running} />

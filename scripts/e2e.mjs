@@ -238,7 +238,9 @@ try {
       // a chat turn is the message and one reply (owner 2026-11-09): no reasoning, token cards or hop pills; those stay in the evidence column
       const lastTurn = () => page.getByTestId('turn').last();
       const onlyReply = async () => { const tx = await lastTurn().innerText(); return (await lastTurn().getByRole('button', { name: /^Hop \d/ }).count()) === 0 && !/Reasoning|Tokens used|Step 1|routing table/i.test(tx); };
-      check(await onlyReply() && (await lastTurn().getByTestId('turn-who').innerText()).toUpperCase() === 'AGENT' && (await lastTurn().getByTestId('turn-answer-text').innerText()).startsWith('Here is what I found: mock result of get_account_balance'), `${tag}: UC1 is the message and the agent's answer only`);
+      check(await onlyReply() && (await lastTurn().getByTestId('turn-who').innerText()).toUpperCase() === 'AGENT' && (await lastTurn().getByTestId('turn-answer-text').innerText()) === 'Your checking balance is $4,250.00, and your savings balance is $12,800.00.', `${tag}: UC1 is the message and the agent's answer only, a real sentence with lab-invented amounts`);
+      // go deeper and the use case panel are in the evidence column, not the chat (owner 2026-11-09)
+      check((await lastTurn().getByTestId('go-deeper').count()) === 0 && (await t('agent-column').getByTestId('uc-panel').count()) === 0 && (await t('evidence-column').getByTestId('go-deeper').innerText()).toLowerCase().includes('go deeper in') && (await t('evidence-column').getByTestId('uc-panel').count()) === 1, `${tag}: go deeper and the use case panel sit in the evidence column, not the reply`);
       check((await t('evidence-why').innerText()).includes('Matched your words to UC1') && (await t('evidence-count').innerText()).startsWith('UC1 ·'), `${tag}: the reasoning and the hops are in the evidence column`);
       await t('wtt-UC6').click(); await page.getByTestId('turn').nth(1).getByTestId('turn-answer').waitFor();
       check(await onlyReply() && (await lastTurn().getByTestId('turn-who').innerText()).toUpperCase() === 'AUTHORIZE' && (await lastTurn().getByTestId('turn-answer-text').innerText()).startsWith('Authorize refused this request (HTTP 403): amount 2500'), `${tag}: UC6 is Authorize's refusal in plain words`);
@@ -294,6 +296,8 @@ try {
       check((await page.getByRole('dialog').count()) === 0, `${tag}: Escape closes the actor card`);
       await t('wtt-UC7').click(); await t('turn-approval').waitFor();
       check(await onlyReply() && (await lastTurn().getByTestId('turn-who').innerText()).toUpperCase() === 'AUTHORIZE', `${tag}: the step-up hold is labelled Authorize and carries no reasoning or pills`);
+      check((await lastTurn().getByTestId('turn-approval-say').innerText()) === "I'm ready to move $600 from checking to savings.", `${tag}: the held $600 transfer says what the agent is ready to do, with the amount`);
+      check(!/mock result of|Here is what I found/.test(await t('agent-column').innerText()), `${tag}: nothing in the chat says mock result of`);
       check(await oneRow(), `${tag}: the shell bar is still one row after a second extra page`);
       check((await page.evaluate(() => [...document.querySelectorAll('[data-testid="nav-more"] option')].length)) === 3, `${tag}: both extra pages are in the More menu`);
       if (scheme === 'light') await page.screenshot({ path: path.join(shots, `agent-${width}.png`) });
@@ -346,7 +350,8 @@ try {
     const turn = page.getByTestId('turn').last();
     await turn.getByTestId('turn-answer').waitFor();
     check((await turn.getAttribute('data-status')) === 'done' && (await turn.getByTestId('handoff-card').count()) === 0, `${tag}: "hand off to a specialist" runs UC2 here (no hand-off card)`);
-    check((await turn.getByTestId('go-deeper').textContent()).includes('Go deeper in a2a-lab'), `${tag}: the reply offers going deeper in a2a-lab`);
+    check((await turn.getByTestId('go-deeper').count()) === 0 && (await t('evidence-column').getByTestId('go-deeper').textContent()).includes('Go deeper in a2a-lab'), `${tag}: the evidence column (not the reply) offers going deeper in a2a-lab`);
+    check((await turn.getByTestId('turn-answer-text').innerText()).startsWith('Your portfolio is worth $86,300.00'), `${tag}: UC2's reply is the portfolio summary`);
     check((await t('nav-page-a2a').innerText()) === 'Agent to agent', `${tag}: the Agent to agent page is in the More menu`);
     await t('nav-more').selectOption('page-a2a');
     const a2a = t('extra-a2a');
