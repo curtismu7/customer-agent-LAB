@@ -19,7 +19,7 @@ fs.writeFileSync(file, Object.entries(settingsFor()).map(([k, v]) => `${k}=${v}`
 
 const port = 5693;
 const child = spawn(process.execPath, [path.join(ROOT, 'server/src/index.js')], {
-  env: { ...process.env, PORT: String(port), STANDALONE_ENV: file, CAL_LIVE_TEST_BASE: fake.base, IDP: 'pingone', CAL_ALLOW_LIVE: '1', ALLOW_MOCK_SIGNIN: '1' },
+  env: { ...process.env, PORT: String(port), CAL_ENV_FILE: file, CAL_LIVE_TEST_BASE: fake.base, IDP: 'pingone', CAL_ALLOW_LIVE: '1', ALLOW_MOCK_SIGNIN: '1' },
   stdio: 'ignore',
 });
 try {

@@ -31,11 +31,11 @@ test('CAL_DEPLOY_MODE: local by default, hosted on purpose, anything else refuse
 });
 
 test('the doctor reports the hosted build and fails on a hosted live opening mode', async () => {
-  const ok = await runChecks({ env: { ...HOSTED, CALAB_BIND: '0.0.0.0', PORT: '5600', STANDALONE_ENV: '/nonexistent/.env' } });
+  const ok = await runChecks({ env: { ...HOSTED, CALAB_BIND: '0.0.0.0', PORT: '5600', CAL_ENV_FILE: '/nonexistent/.env' } });
   assert.match(ok.find((c) => c.id === 'deploy').detail, /hosted build/);
-  const bad = await runChecks({ env: { ...HOSTED, CAL_LAB_MODE: 'live', STANDALONE_ENV: '/nonexistent/.env' } });
+  const bad = await runChecks({ env: { ...HOSTED, CAL_LAB_MODE: 'live', CAL_ENV_FILE: '/nonexistent/.env' } });
   assert.equal(bad.find((c) => c.id === 'mode').level, 'fail');
-  assert.equal((await runChecks({ env: { CAL_DEPLOY_MODE: 'x', STANDALONE_ENV: '/nonexistent/.env' } })).find((c) => c.id === 'deploy').level, 'fail');
+  assert.equal((await runChecks({ env: { CAL_DEPLOY_MODE: 'x', CAL_ENV_FILE: '/nonexistent/.env' } })).find((c) => c.id === 'deploy').level, 'fail');
 });
 
 test('brain: hosted ignores CAL_BRAIN_URL, refuses with the hosted reason and never calls out', async () => {

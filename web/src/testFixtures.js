@@ -105,7 +105,7 @@ export function mockApi(state = {}) {
       const id = decodeURIComponent(path.slice(9));
       if (JSON.parse(opts.body).vertical === "government") return json(501, { error: "vertical_stub", detail: "this vertical is a data stub: it has a name and no pack yet" });
       if (s.mode === "live") {
-        if (s.liveConfigured === false) return json(503, { error: "live_not_configured", detail: "the shared settings file has no valid PINGONE_ENVIRONMENT_ID" });
+        if (s.liveConfigured === false) return json(503, { error: "live_not_configured", detail: "the app's .env has no valid PINGONE_ENVIRONMENT_ID" });
         const lb = liveBody(id);
         s.runs.push({ seq: s.runs.length + 1, id, vertical: "banking", persona: null, outcome: lb.run.outcome, matchesExpected: null, traceId: lb.run.traceId });
         return json(200, lb);

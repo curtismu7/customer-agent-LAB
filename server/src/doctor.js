@@ -14,13 +14,13 @@ import { deployModeFrom, modeFrom } from './config.js';
 import { MANIFEST, TRACKS } from './manifest.js';
 import { KNOWN_STEPS, chainOf, runUseCase } from './flow.js';
 import { signMockJwt, verifyMockJwt } from './mockjwt.js';
-import { readLiveSettings, settingsPath } from './settings.js';
+import { APP_ENV_FILE, missingLiveSettings, readLiveSettings, settingsPath } from './settings.js';
 import { liveConfig } from './live.js';
 import { DIAGRAM_NAMES, buildDiagram } from './diagramData.js';
 
 const WEB_DIST = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../web/dist');
 
-export const settingsFile = (env = process.env) => (env.STANDALONE_ENV ? env.STANDALONE_ENV : settingsPath(env));
+export const settingsFile = (env = process.env) => settingsPath(env);
 
 export async function runChecks({ env = process.env } = {}) {
   const checks = [];
@@ -38,8 +38,17 @@ export async function runChecks({ env = process.env } = {}) {
   const problem = portProblem(port);
   add('port-range', problem ? 'fail' : 'pass', problem || `${port} is inside ${PORT_MIN}-${PORT_MAX} and not reserved`);
   const file = settingsFile(env);
-  try { const m = fs.statSync(file).mode & 0o777; add('settings-file', m & 0o077 ? 'info' : 'pass', m & 0o077 ? 'the shared settings file is readable by others: chmod 600 it' : 'the shared settings file exists and is mode 600 (values are never printed)'); }
-  catch { add('settings-file', 'info', 'no shared settings file: mock mode needs none'); }
+  // Says which file it reads and lists the missing Live settings by NAME; a value is never printed.
+  const which = `reads ${file}${file === APP_ENV_FILE ? " (this app's .env beside docker-compose.yml)" : ' (CAL_ENV_FILE)'}`;
+  let stat = null;
+  try { stat = fs.statSync(file); } catch { /* absent */ }
+  if (!stat || !stat.isFile()) add('settings-file', 'info', `${which}: not there. Mock needs none; for Live copy .env.example to .env (chmod 600) and fill its four PINGONE_* settings`);
+  else {
+    const open = stat.mode & 0o077;
+    const missing = missingLiveSettings(file);
+    const liveText = missing.length ? `Live settings missing: ${missing.join(', ')}` : 'the Live settings are all set';
+    add('settings-file', open ? 'info' : 'pass', `${which}: ${open ? 'readable by others, chmod 600 it' : 'mode 600'}; ${liveText} (values are never printed)`);
+  }
   add('mock-signin', env.ALLOW_MOCK_SIGNIN === '1' ? 'pass' : 'info', env.ALLOW_MOCK_SIGNIN === '1' ? 'ALLOW_MOCK_SIGNIN=1: mock persona sign-in is allowed on loopback' : 'ALLOW_MOCK_SIGNIN is not 1: runs are refused until you start the lab with ALLOW_MOCK_SIGNIN=1 (scripts/run.sh and Docker set it)');
 
   const dist = env.WEB_DIST || WEB_DIST;

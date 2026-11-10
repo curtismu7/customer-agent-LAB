@@ -108,7 +108,7 @@ test('the real entry point wires health: runtime is live when the opt-in holds a
   const fake = await startFakePingOne();
   const entry = fileURLToPath(new URL('../src/index.js', import.meta.url));
   const runtimeOf = async (port, extra) => {
-    const env = { ...process.env, PORT: String(port), STANDALONE_ENV: file, CAL_LIVE_TEST_BASE: fake.base, ...extra };
+    const env = { ...process.env, PORT: String(port), CAL_ENV_FILE: file, CAL_LIVE_TEST_BASE: fake.base, ...extra };
     for (const k of ['CALAB_BIND', 'CAL_LAB_MODE', 'ALLOW_MOCK_SIGNIN', 'IDP', 'CAL_ALLOW_LIVE']) if (!(k in extra)) delete env[k];
     const child = spawn(process.execPath, [entry], { env, stdio: 'ignore' });
     try {
@@ -121,6 +121,10 @@ test('the real entry point wires health: runtime is live when the opt-in holds a
   try {
     assert.equal(await runtimeOf(5691, { IDP: 'pingone', CAL_ALLOW_LIVE: '1' }), 'live');
     assert.equal(await runtimeOf(5692, {}), 'offline');
+    // The dormant hosted build ignores the .env: a file that would open in live (which hosted refuses to start with) still starts, mock and offline.
+    const hostedFile = path.join(dir, 'hosted.env');
+    fs.writeFileSync(hostedFile, `CAL_LAB_MODE=live\n${fs.readFileSync(file, 'utf8')}`, { mode: 0o600 });
+    assert.equal(await runtimeOf(5694, { IDP: 'pingone', CAL_ALLOW_LIVE: '1', CAL_DEPLOY_MODE: 'hosted', CAL_ENV_FILE: hostedFile }), 'offline', 'hosted ignores the .env and its live settings');
   } finally { await fake.close(); fs.rmSync(dir, { recursive: true, force: true }); }
 });
 

@@ -53,7 +53,7 @@ const fake = await startFakePingOne();
 const settingsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cal-e2e-'));
 const settingsFile = path.join(settingsDir, '.env');
 fs.writeFileSync(settingsFile, `${Object.entries(settingsFor()).map(([k, v]) => `${k}=${v}`).join('\n')}\n`, { mode: 0o600 });
-const liveEnv = { ...process.env, PORT: String(livePort), IDP: 'pingone', CAL_ALLOW_LIVE: '1', STANDALONE_ENV: settingsFile, CAL_LIVE_TEST_BASE: fake.base };
+const liveEnv = { ...process.env, PORT: String(livePort), IDP: 'pingone', CAL_ALLOW_LIVE: '1', CAL_ENV_FILE: settingsFile, CAL_LIVE_TEST_BASE: fake.base };
 delete liveEnv.CALAB_BIND; delete liveEnv.CAL_LAB_MODE; delete liveEnv.ALLOW_MOCK_SIGNIN;
 const liveServer = spawn(process.execPath, ['server/src/index.js'], { cwd: root, env: liveEnv, stdio: 'inherit' });
 let liveUp = false;

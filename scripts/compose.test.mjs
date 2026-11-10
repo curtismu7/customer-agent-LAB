@@ -57,7 +57,12 @@ test('the container is locked down: read-only fs, no capabilities, no new privil
 test('the compose file tells the guards the publish is loopback-only, opts in to mock sign-in, and does not switch live on', () => {
   const compose = here('docker-compose.yml');
   assert.match(compose, /CAL_PUBLISH: loopback/); assert.match(compose, /ALLOW_MOCK_SIGNIN: "1"/);
-  assert.doesNotMatch(compose.replace(/^\s*#.*$/gm, ''), /CAL_ALLOW_LIVE/);
+  assert.match(compose, /^      CAL_ALLOW_LIVE: "0"$/m, 'live stays off: pinned under environment:, which wins over env_file');
   assert.match(compose, /name: customer-agent-lab/);
   assert.match(compose, /CAL_BRAIN_URL: \$\{CAL_BRAIN_URL:-\}\n/, 'the llama.cpp brain is off by default in Docker (owner opt-in)');
+});
+
+test('owner 2026-11-09: compose reads the app\'s own .env with env_file, marked optional so a missing file is fine', () => {
+  const compose = here('docker-compose.yml');
+  assert.match(compose, /^    env_file:\n      - path: \.env\n        required: false$/m);
 });
