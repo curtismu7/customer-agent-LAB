@@ -254,12 +254,12 @@ test('ingress manifest: Certificate + Ingress for the one host, /mcp Prefix and 
 });
 
 // ---------- the ingress script (stub kubectl and curl) ----------
-function stubBin({ diffExit = 1, otherIngress = '' } = {}) {
+function stubBin({ diffExit = 1, otherIngress = '', svcError = '', svcPorts = '8080 8085' } = {}) {
   const dir = tmp(); const log = path.join(dir, 'calls.log');
   fs.writeFileSync(path.join(dir, 'kubectl'), `#!/bin/sh
 printf "%s\\n" "$*" >> "${log}"
 case "$*" in
-  *"get service ping-gateway"*) printf '8080 8085' ;;
+  *"get service ping-gateway"*) ${svcError ? `echo '${svcError}' >&2; exit 1` : `printf '${svcPorts}'`} ;;
   *"get ingress"*) printf 'cimd-lab cimd-lab.example\\n${otherIngress}' ;;
   *" diff "*) echo "diff output"; exit ${diffExit} ;;
 esac
@@ -294,6 +294,14 @@ test('ingress script: the default is a dry run: preflight + diff with explicit c
   assert.ok(calls.some((c) => / diff -f .*deploy\/k8s-owner\/agent-gateway-ingress\.yaml$/.test(c)));
   assert.ok(!calls.some((c) => / apply /.test(c) || c.startsWith('curl')));
   assert.equal(ingress(['--context', 'us', '--namespace', 'ping-devops-cmuir'], stubBin()).status, 0, 'the allowed values are accepted when named');
+});
+
+test('ingress script: the preflight shows kubectl\'s own error, and names the ports it saw when 8080 is missing', () => {
+  const bad = stubBin({ svcError: 'error: You must be logged in to the server (token expired)' }); const r = ingress([], bad);
+  assert.equal(r.status, 2); assert.match(r.stderr, /kubectl could not read service ping-gateway: error: You must be logged in/);
+  const wrong = stubBin({ svcPorts: '9090 9091' }); const r2 = ingress([], wrong);
+  assert.equal(r2.status, 2); assert.match(r2.stderr, /no port 8080 \(ports seen: '9090 9091'/);
+  assert.ok(!/ apply /.test(wrong.calls()), 'nothing was applied');
 });
 
 test('ingress script: refuses when another ingress already serves the host, or kubectl diff errors', () => {

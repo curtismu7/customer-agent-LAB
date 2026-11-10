@@ -37,8 +37,14 @@ command -v kubectl >/dev/null 2>&1 || die "kubectl is not installed"
 k() { kubectl --context "$CONTEXT_ONLY" -n "$NAMESPACE_ONLY" "$@"; }
 
 echo "# preflight (read-only), context $CONTEXT_ONLY, namespace $NAMESPACE_ONLY"
-k get service ping-gateway -o jsonpath='{.spec.ports[*].port}' 2>/dev/null | tr ' ' '\n' | grep -qx 8080 \
-  || die "service ping-gateway with port 8080 was not found (or the cluster could not be read)"
+# No pipe here (a pipeline under pipefail can fail on SIGPIPE), and kubectl's own error is shown, so an expired login reads as one.
+kerr=$(mktemp); trap 'rm -f "$kerr"' EXIT
+ports=$(k get service ping-gateway -o jsonpath='{.spec.ports[*].port}' 2>"$kerr") \
+  || die "kubectl could not read service ping-gateway: $(tr '\n' ' ' < "$kerr")"
+case " $ports " in
+  *" 8080 "*) ;;
+  *) die "service ping-gateway has no port 8080 (ports seen: '${ports}'; kubectl said: $(tr '\n' ' ' < "$kerr"))" ;;
+esac
 echo "ok: service ping-gateway has port 8080"
 owners=$(k get ingress -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.spec.rules[*].host}{"\n"}{end}' 2>/dev/null) \
   || die "the ingresses could not be listed"
