@@ -211,6 +211,13 @@ test('setup run: an unusable default sign-on policy and a missing act mapping be
   assert.equal(p1.state.attrs.length, 1);
 });
 
+test('app descriptions use only characters PingOne accepts (no $ + < = > ^ ` | ~)', () => {
+  for (const app of [setup.USER_APP, setup.AGENT_APP]) {
+    assert.match(app.description, /^[\p{L}\p{M}\p{N}\p{Zs}\p{P}]+$/u, `${app.name}: only letters, marks, numbers, spaces and punctuation`);
+    assert.ok(!/[$+<=>^`|~]/.test(app.description), `${app.name}: no $ + < = > ^ \` | ~`);
+  }
+});
+
 test('a PingOne 400 names the rejected field and the reason, with ids hidden and no secret', async () => {
   const { envFile, credFile } = labFiles(); const p1 = fakePingOne();
   const body = { code: 'INVALID_DATA', message: 'The request could not be completed.', details: [{ code: 'INVALID_VALUE', target: 'redirectUris', message: 'http://127.0.0.1:5603/callback must use https for 11111111-2222-3333-4444-555555555555' }] };

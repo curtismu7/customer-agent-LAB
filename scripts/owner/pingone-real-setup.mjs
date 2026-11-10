@@ -170,14 +170,15 @@ export function appDrift(app, want) {
   return d;
 }
 
+// PingOne rejects a description with any of $ + < = > ^ ` | ~ (HTTP 400 INVALID_VALUE on (description)): keep both plain.
 export const USER_APP = {
-  name: USER_APP_NAME, description: 'Customer Agent LAB: the customer sign-in (pi.flow, authorization code + PKCE). Created by the owner setup script.',
+  name: USER_APP_NAME, description: 'Customer Agent LAB: the customer sign-in (pi.flow, authorization code with PKCE). Created by the owner setup script.',
   enabled: true, type: 'WEB_APP', protocol: 'OPENID_CONNECT', grantTypes: ['AUTHORIZATION_CODE'], responseTypes: ['CODE'],
   pkceEnforcement: 'S256_REQUIRED', tokenEndpointAuthMethod: 'CLIENT_SECRET_BASIC', redirectUris: REDIRECT_URIS,
 };
 // Not WORKER: PingOne refuses resource scope grants on WORKER apps, and this app needs the gateway scope.
 export const AGENT_APP = {
-  name: AGENT_APP_NAME, description: 'Customer Agent LAB: the agent (actor) identity, client credentials + token exchange. Created by the owner setup script.',
+  name: AGENT_APP_NAME, description: 'Customer Agent LAB: the agent (actor) identity, client credentials and token exchange. Created by the owner setup script.',
   enabled: true, type: 'WEB_APP', protocol: 'OPENID_CONNECT', grantTypes: ['CLIENT_CREDENTIALS', 'TOKEN_EXCHANGE'], tokenEndpointAuthMethod: 'CLIENT_SECRET_BASIC',
 };
 
