@@ -3,6 +3,8 @@
 // a token the fake PingOne issued by exchange (with act). state.behaviour picks a variant:
 //   'ok' | 'sse' (answers as an event stream) | 'deny' (403 + X-Gw-Audit-Trail on tools/call) | 'token' (401 + WWW-Authenticate on initialize)
 //   | 'hold' (428 on tools/call) | 'down' (503 on initialize) | 'tool-error' (isError result) | 'no-tool' (tools/list without the tool)
+//   | 'redirect' (307 on initialize to /elsewhere, counted in state.elsewhere) | 'one-account' (get_my_accounts lists one account)
+//   | 'audit-ctl' (403 with control characters in the audit trail's decision)
 import http from 'node:http';
 
 export const SESSION_ID = 'fake-mcp-session-0001';
@@ -17,7 +19,7 @@ const RESULTS = {
 
 export async function startFakeGateway({ behaviour = 'ok', isDelegated = () => true } = {}) {
   const seen = [];
-  const state = { behaviour };
+  const state = { behaviour, elsewhere: 0 };
   const server = http.createServer((req, res) => {
     const chunks = [];
     req.on('data', (c) => chunks.push(c));
@@ -29,6 +31,8 @@ export async function startFakeGateway({ behaviour = 'ok', isDelegated = () => t
         if (b === 'sse' && status === 200 && obj) { res.writeHead(200, { 'content-type': 'text/event-stream', ...headers }); res.end(`event: message\ndata: ${JSON.stringify(obj)}\n\n`); return; }
         res.writeHead(status, { 'content-type': 'application/json', ...headers }); res.end(obj ? JSON.stringify(obj) : '');
       };
+      if (req.url === '/elsewhere') { state.elsewhere += 1; return reply(200, { jsonrpc: '2.0', id: 1, result: {} }); }
+      if (b === 'redirect' && rpc?.method === 'initialize') return reply(307, null, { location: '/elsewhere' });
       if (req.method !== 'POST' || req.url !== '/mcp' || !rpc) return reply(404, { error: 'not_found' });
       const token = /^Bearer (.+)$/.exec(String(req.headers.authorization || ''))?.[1];
       if (b === 'down' && rpc.method === 'initialize') return reply(503, { error: 'unavailable' });
@@ -41,10 +45,11 @@ export async function startFakeGateway({ behaviour = 'ok', isDelegated = () => t
         const name = rpc.params?.name;
         if (name !== 'get_my_accounts') {
           if (b === 'deny') return reply(403, { error: 'forbidden' }, { 'x-gw-audit-trail': AUDIT_TRAIL });
+          if (b === 'audit-ctl') return reply(403, { error: 'forbidden' }, { 'x-gw-audit-trail': JSON.stringify({ decision: 'DENY\u0007\u001b[31m' }) });
           if (b === 'hold') return reply(428, { error: 'approval_required' });
           if (b === 'tool-error') return reply(200, { jsonrpc: '2.0', id: rpc.id, result: { isError: true, content: [{ type: 'text', text: 'fake: the account was not found' }] } });
         }
-        const out = Object.hasOwn(RESULTS, name) ? RESULTS[name] : { ok: true, tool: name };
+        const out = b === 'one-account' && name === 'get_my_accounts' ? { accounts: RESULTS.get_my_accounts.accounts.slice(0, 1) } : Object.hasOwn(RESULTS, name) ? RESULTS[name] : { ok: true, tool: name };
         return reply(200, { jsonrpc: '2.0', id: rpc.id, result: { content: [{ type: 'text', text: JSON.stringify(out) }] } });
       }
       return reply(200, { jsonrpc: '2.0', id: rpc.id ?? null, error: { code: -32601, message: 'fake: unknown method' } });

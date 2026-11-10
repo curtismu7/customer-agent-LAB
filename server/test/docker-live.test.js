@@ -63,6 +63,13 @@ test('Docker with no .env (compose passes empty values): Mock only, Real disable
   assert.match(r.log, /no outbound network/);
 });
 
+test('takeLiveSettingsFromEnv takes and removes every Real setting, the CAL_* secrets included', () => {
+  const env = { CAL_LIVE_FROM_ENV: '1', ...fullSettingsFor('https://gw.lab-test.net/mcp'), OTHER: 'x' };
+  const taken = takeLiveSettingsFromEnv(env);
+  assert.deepEqual(Object.keys(taken).sort(), Object.keys(fullSettingsFor('')).sort());
+  assert.deepEqual(Object.keys(env).sort(), ['CAL_LIVE_FROM_ENV', 'OTHER'], 'no Real setting is left in the environment');
+});
+
 test('Docker with the full-Real settings (and the old worker client too): full Real, the netguard allows the PingOne and gateway hosts only, the worker client ignored', async () => {
   const r = await boot(5685, { CAL_LIVE_FROM_ENV: '1', CAL_PUBLISH: 'loopback', ...settingsFor(), ...fullSettingsFor('https://gw.lab-test.net/mcp') });
   assert.equal(r.info.realAvailable, true); assert.equal(r.info.real.level, 'full'); assert.deepEqual(r.info.real.missing, []);

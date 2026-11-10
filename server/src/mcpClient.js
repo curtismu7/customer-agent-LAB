@@ -82,12 +82,14 @@ const str = (v, n = 300) => (typeof v === 'string' ? v.slice(0, n) : null);
 // X-Gw-Audit-Trail: JSON, or base64url JSON, or plain text. Returns { raw, parsed, decision }.
 export function parseAuditTrail(value) {
   if (typeof value !== 'string' || !value) return null;
-  const raw = value.slice(0, 2000);
+  const raw = value.slice(0, 2000).replace(/[\u0000-\u001f\u007f-\u009f]/g, ' ');
   let parsed = null;
   try { parsed = JSON.parse(raw); } catch {
     try { const d = Buffer.from(raw, 'base64url').toString('utf8'); if (/^[[{]/.test(d.trim())) parsed = JSON.parse(d); } catch { parsed = null; }
   }
-  const pick = (o) => (asObject(o) ? str(o.decision) ?? str(o.outcome) ?? str(o.result) : null);
+  // A decision is a short word (PERMIT, DENY, ...); anything else (control characters, long text) is not used as one.
+  const word = (v) => (typeof v === 'string' && /^[A-Za-z_ -]{1,40}$/.test(v) ? v : null);
+  const pick = (o) => (asObject(o) ? word(o.decision) ?? word(o.outcome) ?? word(o.result) : null);
   let decision = null;
   if (Array.isArray(parsed)) for (const e of parsed) decision = pick(e) ?? decision;
   else decision = pick(parsed);

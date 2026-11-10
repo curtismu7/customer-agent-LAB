@@ -2,7 +2,7 @@
 // what it was sent. The client ids and secrets and the demo password are assembled at run time, so no credential-shaped string sits in the repository.
 // Full Real (owner, 2026-11-10): authorize with response_mode=pi.flow (anything else is refused: there is no redirect login), the flows API
 // username/password step, resume, and the token endpoint for authorization_code (PKCE S256 checked), client_credentials and RFC 8693 token exchange
-// (it adds act). state.full picks a variant: { signin: 'ok' | 'resume' | 'bad-password' | 'mfa', exchange: 'ok' | 'no-act' | 'refuse' }.
+// (it adds act). state.full picks a variant: { signin: 'ok' | 'resume' | 'bad-password' | 'mfa' | 'echo-pw' | 'bad-state' | 'no-state', exchange: 'ok' | 'no-act' | 'refuse' }.
 import http from 'node:http';
 import { createHash, randomBytes } from 'node:crypto';
 
@@ -59,11 +59,14 @@ export async function startFakePingOne({ behaviour = 'ok', delayMs = 0 } = {}) {
           if (!f || cookieOf() !== f.cookie) return send(401, { code: 'UNAUTHORIZED', message: 'fake: the flow cookie is missing' });
           if (req.headers['content-type'] !== 'application/vnd.pingidentity.usernamePassword.check+json') return send(415, { code: 'UNSUPPORTED_MEDIA_TYPE', message: 'fake: use the vendor content type' });
           let b = {}; try { b = JSON.parse(Buffer.concat(body).toString('utf8')); } catch { /* bad */ }
+          if (state.full.signin === 'echo-pw') return send(400, { code: 'INVALID_DATA', message: `fake echo: ${b.password}`, details: [{ code: 'INVALID_VALUE', message: `bad ${b.password}` }] });
           if (state.full.signin === 'bad-password' || b.username !== DEMO_USERNAME || b.password !== DEMO_PASSWORD) return send(400, { code: 'INVALID_DATA', message: 'fake: the request could not be completed', details: [{ code: 'INVALID_VALUE', target: 'password', message: 'Invalid username or password' }] });
           if (state.full.signin === 'mfa') return send(200, { id: fm[1], status: 'MFA_REQUIRED' });
           f.done = true;
           const code = randomBytes(16).toString('hex'); codes.set(code, { challenge: f.challenge, nonce: f.nonce });
           if (state.full.signin === 'resume') { f.code = code; return send(200, { id: fm[1], status: 'COMPLETED', _links: { resume: { href: 'x' } } }); }
+          if (state.full.signin === 'bad-state') return send(200, { id: fm[1], status: 'COMPLETED', authorizeResponse: { code, state: 'not-the-state' } });
+          if (state.full.signin === 'no-state') return send(200, { id: fm[1], status: 'COMPLETED', authorizeResponse: { code } });
           return send(200, { id: fm[1], status: 'COMPLETED', authorizeResponse: { code, state: f.state } });
         }
         if (req.method === 'GET' && u.pathname === `/${ENV_ID}/as/resume`) {

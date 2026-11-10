@@ -115,6 +115,8 @@ async function readCapped(response, max) {
 
 // A PingOne error in its own words (code and message, cut short); nothing else of the answer.
 const p1Error = (r) => (r.json ? { error: str(r.json.error) ?? str(r.json.code), error_description: str(r.json.error_description) ?? str(r.json.message) ?? str(r.json.details?.[0]?.message), detail_code: str(r.json.details?.[0]?.code) } : { note: r.unreachable ? 'no answer' : r.redirected ? 'a redirect (never followed)' : 'the answer was not a JSON object' });
+// After the password has been sent, PingOne's free text is never passed on (it could echo what was typed): codes only.
+const p1Codes = (r) => (r.json ? { error: str(r.json.error, 80) ?? str(r.json.code, 80), detail_code: str(r.json.details?.[0]?.code, 80) } : p1Error(r));
 const failText = (r, who = 'PingOne') => (r.unreachable ? `${who} did not answer (no connection, a timeout or an unreadable answer).` : r.redirected ? `${who} answered with a redirect; the lab never follows one.` : r.truncated ? 'The answer was larger than the lab reads, so it was cut off.' : `${who} answered HTTP ${r.status}.`);
 
 export function createReal({ config = { problem: 'not configured' }, missing = FULL_REQUIRED, wanted = false, fetchImpl = (...a) => globalThis.fetch(...a), timeoutMs = TIMEOUT_MS, maxBytes = MAX_BODY_BYTES, now = Date.now, gatewayFetch } = {}) {
@@ -157,7 +159,10 @@ export function createReal({ config = { problem: 'not configured' }, missing = F
     const keep = (cookies) => { for (const c of cookies) { const pair = String(c).split(';')[0]; const i = pair.indexOf('='); if (i > 0) jar.set(pair.slice(0, i).trim(), pair.slice(i + 1)); } };
     const cookieHeader = () => [...jar].map(([k, v]) => `${k}=${v}`).join('; ');
     const shownCookie = () => [...jar].map(([k, v]) => `${k}=${short(v)}`).join('; ');
-    const fail = (status, error, message, r) => ({ ok: false, status, error, message, steps, ...(r ? { pingone: p1Error(r) } : {}) });
+    let sent = false; // true once the password has gone to PingOne: from then on, only error codes are kept
+    // Belt and braces: the exact password, if it ever appears in what is returned, is replaced (only for passwords long enough to be unambiguous).
+    const scrub = (v) => (password.length >= 4 ? JSON.parse(JSON.stringify(v).split(JSON.stringify(password).slice(1, -1)).join('[the password]')) : v);
+    const fail = (status, error, message, r) => scrub({ ok: false, status, error, message, steps, ...(r ? { pingone: sent ? p1Codes(r) : p1Error(r) } : {}) });
     try {
       // 1. authorize, pi.flow: the answer is JSON (a flow), not a redirect.
       const verifier = randomBytes(32).toString('base64url');
@@ -176,9 +181,10 @@ export function createReal({ config = { problem: 'not configured' }, missing = F
       // 2. username and password, once.
       if (flow.status === 'USERNAME_PASSWORD_REQUIRED') {
         const t2 = tp();
+        sent = true;
         const r = await p1(`${config.base}/flows/${flowId}`, { method: 'POST', headers: { 'content-type': PW_TYPE, accept: '*/*', ...(jar.size ? { cookie: cookieHeader() } : {}) }, body: JSON.stringify({ username: config.username, password }) }, t2);
         keep(r.cookies);
-        steps.push({ step: 'flows API: username and password', traceparent: t2, request: { method: 'POST', url: `${config.base}/flows/${flowId}`, headers: { 'content-type': PW_TYPE, cookie: shownCookie() }, body: { username: config.username, password: PASSWORD_SHOWN } }, response: { status: r.status, body: r.json && r.status === 200 ? { id: str(r.json.id, 64), status: str(r.json.status, 64) } : p1Error(r) } });
+        steps.push({ step: 'flows API: username and password', traceparent: t2, request: { method: 'POST', url: `${config.base}/flows/${flowId}`, headers: { 'content-type': PW_TYPE, cookie: shownCookie() }, body: { username: config.username, password: PASSWORD_SHOWN } }, response: { status: r.status, body: r.json && r.status === 200 ? { id: str(r.json.id, 64), status: str(r.json.status, 64) } : p1Codes(r) } });
         if (r.unreachable) return fail(503, 'signin_unreachable', 'PingOne did not answer the sign-in. Check the network, or switch to Mock.', r);
         if (r.status === 400 || r.status === 401) return fail(401, 'signin_rejected', 'PingOne did not accept the username or password.', r);
         if (r.status !== 200 || !r.json) return fail(502, 'signin_refused', `PingOne refused the sign-in (${failText(r)}).`, r);
@@ -190,26 +196,26 @@ export function createReal({ config = { problem: 'not configured' }, missing = F
       if (!code) {
         const t3 = tp();
         const r = await p1(`${config.base}/as/resume?flowId=${encodeURIComponent(flowId)}`, { method: 'GET', headers: { accept: 'application/json', ...(jar.size ? { cookie: cookieHeader() } : {}) } }, t3);
-        steps.push({ step: 'resume: the authorization code', traceparent: t3, request: { method: 'GET', url: `${config.base}/as/resume?flowId=${flowId}`, headers: { cookie: shownCookie() } }, response: { status: r.status, body: r.json?.authorizeResponse ? { authorizeResponse: { code: short(r.json.authorizeResponse.code), state: short(r.json.authorizeResponse.state) } } : p1Error(r) } });
+        steps.push({ step: 'resume: the authorization code', traceparent: t3, request: { method: 'GET', url: `${config.base}/as/resume?flowId=${flowId}`, headers: { cookie: shownCookie() } }, response: { status: r.status, body: r.json?.authorizeResponse ? { authorizeResponse: { code: short(r.json.authorizeResponse.code), state: short(r.json.authorizeResponse.state) } } : p1Codes(r) } });
         if (r.unreachable) return fail(503, 'signin_unreachable', 'PingOne did not answer the sign-in. Check the network, or switch to Mock.', r);
         code = str(r.json?.authorizeResponse?.code, 2000); gotState = r.json?.authorizeResponse?.state;
         if (r.status !== 200 || !code) return fail(502, 'signin_refused', `PingOne did not hand back an authorization code (${failText(r)}).`, r);
       }
-      if (gotState !== undefined && gotState !== state) return fail(502, 'signin_refused', 'The authorization code came back with a different state; the lab refuses it.');
+      if (gotState !== state) return fail(502, 'signin_refused', 'The authorization code came back without the state the lab sent; the lab refuses it.');
       // 4. code for tokens (the user app's secret in the Authorization header only).
       const t4 = tp();
       const tok = await tokenCall({ grant_type: 'authorization_code', code, code_verifier: verifier, redirect_uri: REDIRECT_URI }, config.user, t4);
       const at = typeof tok.json?.access_token === 'string' ? tok.json.access_token : null;
-      steps.push({ step: 'token: the code for the user\'s tokens', traceparent: t4, request: { method: 'POST', url: `${config.base}/as/token`, headers: { authorization: SECRET_SHOWN }, body: { grant_type: 'authorization_code', code: short(code), code_verifier: '[the PKCE verifier, never shown]', redirect_uri: REDIRECT_URI } }, response: { status: tok.status, body: at ? { access_token: '[the user access token: in the token list]', id_token: tok.json.id_token ? '[decoded in the token list]' : null, token_type: str(tok.json.token_type), expires_in: Number.isFinite(tok.json.expires_in) ? tok.json.expires_in : null, scope: str(tok.json.scope) } : p1Error(tok) } });
+      steps.push({ step: 'token: the code for the user\'s tokens', traceparent: t4, request: { method: 'POST', url: `${config.base}/as/token`, headers: { authorization: SECRET_SHOWN }, body: { grant_type: 'authorization_code', code: short(code), code_verifier: '[the PKCE verifier, never shown]', redirect_uri: REDIRECT_URI } }, response: { status: tok.status, body: at ? { access_token: '[the user access token: in the token list]', id_token: tok.json.id_token ? '[decoded in the token list]' : null, token_type: str(tok.json.token_type), expires_in: Number.isFinite(tok.json.expires_in) ? tok.json.expires_in : null, scope: str(tok.json.scope) } : p1Codes(tok) } });
       if (tok.unreachable) return fail(503, 'signin_unreachable', 'PingOne did not answer the sign-in. Check the network, or switch to Mock.', tok);
       if (tok.status !== 200 || !at) return fail(502, 'signin_refused', `PingOne did not issue the user's tokens (${failText(tok)}).`, tok);
       const idClaims = typeof tok.json.id_token === 'string' ? decodeJwt(tok.json.id_token)?.claims ?? null : null;
-      if (idClaims && idClaims.nonce !== undefined && idClaims.nonce !== nonce) return fail(502, 'signin_refused', 'The ID token carries a different nonce; the lab refuses it.');
+      if (idClaims && idClaims.nonce !== nonce) return fail(502, 'signin_refused', 'The ID token does not carry the nonce the lab sent; the lab refuses it.');
       const dec = decodeJwt(at);
       const life = Number.isFinite(tok.json.expires_in) && tok.json.expires_in > 0 ? Math.min(tok.json.expires_in, 24 * 3600) : 3600;
       const session = { accessToken: at, header: dec?.header ?? null, claims: dec?.claims ?? null, idClaims, expiresAt: now() + life * 1000, steps, traceId: trace.traceId };
       sessions.set(ws, session);
-      return { ok: true, user: userOf(session), steps };
+      return scrub({ ok: true, user: userOf(session), steps });
     } finally { inFlight -= 1; }
   }
 
@@ -311,6 +317,13 @@ export function createReal({ config = { problem: 'not configured' }, missing = F
       if (acc.kind === 'ok') accounts = accountIds(toolPayload(acc.rpc?.result));
     }
     const pre = calls.find((c) => c.kind !== 'ok');
+    const needTwo = tool === 'create_transfer';
+    if (!pre && NEEDS_ACCOUNTS.has(tool) && accounts.length < (needTwo ? 2 : 1)) {
+      notRun('authorize-decision', 'Authorize decision', 'gateway', 'authorize', `Not run: ${tool} was not called.`);
+      push({ kind: 'tool-refused', label: `MCP tool [REAL]: get_my_accounts (${tool} was not called)`, from: 'gateway', to: 'mcp', verdict: 'deny', traceparent: calls[0].traceparent, note: `The account list had ${accounts.length} usable account${accounts.length === 1 ? '' : 's'}; ${tool} needs ${needTwo ? 'two' : 'one'}, so the lab did not call it.`, request: { calls: calls.map((c) => shownReq(c, { method: 'tools/call', name: 'get_my_accounts', arguments: {} })) }, response: { calls: calls.map((c) => shownRes(c, { content: contentShown(c.rpc?.result) })) } });
+      rest(2, 'Not run: the tool was not called.');
+      return { outcome: 'REAL_TOOL_ERROR', reply: { who: 'Agent', text: `I could not find ${needTwo ? 'two accounts' : 'an account'} of yours for ${tool}, so I did not call it.` } };
+    }
     const args = toolArgs(tool, { vertical, accounts, amount: situationOf(uc.id).amount });
     const call = pre ? null : await gs.callTool(tool, args);
     if (call) calls.push(call);
@@ -326,6 +339,7 @@ export function createReal({ config = { problem: 'not configured' }, missing = F
     const result = last.kind === 'ok' ? last.rpc?.result ?? null : null;
     const rpcError = last.kind === 'ok' ? last.rpc?.error ?? null : null;
     const toolFailed = last.kind === 'ok' && (!result || result.isError === true || rpcError);
+    const cut = last.kind === 'ok' && !result && last.truncated;
     push({
       kind: last.kind === 'ok' ? 'tool-dispatched' : last.kind === 'hold' ? 'tool-held' : 'tool-refused', label: `MCP tool [REAL]: tools/call ${tool}${calls.length > 1 ? ' (after get_my_accounts for your account ids)' : ''}`, from: 'gateway', to: 'mcp', verdict: last.kind === 'ok' && !toolFailed ? 'ok' : last.kind === 'hold' ? 'held' : 'deny', traceparent: last.traceparent,
       note: last.kind === 'ok' ? (toolFailed ? 'The tool answered with an error.' : 'The SE MCP server ran the tool.') : m.note,
@@ -336,7 +350,7 @@ export function createReal({ config = { problem: 'not configured' }, missing = F
     if (toolFailed) {
       notRun('api-call', 'API', 'mcp', 'api', 'Not known: the tool answered with an error.');
       const why = rpcError ? str(rpcError.message) : textOf(result);
-      const text = `The tool ${tool} answered with an error${why ? `: ${cleanFree(why, 300)}` : ''}.`;
+      const text = cut ? `The answer from ${tool} was larger than the lab reads, so it was cut off and not used.` : `The tool ${tool} answered with an error${why ? `: ${cleanFree(why, 300)}` : ''}.`;
       push({ kind: 'agent-reply', label: 'Agent reply [REAL]: written from the tool\'s error', from: 'agent', to: 'page', verdict: 'ok', traceparent: tp(), request: {}, response: { reply: text } });
       return { outcome: 'REAL_TOOL_ERROR', reply: { who: 'Agent', text } };
     }

@@ -98,6 +98,7 @@ test('error mapping: 403 DENY with the audit trail, 401 token problem with WWW-A
       if (text) assert.match(x.reply.text, text, behaviour);
       assert.equal(x.hops.length, 8, `${behaviour}: always the eight hops`);
       assert.ok(x.hops.every((h) => (h.source === 'real') === (h.verdict !== 'skip')), `${behaviour}: a hop that did not run says NOT RUN, never REAL`);
+      assert.ok(x.hops.every((h) => (h.source === 'not-run' ? /\[NOT RUN\]$/ : /\[REAL\]/).test(h.label)), `${behaviour}: the label says what the source says`);
       if (behaviour === 'deny') {
         const d = x.hops.find((h) => h.kind === 'authorize-decision');
         assert.equal(d.decision.outcome, 'DENY'); assert.deepEqual(d.response['x-gw-audit-trail'], JSON.parse(AUDIT_TRAIL));
@@ -307,4 +308,45 @@ test('an event-stream gateway works end to end', async () => {
     await toReal(url); await signIn(url);
     assert.equal((await run(url, 'UC1', { vertical: 'healthcare' })).body.run.outcome, 'REAL_PERMIT');
   }, { gateway: 'sse' });
+});
+
+test('review fixes: a password echoed by PingOne never comes back; state and nonce are required; the sign-in is refused under the guards', async () => {
+  await withFull(async (url) => {
+    await toReal(url);
+    const s = await signIn(url);
+    assert.equal(s.status, 401); assert.ok(!s.text.includes(DEMO_PASSWORD), 'an echoed password is not passed on');
+    assert.ok(!s.text.includes('fake echo'), 'after the password step only PingOne error codes are kept');
+  }, { signin: 'echo-pw' });
+  for (const v of ['bad-state', 'no-state']) {
+    await withFull(async (url) => {
+      await toReal(url);
+      const s = await signIn(url); assert.equal(s.status, 502, v); assert.match(s.body.message, /without the state the lab sent/);
+    }, { signin: v });
+  }
+  for (const [env, headers] of [[{ ...ENV, CAL_ALLOW_LIVE: '0' }, {}], [ENV, { 'x-forwarded-for': '10.0.0.1' }]]) {
+    await withFull(async (url, { p1 }) => {
+      const r = await post(url, '/api/signin', { password: DEMO_PASSWORD }, headers);
+      assert.equal(r.status, 409); assert.equal(p1.seen.length, 0, 'nothing was sent to PingOne');
+    }, { env });
+  }
+});
+
+test('review fixes: a gateway redirect is never followed; one account means no transfer; control characters never become a decision', async () => {
+  await withFull(async (url, { gw }) => {
+    await toReal(url); await signIn(url);
+    const r = await run(url, 'UC1', { vertical: 'banking' });
+    assert.equal(r.body.run.outcome, 'REAL_REFUSED'); assert.equal(gw.state.elsewhere, 0);
+  }, { gateway: 'redirect' });
+  await withFull(async (url, { gw }) => {
+    await toReal(url); await signIn(url);
+    const r = await run(url, 'UC6', { vertical: 'banking' });
+    assert.equal(r.body.run.outcome, 'REAL_TOOL_ERROR'); assert.equal(r.body.run.hops.length, 8);
+    assert.ok(!gw.seen.some((c) => c.rpc?.params?.name === 'create_transfer'), 'create_transfer is never called with one account');
+  }, { gateway: 'one-account' });
+  await withFull(async (url) => {
+    await toReal(url); await signIn(url);
+    const r = await run(url, 'UC1', { vertical: 'banking' });
+    assert.equal(r.body.run.outcome, 'REAL_DENY'); assert.doesNotMatch(r.body.run.reply.text, /[\u0000-\u001f]/);
+    assert.equal(r.body.run.hops.find((h) => h.kind === 'authorize-decision').decision.outcome, 'DENY', 'falls back to the HTTP answer');
+  }, { gateway: 'audit-ctl' });
 });
