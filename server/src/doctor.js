@@ -14,7 +14,7 @@ import { deployModeFrom, modeFrom } from './config.js';
 import { MANIFEST, TRACKS } from './manifest.js';
 import { KNOWN_STEPS, chainOf, runUseCase } from './flow.js';
 import { signMockJwt, verifyMockJwt } from './mockjwt.js';
-import { APP_ENV_FILE, missingLiveSettings, readLiveSettings, settingsPath } from './settings.js';
+import { APP_ENV_FILE, liveSettingsFor, missingIn, missingLiveSettings, settingsPath } from './settings.js';
 import { liveConfig } from './live.js';
 import { DIAGRAM_NAMES, buildDiagram } from './diagramData.js';
 
@@ -30,7 +30,7 @@ export async function runChecks({ env = process.env } = {}) {
   add('node', major >= 26 ? 'pass' : 'fail', `v${process.versions.node} (need >= 26)`);
   try { add('deploy', 'pass', deployModeFrom(env) === 'hosted' ? 'hosted build (CAL_DEPLOY_MODE=hosted): mock only; live, the llama.cpp brain and the settings file are refused or ignored' : 'local (a clone or local Docker)'); }
   catch (e) { add('deploy', 'fail', e.message); }
-  try { add('mode', 'pass', `${modeFrom(env)} is the opening mode (mock is the default). Opening in live does not check or switch on the live guard: selecting Live and every live run still need the owner's opt-in (CAL_ALLOW_LIVE=1, IDP=pingone)`); }
+  try { add('mode', 'pass', `${modeFrom(env)} is the opening mode (mock is the default). Opening in live does not check or switch on the live guard: selecting Real and every live run still need the PingOne settings and the guards (no CAL_ALLOW_LIVE=0, IDP unset or pingone, loopback, no proxy)`); }
   catch (e) { add('mode', 'fail', e.message); }
   try { add('bind', 'pass', `${assertBindAllowed(bindHost(env), env)}${env.CALAB_BIND ? ' (CALAB_BIND opt-in)' : ' (loopback)'}`); }
   catch (e) { add('bind', 'fail', e.message); }
@@ -42,7 +42,10 @@ export async function runChecks({ env = process.env } = {}) {
   const which = `reads ${file}${file === APP_ENV_FILE ? " (this app's .env beside docker-compose.yml)" : ' (CAL_ENV_FILE)'}`;
   let stat = null;
   try { stat = fs.statSync(file); } catch { /* absent */ }
-  if (!stat || !stat.isFile()) add('settings-file', 'info', `${which}: not there. Mock needs none; for Live copy .env.example to .env (chmod 600) and fill its four PINGONE_* settings`);
+  if (env.CAL_LIVE_FROM_ENV === '1') {
+    const missing = missingIn(liveSettingsFor(env));
+    add('settings-file', 'pass', `Docker: docker-compose.yml passed the PINGONE_* settings from the app's .env beside it; ${missing.length ? `Live settings missing: ${missing.join(', ')}` : 'the Live settings are all set'} (values are never printed)`);
+  } else if (!stat || !stat.isFile()) add('settings-file', 'info', `${which}: not there. Mock needs none; for Live copy .env.example to .env (chmod 600) and fill its four PINGONE_* settings`);
   else {
     const open = stat.mode & 0o077;
     const missing = missingLiveSettings(file);
@@ -95,15 +98,15 @@ export async function runChecks({ env = process.env } = {}) {
   const ng = await netguardSelfTest();
   add('netguard', ng.ok ? 'pass' : 'fail', ng.ok ? `blocked fetch, socket, socket-by-IP, dns lookup, dns resolve and udp to a non-loopback host (${ng.blocked}/6)` : ng.detail);
   // Live (step 3) is the one thing that can leave the machine: two calls to the one configured PingOne environment. Booleans and fixed words only, never a value.
-  if (env.CAL_ALLOW_LIVE !== '1') add('live', 'pass', 'live is off (CAL_ALLOW_LIVE is not 1): this lab reaches no network');
-  else {
-    const cfg = liveConfig(readLiveSettings(settingsFile(env)), env);
-    const refused = liveRefusal({ env, bind: bindHost(env), headers: {} });
-    if (cfg.problem) add('live', 'info', `live is opted in but cannot run: ${cfg.problem}`);
-    else if (refused) add('live', 'info', `live is opted in but refused: ${refused}`);
-    else add('live', 'pass', `live is on: a live run makes two calls, only to ${new URL(cfg.base).origin} (the configured PingOne environment); the netguard allows that one host`);
-  }
-  add('tenant', 'pass', env.CAL_ALLOW_LIVE === '1' ? 'mock runs touch no tenant and no network; a live run reaches the one configured PingOne environment and nothing else' : 'simulated only: no tenant, no credentials, no outbound network');
+  // Option (a), owner 2026-11-10: Real is available whenever the PingOne settings are complete; CAL_ALLOW_LIVE=0 is the explicit OFF switch.
+  const cfg = liveConfig(liveSettingsFor(env), env);
+  const refused = liveRefusal({ env, bind: bindHost(env), headers: {} });
+  let liveOn = false;
+  if (env.CAL_ALLOW_LIVE === '0') add('live', 'pass', 'Real is switched off (CAL_ALLOW_LIVE=0): this lab reaches no network');
+  else if (cfg.problem) add('live', 'pass', `Real is not configured (${cfg.problem}): Mock only, this lab reaches no network`);
+  else if (refused) add('live', 'info', `Real is configured but refused: ${refused}`);
+  else { liveOn = true; add('live', 'pass', `Real is on: a live run makes two calls, only to ${new URL(cfg.base).origin} (the configured PingOne environment); the netguard allows that one host`); }
+  add('tenant', 'pass', liveOn ? 'mock runs touch no tenant and no network; a live run reaches the one configured PingOne environment and nothing else' : 'simulated only: no tenant, no credentials, no outbound network');
   return checks;
 }
 

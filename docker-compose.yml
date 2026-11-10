@@ -3,9 +3,11 @@
 # Do not change the 127.0.0.1 below. HOST_PORT must stay in 5600-5699 (5603 is the Docker default; 5601 is taken by Kibana; 5600 is the host-run port).
 # ALLOW_MOCK_SIGNIN=1 is the owner's opt-in to the mock persona sign-in; CAL_PUBLISH=loopback tells the guards that the publish above is loopback-only
 # (a test pins both). Remove ALLOW_MOCK_SIGNIN to turn mock sign-in off.
-# Settings: the app's own .env beside this file (copy .env.example). Compose reads it only to fill the ${...} values below (a missing .env is fine);
-# there is deliberately no env_file, so the PINGONE_* Live settings (client secret included) never enter the container. Docker stays Mock:
-# CAL_ALLOW_LIVE, IDP and CAL_DEPLOY_MODE are pinned here, and the image has no .env (.dockerignore).
+# Settings: the app's own .env beside this file (copy .env.example). Compose reads it only to fill the ${...} values below (a missing .env is fine).
+# There is deliberately no env_file (it would copy every .env line into the container): only the names listed below go in, and a test pins that list.
+# Real (owner, 2026-11-10, option a): the four PINGONE_* names are passed by substitution and CAL_LIVE_FROM_ENV=1 tells the server to take them from
+# the environment (the image has no .env, .dockerignore). Real is available when they are complete; with none of them the lab is Mock with Real disabled.
+# CAL_ALLOW_LIVE=0 in .env (or the shell) is the explicit OFF switch. IDP is not pinned: each mode uses its own IdP, so the toggle switches both ways.
 # CAL_DEPLOY_MODE=local is this compose file; the dormant hosted build sets hosted in its own k8s manifest.
 # CAL_BRAIN_URL (owner opt-in, off by default): the local llama.cpp model on the Mac, e.g. CAL_BRAIN_URL=http://host.docker.internal:8090.
 # When set, the netguard allows that one host, and the lab calls it only after a visitor picks the llama.cpp brain (a test pins the empty default).
@@ -22,9 +24,13 @@ services:
       CALAB_BIND: 0.0.0.0
       CAL_PUBLISH: loopback
       ALLOW_MOCK_SIGNIN: "1"
-      IDP: mock
-      CAL_ALLOW_LIVE: "0"
       CAL_DEPLOY_MODE: local
+      CAL_LIVE_FROM_ENV: "1"
+      CAL_ALLOW_LIVE: ${CAL_ALLOW_LIVE:-}
+      PINGONE_ENVIRONMENT_ID: ${PINGONE_ENVIRONMENT_ID:-}
+      PINGONE_REGION: ${PINGONE_REGION:-}
+      PINGONE_CLIENT_ID: ${PINGONE_CLIENT_ID:-}
+      PINGONE_CLIENT_SECRET: ${PINGONE_CLIENT_SECRET:-}
       CAL_LAB_MODE: ${CAL_LAB_MODE:-mock}
       CAL_BRAIN_URL: ${CAL_BRAIN_URL:-}
       LAB_ALLOWED_HOSTS: ${LAB_ALLOWED_HOSTS:-customer-agent.local.ping-devops.com}

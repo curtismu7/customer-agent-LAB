@@ -344,8 +344,8 @@ describe("mode toggle", () => {
     expect(screen.queryByTestId("mode-msg")).toBeNull();
   });
 
-  test("local: Real is unchanged (enabled, no note, asks the server with POST /api/mode source real)", async () => {
-    await boot();
+  test("local, Real configured: Real is enabled, no note, asks the server with POST /api/mode source real", async () => {
+    await boot({ live: "allowed" });
     const u = userEvent.setup();
     const real = screen.getByTestId("mode-live");
     expect(real.disabled).toBe(false);
@@ -356,13 +356,16 @@ describe("mode toggle", () => {
     expect(modePosts().map((c) => c.body)).toEqual([{ source: "real" }]);
   });
 
-  test("Live is refused with the server's own message and the page stays in Mock", async () => {
+  test("Real not configured: the Real button is disabled, its tooltip is the server's how-to (what to fill in), a click asks nothing and the page stays in Mock", async () => {
     await boot();
     const u = userEvent.setup();
-    await u.click(screen.getByTestId("mode-live"));
-    const msg = await screen.findByTestId("mode-msg");
-    expect(msg.textContent).toMatch(/Real was refused \(HTTP 409\)/);
-    expect(msg.textContent).toMatch(/CAL_ALLOW_LIVE=1/);
+    const real = screen.getByTestId("mode-live");
+    await waitFor(() => expect(real.disabled).toBe(true));
+    expect(real.getAttribute("aria-disabled")).toBe("true");
+    expect(real.getAttribute("title")).toMatch(/^Real is not configured: fill PINGONE_ENVIRONMENT_ID, PINGONE_CLIENT_ID, PINGONE_CLIENT_SECRET in this app's \.env/);
+    await u.click(real); fireEvent.click(real);
+    expect(modePosts()).toHaveLength(0);
+    expect(screen.queryByTestId("mode-msg")).toBeNull();
     expect(screen.getByTestId("mode-mock").getAttribute("aria-pressed")).toBe("true");
     expect(screen.getByTestId("banner").getAttribute("data-state")).toBe("mock");
   });

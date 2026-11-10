@@ -109,7 +109,9 @@ export function sameOriginWrites(req, res, next, { proxyOrigin = null, extraHost
 }
 
 // ---- Rule 11 guards ----------------------------------------------------------------------------------------------------------
-// Mock sign-in (the persona picker that starts every run) needs ALL of: IDP=mock (the default), ALLOW_MOCK_SIGNIN=1, no proxy headers, and a
+// IDP is chosen per mode (owner, 2026-11-10): unset (the default, and what Docker runs) means a Mock run uses the mock IdP and a Real run uses PingOne,
+// so the toggle switches both ways without a restart. IDP=mock pins the lab to Mock (Real refused); IDP=pingone pins it to Real (mock sign-in refused).
+// Mock sign-in (the persona picker that starts every MOCK run) needs ALL of: IDP unset or mock, ALLOW_MOCK_SIGNIN=1, no proxy headers, and a
 // loopback bind (or Docker, whose compose file publishes on the Mac's 127.0.0.1 alone: CAL_PUBLISH=loopback). NODE_ENV is NOT a guard: the Docker
 // image runs with NODE_ENV=production on purpose. Returns null when allowed, or the fixed reason it is refused (never echoes input).
 const LOOPBACK_BIND = new Set(['127.0.0.1', '::1', 'localhost']);
@@ -139,22 +141,29 @@ function networkRefusal({ env, bind, headers }) {
 // In the hosted build the proxy and bind checks do not apply: the pod is reached only through the cluster's ingress (so every request carries
 // proxy headers), live is refused, and everything a visitor sees is simulated and labelled so (the hosted banner). IDP and ALLOW_MOCK_SIGNIN still hold.
 export function mockSignInRefusal({ env, bind, headers }) {
-  if ((env.IDP ?? 'mock') !== 'mock') return 'Mock sign-in is off: IDP is not mock.';
+  if (env.IDP && env.IDP !== 'mock') return 'Mock sign-in is off: IDP is not mock.';
   if (env.ALLOW_MOCK_SIGNIN !== '1') return 'Mock sign-in is off. Start the lab with ALLOW_MOCK_SIGNIN=1 to allow it on this machine.';
   if (isHosted(env)) return null;
   const net = networkRefusal({ env, bind, headers });
   return net ? `Mock sign-in: ${net.charAt(0).toLowerCase()}${net.slice(1)}` : null;
 }
 
-// Live mode may be selected (the toggle) only when ALL of the following hold, and every live run asks again (CAL_LAB_MODE=live only sets the opening mode and does not check them): the owner opted in (CAL_ALLOW_LIVE=1, lab-invented key), IDP=pingone (the one live provider
-// this lab can reach; mock turns live off and any other value is not supported), no proxy headers, and a loopback bind (or CAL_PUBLISH=loopback).
+// Real (live) may be selected (the toggle) only when ALL of the following hold, and every live run asks again (CAL_LAB_MODE=live only sets the opening
+// mode and does not check them). Option (a), owner 2026-11-10 (rule 19, "Real if configured"): there is no ON switch to remember; Real is available
+// when the app's .env holds complete PingOne settings (checked by the caller with live.configured()), and CAL_ALLOW_LIVE=0 is the explicit OFF switch
+// (any value but unset, empty, 0 or 1 is refused, never guessed). IDP must be unset (per mode) or pingone (the one live provider this lab can reach;
+// mock pins Mock and any other value is not supported), no proxy headers, and a loopback bind (or CAL_PUBLISH=loopback, Docker).
 export const LIVE_IDP = 'pingone';
 export const HOSTED_LIVE_REFUSAL = 'Live mode is not available in the hosted build: it is mock only. Run the lab locally for Real.';
 export function liveRefusal({ env, bind, headers }) {
   if (isHosted(env)) return HOSTED_LIVE_REFUSAL;
-  if (env.CAL_ALLOW_LIVE !== '1') return 'Live mode is off. The owner enables it on this machine with CAL_ALLOW_LIVE=1.';
-  if ((env.IDP ?? 'mock') === 'mock') return 'Live mode needs IDP set to a live provider (it is mock).';
-  if (env.IDP !== LIVE_IDP) return `Live mode supports IDP=${LIVE_IDP} only.`;
+  if (env.CAL_ALLOW_LIVE === '0') return 'Real is switched off on this machine (CAL_ALLOW_LIVE=0). Remove it to allow Real.';
+  if (![undefined, '', '1'].includes(env.CAL_ALLOW_LIVE)) return 'CAL_ALLOW_LIVE must be 0 (Real off) or unset.';
+  if (env.IDP === 'mock') return 'Real is off: IDP is pinned to mock. Leave IDP unset to switch between Mock and Real.';
+  if (env.IDP && env.IDP !== LIVE_IDP) return `Live mode supports IDP=${LIVE_IDP} only.`;
   const net = networkRefusal({ env, bind, headers });
   return net ? `Live mode: ${net.charAt(0).toLowerCase()}${net.slice(1)}` : null;
 }
+
+// The how-to the Real button shows (and the 409 says) when the guards hold but the PingOne settings are missing. Names only, never a value.
+export const notConfiguredText = (missing = []) => `Real is not configured: fill ${missing.length ? missing.join(', ') : 'valid PINGONE_* values'} in this app's .env beside docker-compose.yml (copy .env.example; PINGONE_REGION is com, eu, ca or asia), then start the lab again (Docker: docker compose up -d).`;

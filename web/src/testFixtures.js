@@ -77,7 +77,7 @@ export const RUNS = { workspace: "w-test", mode: "mock", count: 0, max: 100, run
 
 // A fetch stand-in. `state` lets a test change what the server would say (mode, live guard, run answers). Every call is recorded in `calls`.
 export function mockApi(state = {}) {
-  const s = { mode: "mock", live: "refused", liveReason: "Live mode is off. The owner enables it on this machine with CAL_ALLOW_LIVE=1.", runs: [], runAnswer: null, ...state };
+  const s = { mode: "mock", live: "refused", liveReason: "Real is not configured: fill PINGONE_ENVIRONMENT_ID, PINGONE_CLIENT_ID, PINGONE_CLIENT_SECRET in this app's .env beside docker-compose.yml (copy .env.example; PINGONE_REGION is com, eu, ca or asia), then start the lab again (Docker: docker compose up -d).", runs: [], runAnswer: null, ...state };
   const calls = [];
   const json = (status, body) => Promise.resolve({ ok: status >= 200 && status < 300, status, json: () => Promise.resolve(body) });
   const fn = (url, opts = {}) => {

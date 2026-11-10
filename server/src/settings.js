@@ -10,7 +10,7 @@ import { parseEnv } from 'node:util';
 export const APP_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 export const APP_ENV_FILE = path.join(APP_ROOT, '.env');
 // CAL_LAB_MODE (the opening mode), LAB_ALLOWED_HOSTS (the lab-proxy host name) and SHELF_URL (the Shelf button and the proxy's origin). None is a guard:
-// CAL_ALLOW_LIVE, IDP and ALLOW_MOCK_SIGNIN stay shell opt-ins at launch.
+// CAL_ALLOW_LIVE (now only an OFF switch: 0), IDP and ALLOW_MOCK_SIGNIN stay shell settings at launch and are never read from the file.
 export const SETTINGS_KEYS = ['CAL_LAB_MODE', 'LAB_ALLOWED_HOSTS', 'SHELF_URL'];
 export const settingsPath = (env = process.env) => env.CAL_ENV_FILE || APP_ENV_FILE;
 
@@ -38,6 +38,21 @@ export function readLiveSettings(file) {
     return Object.fromEntries(LIVE_KEYS.filter((k) => typeof parsed[k] === 'string' && parsed[k] !== '').map((k) => [k, parsed[k]]));
   } catch { return {}; }
 }
-// The names (never the values) of the required Live settings the file does not set, or still holds at the .env.example placeholder.
+// The names (never the values) of the required Live settings that are not set, or still hold the .env.example placeholder.
 const PLACEHOLDER = /^(0{8}-0{4}-0{4}-0{4}-0{12}|replace-me)$/i;
-export const missingLiveSettings = (file) => { const s = readLiveSettings(file); return LIVE_REQUIRED.filter((k) => !(k in s) || PLACEHOLDER.test(s[k])); };
+export const missingIn = (s) => LIVE_REQUIRED.filter((k) => !(k in s) || PLACEHOLDER.test(s[k]));
+export const missingLiveSettings = (file) => missingIn(readLiveSettings(file));
+
+// Docker (owner, 2026-11-10): the image has no .env, so docker-compose.yml fills the four PINGONE_* names from the app's .env by ${VAR:-} substitution
+// and pins CAL_LIVE_FROM_ENV=1. Only then are they taken from the environment: a host run never picks up PINGONE_* exported in a shell for another
+// project. They are taken ONCE at startup (index.js), deleted from process.env at once, and kept here for live.js and the doctor, so no other module,
+// log line or child sees them. Empty values (a .env without them) count as not set.
+let fromEnv = null;
+export function takeLiveSettingsFromEnv(env = process.env) {
+  if (env.CAL_LIVE_FROM_ENV !== '1') return null;
+  fromEnv = Object.fromEntries(LIVE_KEYS.filter((k) => typeof env[k] === 'string' && env[k] !== '').map((k) => [k, env[k]]));
+  for (const k of LIVE_KEYS) delete env[k];
+  return fromEnv;
+}
+// The live settings this process uses: the ones compose passed in (Docker), else the app's .env (host run; CAL_ENV_FILE for tests).
+export const liveSettingsFor = (env = process.env) => fromEnv ?? readLiveSettings(settingsPath(env));

@@ -3,7 +3,7 @@ import { startHttpServer, createApp } from './app.js';
 import { allPassed, runChecks } from './doctor.js';
 import { assertBindAllowed, bindHost, liveRefusal, resolvePort } from './safety.js';
 import { defaultMode, deployModeFrom, modeFrom } from './config.js';
-import { applySharedSettings, readLiveSettings, settingsPath } from './settings.js';
+import { applySharedSettings, liveSettingsFor, missingIn, takeLiveSettingsFromEnv } from './settings.js';
 import { createLive, hostToAllow, liveConfig } from './live.js';
 import { createHealth } from './health.js';
 import { createWorkspaces } from './workspaces.js';
@@ -13,6 +13,9 @@ const guard = installNetguard(); // before anything else can open a socket
 
 // The hosted build (CAL_DEPLOY_MODE=hosted, the mock-only SE k8s pod) reads no settings file and no live settings: it is mock only.
 const hosted = deployModeFrom(process.env) === 'hosted'; // refuses anything but local or hosted
+// Docker: compose passes the four PINGONE_* names (CAL_LIVE_FROM_ENV=1). They leave process.env here, before the doctor or anything else runs.
+// Hosted takes nothing: it is mock only.
+if (!hosted) takeLiveSettingsFromEnv(process.env);
 // The app's own .env beside docker-compose.yml (settings.js; CAL_ENV_FILE for tests). Optional; only this lab's own key is taken; never printed.
 if (!hosted) applySharedSettings();
 
@@ -23,9 +26,11 @@ if (!allPassed(checks)) {
 }
 const mode = modeFrom(process.env); // refuses anything but mock or live
 const host = assertBindAllowed(bindHost(), process.env);
-// Live mode (step 3, owner opt-in): the worker client and environment come from the app's .env and stay in live.js (never in process.env). The netguard
-// then allows the one PingOne host; with no opt-in, no configuration or a loopback test base it allows nothing and the lab reaches no network.
-const live = hosted ? createLive() : createLive({ config: liveConfig(readLiveSettings(settingsPath()), process.env) });
+// Real (step 3): the worker client and environment come from the app's .env (host run) or from compose substitution of it (Docker), and stay in live.js
+// (never in process.env). When they are complete and no guard refuses, the netguard allows the one PingOne host; with CAL_ALLOW_LIVE=0, no configuration,
+// a refusing guard or a loopback test base it allows nothing and the lab reaches no network.
+const liveSettings = hosted ? {} : liveSettingsFor(process.env);
+const live = hosted ? createLive() : createLive({ config: liveConfig(liveSettings, process.env), missing: missingIn(liveSettings) });
 const liveRefused = liveRefusal({ env: process.env, bind: host, headers: {} });
 const liveOn = live.configured() && liveRefused === null;
 const liveHost = hostToAllow(live, liveRefused);

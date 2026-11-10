@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { isLoopbackHost, portProblem, resolvePort, assertBindAllowed, bindHost, scanHosts, scanKeys, mockSignInRefusal, liveRefusal, allowedExtraHosts, PORT_MIN, PORT_MAX, DEFAULT_PORT } from '../src/safety.js';
+import { isLoopbackHost, portProblem, resolvePort, assertBindAllowed, bindHost, scanHosts, scanKeys, mockSignInRefusal, liveRefusal, notConfiguredText, allowedExtraHosts, PORT_MIN, PORT_MAX, DEFAULT_PORT } from '../src/safety.js';
 import { rawHttp, withServer, get, post, MOCK_OK } from './helpers.js';
 
 const ctx = (env = {}, bind = '127.0.0.1', headers = {}) => ({ env, bind, headers });
@@ -45,16 +45,28 @@ test('rule 11 mock sign-in guards: every one of them alone refuses', () => {
   assert.equal(mockSignInRefusal(ctx({ ALLOW_MOCK_SIGNIN: '1', NODE_ENV: 'production' })), null, 'NODE_ENV is not a guard (the Docker image sets it)');
 });
 
-test('live mode guards: the owner opt-in, a live IDP, no proxy, loopback: every one alone refuses', () => {
-  const ok = ctx({ CAL_ALLOW_LIVE: '1', IDP: 'pingone' });
-  assert.equal(liveRefusal(ok), null);
-  assert.match(liveRefusal(ctx({ IDP: 'pingone' })), /CAL_ALLOW_LIVE=1/);
-  assert.match(liveRefusal(ctx({ CAL_ALLOW_LIVE: '1' })), /IDP set to a live provider/);
-  assert.match(liveRefusal(ctx({ CAL_ALLOW_LIVE: '1', IDP: 'mock' })), /IDP set to a live provider/);
-  assert.match(liveRefusal(ctx({ CAL_ALLOW_LIVE: '1', IDP: 'okta' })), /IDP=pingone only/);
-  assert.match(liveRefusal(ctx({ CAL_ALLOW_LIVE: '1', IDP: 'pingone' }, '127.0.0.1', { 'x-forwarded-for': '1' })), /proxy/);
-  assert.match(liveRefusal(ctx({ CAL_ALLOW_LIVE: '1', IDP: 'pingone' }, '0.0.0.0')), /non-loopback/);
-  assert.ok(liveRefusal(ctx({ CAL_ALLOW_LIVE: 'yes', IDP: 'pingone' })));
+test('live mode guards (option a, owner 2026-11-10): no ON switch; CAL_ALLOW_LIVE=0 turns Real off, IDP unset or pingone, no proxy, loopback: every one alone refuses', () => {
+  for (const env of [{}, { CAL_ALLOW_LIVE: '' }, { CAL_ALLOW_LIVE: '1' }, { IDP: 'pingone' }, { IDP: '' }, { CAL_ALLOW_LIVE: '1', IDP: 'pingone' }]) assert.equal(liveRefusal(ctx(env)), null, JSON.stringify(env));
+  assert.equal(liveRefusal(ctx({ CAL_PUBLISH: 'loopback' }, '0.0.0.0')), null, 'Docker: a wide bind inside the container with a loopback-only publish');
+  assert.match(liveRefusal(ctx({ CAL_ALLOW_LIVE: '0' })), /switched off.*CAL_ALLOW_LIVE=0/);
+  for (const v of ['yes', 'true', ' 1', '2']) assert.match(liveRefusal(ctx({ CAL_ALLOW_LIVE: v })), /must be 0/, v);
+  assert.match(liveRefusal(ctx({ IDP: 'mock' })), /pinned to mock/);
+  assert.match(liveRefusal(ctx({ IDP: 'okta' })), /IDP=pingone only/);
+  assert.match(liveRefusal(ctx({}, '127.0.0.1', { 'x-forwarded-for': '1' })), /proxy/);
+  assert.match(liveRefusal(ctx({}, '0.0.0.0')), /non-loopback/);
+  assert.match(liveRefusal(ctx({ CAL_DEPLOY_MODE: 'hosted' })), /hosted build/);
+});
+
+test('IDP is chosen per mode: unset allows both the mock sign-in and Real; mock pins Mock; pingone pins Real', () => {
+  assert.equal(mockSignInRefusal(ctx({ ALLOW_MOCK_SIGNIN: '1' })), null); assert.equal(liveRefusal(ctx({ ALLOW_MOCK_SIGNIN: '1' })), null);
+  assert.equal(mockSignInRefusal(ctx({ ALLOW_MOCK_SIGNIN: '1', IDP: '' })), null);
+  assert.equal(mockSignInRefusal(ctx({ ALLOW_MOCK_SIGNIN: '1', IDP: 'mock' })), null); assert.ok(liveRefusal(ctx({ ALLOW_MOCK_SIGNIN: '1', IDP: 'mock' })));
+  assert.ok(mockSignInRefusal(ctx({ ALLOW_MOCK_SIGNIN: '1', IDP: 'pingone' }))); assert.equal(liveRefusal(ctx({ ALLOW_MOCK_SIGNIN: '1', IDP: 'pingone' })), null);
+});
+
+test('the not-configured how-to names the missing settings (never a value) and where to fill them', () => {
+  assert.match(notConfiguredText(['PINGONE_ENVIRONMENT_ID', 'PINGONE_CLIENT_SECRET']), /^Real is not configured: fill PINGONE_ENVIRONMENT_ID, PINGONE_CLIENT_SECRET in this app's \.env/);
+  assert.match(notConfiguredText(), /valid PINGONE_\* values/);
 });
 
 test('only .example and .invalid hosts pass the host scan; fake keys must be sk-MOCK-', () => {

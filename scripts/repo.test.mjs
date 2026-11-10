@@ -169,21 +169,21 @@ test('review fix: the talk track says seven stub verticals', () => {
   assert.match(t, /Seven verticals are data stubs/); assert.ok(!/Eight verticals are data stubs/.test(t));
 });
 
-test('step 3: CI has no self-skipping conformance job (it would be a green check with nothing behind it), the pack and the talk track carry live mode, and Docker stays Mock only', () => {
+test('step 3: CI has no self-skipping conformance job (it would be a green check with nothing behind it), the pack and the talk track carry live mode, and Docker takes Real from the app .env by name only', () => {
   const ci = read('.github/workflows/ci.yml');
   assert.ok(!/conformance/i.test(ci) && !/SKIPPED/.test(ci)); assert.match(read('README.md'), /CI does not run conformance/);
   const pack = JSON.parse(read('content-pack.json'));
   assert.ok(pack.glossary.some((g) => g.id === 'live-mode' && /UNVERIFIED/.test(g.definition))); assert.ok(pack.cards.some((c) => c.id === 'concept-live-mode'));
   assert.match(read('docs/talk-track.md'), /## Mock and live/); assert.match(read('docs/talk-track.md'), /UNVERIFIED/);
   const compose = read('docker-compose.yml').replace(/^\s*#.*$/gm, '');
-  assert.ok(!/PINGONE|STANDALONE_ENV|volumes:/.test(compose), 'Docker is Mock only: no live settings named, no settings file mounted');
-  assert.match(compose, /^\s+IDP: mock$/m); assert.match(compose, /^\s+CAL_ALLOW_LIVE: "0"$/m); assert.match(compose, /^\s+CAL_DEPLOY_MODE: local$/m);
+  assert.ok(!/STANDALONE_ENV|volumes:|env_file/.test(compose), 'no shared settings file, no mount, no env_file (compose.test.mjs pins the exact name list)');
+  assert.ok(!/^\s+IDP:/m.test(compose)); assert.match(compose, /^\s+CAL_ALLOW_LIVE: \$\{CAL_ALLOW_LIVE:-\}$/m); assert.match(compose, /^\s+CAL_DEPLOY_MODE: local$/m);
   assert.match(read('docs/shelf-entry.json'), /UNVERIFIED/);
 });
 
 test('step 3: the README says how step 3 was read, that live is identity-provider only (VERIFIED on a real PingOne environment 2026-11-05), and what is not done', () => {
   const r = read('README.md');
-  for (const w of ['smallest complete reading', 'identity provider only', 'VERIFIED against a real PingOne environment by the owner on 2026-11-05', 'two real calls', 'Docker is Mock only', 'never copied into the process environment', 'LIVE_REFUSED', 'live_not_configured']) assert.ok(r.includes(w), w);
+  for (const w of ['smallest complete reading', 'identity provider only', 'VERIFIED against a real PingOne environment by the owner on 2026-11-05', 'two real calls', 'Real works in Docker from the app\'s .env', 'never copied into the process environment', 'LIVE_REFUSED', 'live_not_configured']) assert.ok(r.includes(w), w);
   assert.ok(!/live mode is not built|not built yet \(step 3\)|step 3 is not started/i.test(r));
 });
 

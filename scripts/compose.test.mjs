@@ -54,18 +54,45 @@ test('the container is locked down: read-only fs, no capabilities, no new privil
   assert.match(compose, /no-new-privileges:true/);
 });
 
-test('the compose file tells the guards the publish is loopback-only, opts in to mock sign-in, and does not switch live on', () => {
+test('the compose file tells the guards the publish is loopback-only, opts in to mock sign-in, and pins neither IDP nor an ON switch for Real', () => {
   const compose = here('docker-compose.yml');
   assert.match(compose, /CAL_PUBLISH: loopback/); assert.match(compose, /ALLOW_MOCK_SIGNIN: "1"/);
-  assert.match(compose, /^      CAL_ALLOW_LIVE: "0"$/m, 'live stays off: pinned under environment:');
+  assert.match(compose, /^      CAL_ALLOW_LIVE: \$\{CAL_ALLOW_LIVE:-\}$/m, 'CAL_ALLOW_LIVE is only the OFF switch (0) and defaults to empty');
+  assert.match(compose, /^      CAL_DEPLOY_MODE: local$/m); assert.match(compose, /^      CAL_LIVE_FROM_ENV: "1"$/m);
+  assert.doesNotMatch(compose.replace(/^\s*#.*$/gm, ''), /^\s+IDP:/m, 'IDP is not pinned: each mode uses its own IdP, so the toggle switches both ways');
   assert.match(compose, /name: customer-agent-lab/);
   assert.match(compose, /CAL_BRAIN_URL: \$\{CAL_BRAIN_URL:-\}\n/, 'the llama.cpp brain is off by default in Docker (owner opt-in)');
 });
 
-test('owner 2026-11-09: Live secrets never enter the container: no env_file, no PINGONE_* passed through', () => {
+// Owner 2026-11-09 (PR #23) and 2026-11-10: no env_file, and the container gets exactly this list of names. The four PINGONE_* are the only Live
+// settings and come from .env by ${VAR:-} substitution (empty when unset); every other name is a fixed value or a non-secret setting.
+export const COMPOSE_ENV = {
+  substituted: ['SHELF_URL', 'CAL_LAB_MODE', 'CAL_BRAIN_URL', 'LAB_ALLOWED_HOSTS', 'CAL_ALLOW_LIVE', 'PINGONE_ENVIRONMENT_ID', 'PINGONE_REGION', 'PINGONE_CLIENT_ID', 'PINGONE_CLIENT_SECRET'],
+  fixed: ['PORT', 'CALAB_BIND', 'CAL_PUBLISH', 'ALLOW_MOCK_SIGNIN', 'CAL_DEPLOY_MODE', 'CAL_LIVE_FROM_ENV'],
+};
+export function environmentOf(text) {
+  const lines = text.split('\n').filter((l) => !l.trimStart().startsWith('#'));
+  const i = lines.findIndex((l) => /^\s+environment:\s*$/.test(l));
+  const indent = lines[i].search(/\S/);
+  const out = {};
+  for (const l of lines.slice(i + 1)) { if (l.search(/\S/) <= indent) break; const m = /^\s+([A-Z0-9_]+):\s*(.*)$/.exec(l); if (m) out[m[1]] = m[2]; }
+  return out;
+}
+test('owner 2026-11-09/11-10: no env_file; the container gets exactly the listed names; the four PINGONE_* and nothing else secret, all by substitution', () => {
   const compose = here('docker-compose.yml');
   const body = compose.split('\n').filter((l) => !l.trimStart().startsWith('#')).join('\n');
-  assert.doesNotMatch(body, /env_file/, 'env_file would copy every .env line, the client secret included, into the container');
-  assert.doesNotMatch(body, /PINGONE_/, 'Docker is Mock only: no PingOne setting is passed in');
-  for (const k of ['SHELF_URL', 'CAL_LAB_MODE', 'LAB_ALLOWED_HOSTS']) assert.match(body, new RegExp(`${k}: \\$\\{${k}:-`), `${k} comes from .env by substitution`);
+  assert.doesNotMatch(body, /env_file/, 'env_file would copy every .env line into the container');
+  assert.doesNotMatch(body, /volumes:|\.env\b/, 'no settings file is mounted');
+  const env = environmentOf(compose);
+  assert.deepEqual(Object.keys(env).sort(), [...COMPOSE_ENV.substituted, ...COMPOSE_ENV.fixed].sort(), 'exactly these names, no other');
+  for (const k of COMPOSE_ENV.substituted) assert.match(env[k], new RegExp(`^\\$\\{${k}:-[^}$]*\\}$`), `${k} comes from its own name by substitution`);
+  for (const k of ['PINGONE_ENVIRONMENT_ID', 'PINGONE_REGION', 'PINGONE_CLIENT_ID', 'PINGONE_CLIENT_SECRET', 'CAL_ALLOW_LIVE']) assert.equal(env[k], `\${${k}:-}`, `${k} defaults to empty: a clone with no .env is Mock with Real disabled`);
+  assert.deepEqual(Object.keys(env).filter((k) => /SECRET|PASSWORD|TOKEN|KEY|PINGONE/.test(k)).sort(), ['PINGONE_CLIENT_ID', 'PINGONE_CLIENT_SECRET', 'PINGONE_ENVIRONMENT_ID', 'PINGONE_REGION'], 'no other secret-like name');
+});
+
+test('the compose name-list check fails on an extra secret, an env_file or a hard-coded PingOne value', () => {
+  const ok = 'services:\n  a:\n    environment:\n      PINGONE_CLIENT_SECRET: ${PINGONE_CLIENT_SECRET:-}\n    read_only: true\n';
+  assert.deepEqual(environmentOf(ok), { PINGONE_CLIENT_SECRET: '${PINGONE_CLIENT_SECRET:-}' });
+  assert.deepEqual(Object.keys(environmentOf(ok.replace('    read_only', '      OTHER_APP_TOKEN: ${OTHER_APP_TOKEN:-}\n    read_only'))), ['PINGONE_CLIENT_SECRET', 'OTHER_APP_TOKEN']);
+  assert.notEqual(environmentOf(ok.replace('${PINGONE_CLIENT_SECRET:-}', 'abc')).PINGONE_CLIENT_SECRET, '${PINGONE_CLIENT_SECRET:-}');
 });
