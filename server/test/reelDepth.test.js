@@ -39,7 +39,11 @@ test('UC1 banking: the exact AI-DEMO2 order of the hops that ran, then the not-i
   const api = r.hops.find((h) => h.kind === 'api-call');
   assert.equal(api.from, 'mcp'); assert.equal(api.to, 'api'); assert.match(api.request.headers.authorization, /^Bearer eyJ/);
   assert.equal(api.request.headers.authorization, r.hops.find((h) => h.kind === 'tool-dispatched').request.headers.authorization, 'the delegated token');
-  assert.match(r.hops.find((h) => h.kind === 'agent-reply').response.body.reply, /get_account_balance/);
+  // The reply is get_account_balance's own answer (data/replies.json), a sentence with the lab-invented balance, and the tool hop carries it.
+  const said = r.hops.find((h) => h.kind === 'agent-reply').response.body.reply;
+  assert.equal(said, 'Your checking balance is $4,250.00, and your savings balance is $12,800.00.');
+  assert.equal(r.hops.find((h) => h.kind === 'tool-dispatched').request.body.params.name, 'get_account_balance');
+  assert.equal(r.hops.find((h) => h.kind === 'tool-dispatched').response.body.result.content[0].text, `${said} (lab-invented values, mock tool)`);
 });
 
 test('every flow use case in every full vertical keeps the AI-DEMO2 shape', () => {
@@ -87,9 +91,16 @@ test('every flow use case in every full vertical keeps the AI-DEMO2 shape', () =
     if (!stopped) {
       assert.equal(k.at(-1), 'agent-reply', at);
       const text = ran(r).at(-1).response.body.reply;
-      assert.doesNotMatch(text, /^Done/, at);
+      assert.doesNotMatch(text, /^Done[.!]?$/, at); // never a bare "Done": a write says what was done ("Done: $150 moved ...")
+      assert.ok(text.length > 20, at);
       if (td < 0) assert.ok(text.startsWith('No tool was called.') && text.includes(r.outcome), `${at}: ${text}`);
-      else assert.match(text, /^Here is what I found: mock result of /, at);
+      else {
+        // The reply is the tool's own lab-invented answer (data/replies.json), never a placeholder that names the tool.
+        const toolText = ran(r)[td].response.body.result.content[0].text;
+        assert.doesNotMatch(text, /mock result|Here is what I found|\(synthetic\)|\{\{/, `${at}: ${text}`);
+        assert.ok(toolText.startsWith(text.split(' A different agent')[0]), `${at}: the reply is the tool's answer`);
+        assert.ok(toolText.endsWith('(lab-invented values, mock tool)'), `${at}: the tool result says its values are lab-invented`);
+      }
     }
     // A use case that reaches the MCP server in AI-DEMO2 reaches it here when the run is not refused or held.
     if (CALLS_TOOL.has(uc.id) && !stopped) assert.ok(td >= 0, `${at}: calls a tool`);

@@ -10,6 +10,7 @@ import { fill, personaOf, roleOf, toolFor } from './cast.js';
 import { LABELS } from './data.js';
 import { verifyMockJwt, signMockJwt, tokenView } from './mockjwt.js';
 import { GATEWAY, decide, edgePolicy } from './policy.js';
+import { PROBE_DENIED, proposalFor, replyFor } from './replies.js';
 import { situationOf } from './situations.js';
 import { formatTraceparent, newTrace } from './trace.js';
 import { enrichHop } from './vendor/hopDetail.mjs';
@@ -280,7 +281,7 @@ function stepUp(ctx, obligation) {
 function held(ctx) {
   if (ctx.heldShown) return;
   ctx.heldShown = true;
-  hop(ctx, 'tool-held', { from: 'gateway', to: 'mcp', url: `${ctx.urls.mcp}/mcp`, status: 202, verdict: 'held', resBody: { dispatched: false, waiting_for: ctx.pending, note: 'the write is held until the obligation is satisfied' } });
+  hop(ctx, 'tool-held', { from: 'gateway', to: 'mcp', url: `${ctx.urls.mcp}/mcp`, status: 202, verdict: 'held', resBody: { dispatched: false, waiting_for: ctx.pending, note: 'the write is held until the obligation is satisfied', proposed: proposalFor(replyInput(ctx)) } });
 }
 
 // AI-DEMO2's order: Authorize decides first (a chain whose evidence has no authorize step still gets the decision when the use case needs authz),
@@ -295,20 +296,24 @@ function dispatch(ctx) {
   toolCall(ctx);
 }
 
+const replyInput = (ctx) => ({ cast: ctx.cast, vertical: ctx.vertical, persona: ctx.person.key, tool: ctx.tool, amount: ctx.amount, args: ctx.sit.args });
+
 // The tool runs and its back end answers. Bearer path: tool-dispatched then api-call with the delegated token. API-key path (AI-DEMO2 order:
 // gateway, vault-key-inject, api-key-swap, mcp, api): the gateway fetches the route's key and swaps the bearer for it; the api step carries the key.
 function toolCall(ctx) {
   const publicCall = ctx.sit.public;
   if (API_KEY_PATH.has(ctx.uc.id) && !publicCall) apiKeyPath(ctx);
   const bearer = publicCall ? {} : { authorization: `Bearer ${(ctx.exchanged || ctx.user).raw}` };
-  const text = `mock result of ${ctx.tool} for ${ctx.cast.castAsset} data (synthetic)`;
+  // The tool's answer: a real-sounding sentence with lab-invented values (data/replies.json), labelled as such in the tool result.
+  const said = replyFor(replyInput(ctx));
+  const text = `${said} (lab-invented values, mock tool)`;
   hop(ctx, 'tool-dispatched', {
     from: 'gateway', to: 'mcp', url: `${ctx.urls.mcp}/mcp`, headers: bearer,
     body: { jsonrpc: '2.0', method: 'tools/call', params: { name: ctx.tool, ...(ctx.sit.args ? { arguments: ctx.sit.args } : {}) } },
     resBody: { result: { tool: ctx.tool, isError: false, content: [{ type: 'text', text }] } },
     note: publicCall ? 'public catalog call: no token, no authorize, no gateway check' : undefined,
   });
-  ctx.toolResult = text;
+  ctx.toolResult = said;
   const keyPath = API_KEY_PATH.has(ctx.uc.id) && !publicCall;
   const write = ctx.role === 'write' || Boolean(ctx.sit.args);
   hop(ctx, 'api-call', {
@@ -397,7 +402,7 @@ function frameAfterSignIn(ctx) {
 
 function reply(ctx) {
   // From the tool result, else from the run's own narration and outcome: never a claim that something ran when nothing did.
-  const text = ctx.toolResult ? `Here is what I found: ${ctx.toolResult}.` : `No tool was called. ${narrate(ctx, finalOutcome(ctx))}`;
+  const text = ctx.toolResult ? (ctx.probeDenied ? `${ctx.toolResult} ${PROBE_DENIED}` : ctx.toolResult) : `No tool was called. ${narrate(ctx, finalOutcome(ctx))}`;
   hop(ctx, 'agent-reply', { from: 'agent', to: 'browser', url: `${ctx.urls.bff}/api/agent/run`, resBody: { reply: text } });
 }
 

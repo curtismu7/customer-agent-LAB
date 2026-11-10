@@ -3,10 +3,11 @@ import { isHandoff, routeOf } from "../handoff";
 import { outcomeState } from "../lib";
 import { visible } from "../safeText";
 import { Tag } from "./Bits";
-import { GoDeeper, HandoffCard } from "./HandoffCard";
+import { HandoffCard } from "./HandoffCard";
 
 // One exchange: what the visitor typed (or picked), then ONE reply: the agent's answer, or the refusal or hold as the system that answered gave it,
-// labelled with who answered. How the use case was chosen, the hops and the tokens are in the evidence column, not here (owner, 2026-11-09).
+// labelled with who answered. How the use case was chosen, the hops, the tokens, go deeper and the use case panel are in the evidence column, not
+// here (owner, 2026-11-09).
 export default function Turn({ turn, onHop, onPreview, userId, running }) {
   const res = turn.result;
   const run = res?.ok ? res.body.run : null;
@@ -46,6 +47,7 @@ export default function Turn({ turn, onHop, onPreview, userId, running }) {
           {reply?.approval && (
             <div className="approval card card--warn" data-testid="turn-approval">
               <p className="approval__head"><Tag state="warn">{run.outcome}</Tag> <b>{reply.approval.head}</b></p>
+              {reply.approval.say && <p data-testid="turn-approval-say">{visible(reply.approval.say)}</p>}
               <p>{reply.approval.body}</p>
             </div>
           )}
@@ -55,7 +57,6 @@ export default function Turn({ turn, onHop, onPreview, userId, running }) {
               <span><Tag state={outcomeState(run.outcome)} testId="turn-outcome">{run.outcome}</Tag>{turn.preview && <> <Tag state="info">preview, mock engine</Tag></>}</span>
             </div>
           )}
-          {run && !guide && <GoDeeper uc={uc} vertical={turn.vertical} userId={userId} />}
           {run && <button type="button" className="turn__ev" onClick={() => onHop?.(turn, null)} data-testid="turn-evidence">See evidence →</button>}
         </div>
       </div>

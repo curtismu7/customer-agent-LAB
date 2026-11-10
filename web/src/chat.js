@@ -85,7 +85,7 @@ export const REASON_WORDS = {
 };
 
 // The one reply a chat turn shows, derived from the run itself (nothing generated, no amount the engine did not produce):
-// { who, text, approval } where approval is an APPROVAL entry when the run stopped for a person.
+// { who, text, approval } where approval is an APPROVAL entry when the run stopped for a person (plus `say`, what the agent was ready to do).
 export function replyOf(run) {
   const hops = run?.hops || [];
   const body = (kind) => { const h = hops.find((x) => x.kind === kind); return h ? { status: h.response?.status, ...(h.response?.body || {}) } : null; };
@@ -97,7 +97,11 @@ export function replyOf(run) {
     const reason = refused.reason ? (Object.hasOwn(REASON_WORDS, refused.reason) ? REASON_WORDS[refused.reason] : refused.reason) : "no reason given";
     return { who, text: `${who === "Gateway" ? "The gateway" : who} refused this request${refused.status ? ` (HTTP ${refused.status})` : ""}: ${reason}. Nothing was sent to the tool.` };
   }
-  if (Object.hasOwn(APPROVAL, run.outcome)) return { who: "Authorize", approval: APPROVAL[run.outcome] };
+  if (Object.hasOwn(APPROVAL, run.outcome)) {
+    // What the agent is ready to do (the held hop's own words, lab-invented amount), then the hold.
+    const said = body("tool-held")?.proposed;
+    return { who: "Authorize", approval: { ...APPROVAL[run.outcome], ...(typeof said === "string" && said ? { say: said } : {}) } };
+  }
   const said = body("agent-reply")?.reply;
   return { who: "Agent", text: typeof said === "string" && said ? said : run.narration };
 }
