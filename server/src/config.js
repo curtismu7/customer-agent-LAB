@@ -1,9 +1,9 @@
 // Deployment configuration. CAL_LAB_MODE is the DEFAULT mode a new workspace opens in (mock or live). Mock is the default. Anything else is an error,
-// never a silent fallback. The one shared settings file (~/Development/.env, or STANDALONE_ENV) may carry CAL_LAB_MODE. A bare MODE is NOT read:
-// the shared file is read by every standalone app, and another app's MODE must not switch this one.
+// never a silent fallback. The app's own .env (settings.js) may carry CAL_LAB_MODE. A bare MODE is NOT read:
+// Docker passes the whole .env into the container (env_file), and a generic MODE must not switch this lab.
 // CAL_DEPLOY_MODE says where the lab runs: local (the default: a clone or local Docker) or hosted (the mock-only SE k8s build of the same image,
-// rulebook section 6). Hosted is mock only: live, the llama.cpp brain and the shared settings file are refused or ignored. It is set in the pod
-// manifest, never read from the shared settings file.
+// rulebook section 6). Hosted is mock only: live, the llama.cpp brain and the app's .env are refused or ignored. It is set in the pod
+// manifest, never read from the app's .env.
 export const MODES = ['mock', 'live'];
 export const DEPLOY_MODES = ['local', 'hosted'];
 export function deployModeFrom(env = process.env) {

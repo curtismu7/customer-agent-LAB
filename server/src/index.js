@@ -13,7 +13,7 @@ const guard = installNetguard(); // before anything else can open a socket
 
 // The hosted build (CAL_DEPLOY_MODE=hosted, the mock-only SE k8s pod) reads no settings file and no live settings: it is mock only.
 const hosted = deployModeFrom(process.env) === 'hosted'; // refuses anything but local or hosted
-// The one shared settings file (rulebook): ~/Development/.env, or STANDALONE_ENV. Optional; only this lab's own key is taken; never printed.
+// The app's own .env beside docker-compose.yml (settings.js; CAL_ENV_FILE for tests). Optional; only this lab's own key is taken; never printed.
 if (!hosted) applySharedSettings();
 
 const checks = await runChecks();
@@ -23,7 +23,7 @@ if (!allPassed(checks)) {
 }
 const mode = modeFrom(process.env); // refuses anything but mock or live
 const host = assertBindAllowed(bindHost(), process.env);
-// Live mode (step 3, owner opt-in): the worker client and environment come from the shared file and stay in live.js (never in process.env). The netguard
+// Live mode (step 3, owner opt-in): the worker client and environment come from the app's .env and stay in live.js (never in process.env). The netguard
 // then allows the one PingOne host; with no opt-in, no configuration or a loopback test base it allows nothing and the lab reaches no network.
 const live = hosted ? createLive() : createLive({ config: liveConfig(readLiveSettings(settingsPath()), process.env) });
 const liveRefused = liveRefusal({ env: process.env, bind: host, headers: {} });

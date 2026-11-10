@@ -1,5 +1,5 @@
 // Live mode (step 3). The one path out of this app. A live run makes exactly two real calls, both to the ONE PingOne environment the owner configured in the
-// shared settings file: the public discovery document (GET) and a client-credentials token for the agent's own client (POST). Nothing else is reachable:
+// app's own .env: the public discovery document (GET) and a client-credentials token for the agent's own client (POST). Nothing else is reachable:
 // every call is built here from fixed paths under /<environment id>/as/, goes out over https (loopback http only for the tests' fake), without following
 // redirects, with a timeout and a body cap, and is checked again by assertAllowed() before a socket opens. The netguard (netguard.js) allows this one host
 // and refuses every other, so even a bug here cannot reach another origin.
@@ -29,15 +29,15 @@ export class LiveRefused extends Error {
   constructor(code, message) { super(message); this.code = code; }
 }
 
-// settings: { PINGONE_ENVIRONMENT_ID, PINGONE_REGION, PINGONE_CLIENT_ID, PINGONE_CLIENT_SECRET } from the shared file. Returns the live config, or { problem }
+// settings: { PINGONE_ENVIRONMENT_ID, PINGONE_REGION, PINGONE_CLIENT_ID, PINGONE_CLIENT_SECRET } from the app's .env. Returns the live config, or { problem }
 // naming (in fixed words, never a value) what is missing. testBase (CAL_LIVE_TEST_BASE) is for the tests' fake PingOne and must be http on a loopback host.
 export function liveConfig(settings = {}, env = process.env) {
   const environmentId = String(settings.PINGONE_ENVIRONMENT_ID || '');
   const clientId = String(settings.PINGONE_CLIENT_ID || '');
   const clientSecret = String(settings.PINGONE_CLIENT_SECRET || '');
-  if (!UUID.test(environmentId)) return { problem: 'the shared settings file has no valid PINGONE_ENVIRONMENT_ID' };
-  if (!clientId || clientId.length > 200 || /[\u0000-\u001f\u007f]/.test(clientId)) return { problem: 'the shared settings file has no valid PINGONE_CLIENT_ID' };
-  if (!clientSecret || clientSecret.length > 512 || /[\u0000-\u001f\u007f]/.test(clientSecret)) return { problem: 'the shared settings file has no valid PINGONE_CLIENT_SECRET' };
+  if (!UUID.test(environmentId)) return { problem: 'the app .env has no valid PINGONE_ENVIRONMENT_ID' };
+  if (!clientId || clientId.length > 200 || /[\u0000-\u001f\u007f]/.test(clientId)) return { problem: 'the app .env has no valid PINGONE_CLIENT_ID' };
+  if (!clientSecret || clientSecret.length > 512 || /[\u0000-\u001f\u007f]/.test(clientSecret)) return { problem: 'the app .env has no valid PINGONE_CLIENT_SECRET' };
   let base;
   if (env.CAL_LIVE_TEST_BASE) {
     try {
@@ -47,7 +47,7 @@ export function liveConfig(settings = {}, env = process.env) {
     } catch { return { problem: 'CAL_LIVE_TEST_BASE must be http on a loopback host with the environment id as its path' }; }
   } else {
     const tld = REGION_TLD[String(settings.PINGONE_REGION || 'com').toLowerCase()];
-    if (!tld) return { problem: 'the shared settings file has no valid PINGONE_REGION (com, eu, ca or asia)' };
+    if (!tld) return { problem: 'the app .env has no valid PINGONE_REGION (com, eu, ca or asia)' };
     base = `https://auth.pingone.${tld}/${environmentId}`;
   }
   return { environmentId, clientId, clientSecret, base };
@@ -148,7 +148,7 @@ export function createLive({ config = liveConfig({}, {}), fetchImpl = (...a) => 
       }
       push({
         kind: 'live-actor-token', label: 'Live: the agent gets its own token (client credentials)', from: 'lab', to: 'idp', verdict: tokOk ? 'ok' : 'deny', traceparent: d2,
-        note: tokOk ? 'The lab used the worker client from the shared settings file as the agent client. The token is shown masked.' : liveFailure(tok),
+        note: tokOk ? 'The lab used the worker client from the app .env as the agent client. The token is shown masked.' : liveFailure(tok),
         request: { method: 'POST', url: urls.token, headers: { traceparent: d2, 'content-type': 'application/x-www-form-urlencoded', authorization: 'Basic [write-only: the client secret is never shown]' }, body: { grant_type: 'client_credentials' } },
         response: { status: tok.status, body: tokOk ? { access_token: mask(raw), token_type: str(tok.json.token_type), expires_in: Number.isFinite(tok.json.expires_in) ? tok.json.expires_in : null, scope: str(tok.json.scope) } : failureBody(tok) },
       });

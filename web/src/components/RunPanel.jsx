@@ -6,7 +6,7 @@ import TokenView from "./TokenView";
 // The honest refusal text for each answer the API can give instead of a run. The server's own detail is shown as it is.
 const REFUSAL = {
   vertical_stub: ["Not built", "This vertical is a data stub: it has a name and no pack yet. Pick Banking, Healthcare or Retail to run."],
-  live_not_configured: ["Live is not set up", "The shared settings file has no usable PingOne environment and worker client. Switch to Mock, or set them up."],
+  live_not_configured: ["Live is not set up", "The app's .env has no usable PingOne environment and worker client. Switch to Mock, or fill .env from .env.example."],
   live_busy: ["Live is busy", "Two live runs are already in flight. Wait a moment and run again."],
   live_not_allowed: ["Live is refused", "Live mode is not allowed on this machine."],
   mock_signin_refused: ["Mock sign-in refused", "The mock sign-in guards did not hold."],

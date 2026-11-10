@@ -176,7 +176,8 @@ test('step 3: CI has no self-skipping conformance job (it would be a green check
   assert.ok(pack.glossary.some((g) => g.id === 'live-mode' && /UNVERIFIED/.test(g.definition))); assert.ok(pack.cards.some((c) => c.id === 'concept-live-mode'));
   assert.match(read('docs/talk-track.md'), /## Mock and live/); assert.match(read('docs/talk-track.md'), /UNVERIFIED/);
   const compose = read('docker-compose.yml').replace(/^\s*#.*$/gm, '');
-  assert.ok(!/CAL_ALLOW_LIVE|IDP:|PINGONE|STANDALONE_ENV|\.env/.test(compose), 'Docker is Mock only: no live opt-in, no settings file mounted');
+  assert.ok(!/PINGONE|STANDALONE_ENV|volumes:/.test(compose), 'Docker is Mock only: no live settings named, no settings file mounted');
+  assert.match(compose, /^\s+IDP: mock$/m); assert.match(compose, /^\s+CAL_ALLOW_LIVE: "0"$/m); assert.match(compose, /^\s+CAL_DEPLOY_MODE: local$/m);
   assert.match(read('docs/shelf-entry.json'), /UNVERIFIED/);
 });
 
@@ -213,4 +214,21 @@ test('the hosted k8s manifests: placeholders only, no namespace, mock-only hoste
   assert.match(d, /emptyDir/); assert.equal((d.match(/path: \/api\/health/g) || []).length, 2); assert.match(d, /limits:/);
   assert.match(files[3], /host: __SE_HOST__/); assert.match(files[3], /ingressClassName: __INGRESS_CLASS__/);
   assert.match(read('deploy/k8s/deploy.sh'), /OWNER_APPROVED/);
+});
+
+test('owner 2026-11-09: no shipped file reads or points at the retired shared settings file (~/Development/.env, STANDALONE_ENV)', () => {
+  const skip = new Set(['node_modules', 'dist', '.git', '.data', 'package-lock.json', '.env']);
+  const self = path.join(root, 'scripts', 'repo.test.mjs');
+  const banned = new RegExp(['Development/' + '\\.env', 'STANDALONE' + '_ENV'].join('|'));
+  const hits = [];
+  const walk = (dir) => {
+    for (const name of fs.readdirSync(dir)) {
+      if (skip.has(name)) continue;
+      const p = path.join(dir, name);
+      if (fs.statSync(p).isDirectory()) walk(p);
+      else if (p !== self && !/\.(png|jpe?g|gif|ico|woff2?)$/.test(name) && banned.test(fs.readFileSync(p, 'utf8'))) hits.push(path.relative(root, p));
+    }
+  };
+  walk(root);
+  assert.deepEqual(hits, []);
 });

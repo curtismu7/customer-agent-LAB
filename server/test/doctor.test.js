@@ -34,10 +34,26 @@ test('the settings file: absent is fine, a world-readable one is flagged, its va
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cal-env-'));
   const f = path.join(dir, '.env'); fs.writeFileSync(f, 'SECRET_THING=hunter2hunter2\n', { mode: 0o644 });
   try {
-    const c = (await runChecks({ env: { STANDALONE_ENV: f } })).find((x) => x.id === 'settings-file');
+    const c = (await runChecks({ env: { CAL_ENV_FILE: f } })).find((x) => x.id === 'settings-file');
     assert.equal(c.level, 'info'); assert.ok(!JSON.stringify(c).includes('hunter2'));
     fs.chmodSync(f, 0o600);
-    assert.equal((await runChecks({ env: { STANDALONE_ENV: f } })).find((x) => x.id === 'settings-file').level, 'pass');
+    assert.equal((await runChecks({ env: { CAL_ENV_FILE: f } })).find((x) => x.id === 'settings-file').level, 'pass');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('owner 2026-11-09: the doctor says which file it reads (the app\'s own .env by default) and lists missing Live settings by name, never a value', async () => {
+  const dflt = (await runChecks({ env: {} })).find((x) => x.id === 'settings-file');
+  assert.match(dflt.detail, /reads \S+\/\.env \(this app's \.env beside docker-compose\.yml\)/); assert.doesNotMatch(dflt.detail, new RegExp(['Develop' + 'ment/', 'STANDALONE' + '_ENV'].join('|')));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cal-doc-env-'));
+  const f = path.join(dir, '.env');
+  try {
+    const at = async () => (await runChecks({ env: { CAL_ENV_FILE: f } })).find((x) => x.id === 'settings-file');
+    const none = await at(); assert.equal(none.level, 'info'); assert.ok(none.detail.includes(`reads ${f} (CAL_ENV_FILE): not there`)); assert.match(none.detail, /copy \.env\.example to \.env/);
+    fs.writeFileSync(f, 'PINGONE_ENVIRONMENT_ID=11111111-2222-4333-8444-555555555555\nPINGONE_CLIENT_SECRET=hunter2hunter2\n', { mode: 0o600 });
+    const partial = await at(); assert.equal(partial.level, 'pass'); assert.match(partial.detail, /Live settings missing: PINGONE_CLIENT_ID$|Live settings missing: PINGONE_CLIENT_ID \(/);
+    assert.ok(!/hunter2|11111111/.test(partial.detail), 'no value printed');
+    fs.writeFileSync(f, 'PINGONE_ENVIRONMENT_ID=11111111-2222-4333-8444-555555555555\nPINGONE_CLIENT_ID=cid\nPINGONE_CLIENT_SECRET=hunter2hunter2\n', { mode: 0o600 });
+    const full = await at(); assert.match(full.detail, /the Live settings are all set/); assert.ok(!/hunter2|11111111|cid\b/.test(full.detail));
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
@@ -67,7 +83,7 @@ test('step 3: the live check is a pass when live is off, information when it is 
   const f = path.join(dir, '.env');
   const secret = ['hunter2', 'hunter2', 'x9'].join('');
   try {
-    const live = async (env) => (await runChecks({ env: { STANDALONE_ENV: f, ...env } })).find((x) => x.id === 'live');
+    const live = async (env) => (await runChecks({ env: { CAL_ENV_FILE: f, ...env } })).find((x) => x.id === 'live');
     fs.writeFileSync(f, '', { mode: 0o600 });
     assert.equal((await live({})).level, 'pass'); assert.match((await live({})).detail, /live is off/);
     assert.equal((await live({ CAL_ALLOW_LIVE: '1', IDP: 'pingone' })).level, 'info'); assert.match((await live({ CAL_ALLOW_LIVE: '1', IDP: 'pingone' })).detail, /cannot run: .*PINGONE_ENVIRONMENT_ID/);
@@ -75,7 +91,7 @@ test('step 3: the live check is a pass when live is off, information when it is 
     const refused = await live({ CAL_ALLOW_LIVE: '1' }); assert.equal(refused.level, 'info'); assert.match(refused.detail, /refused: Live mode needs IDP/);
     const ok = await live({ CAL_ALLOW_LIVE: '1', IDP: 'pingone' });
     assert.equal(ok.level, 'pass'); assert.match(ok.detail, /only to https:\/\/auth\.pingone\.com \(/);
-    assert.ok(!JSON.stringify(await runChecks({ env: { STANDALONE_ENV: f, CAL_ALLOW_LIVE: '1', IDP: 'pingone' } })).match(/hunter2|11111111-2222|cid/), 'no environment id, client or secret in any line');
+    assert.ok(!JSON.stringify(await runChecks({ env: { CAL_ENV_FILE: f, CAL_ALLOW_LIVE: '1', IDP: 'pingone' } })).match(/hunter2|11111111-2222|cid/), 'no environment id, client or secret in any line');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
