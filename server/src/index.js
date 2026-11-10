@@ -1,9 +1,10 @@
 import { installNetguard } from './netguard.js';
 import { startHttpServer, createApp } from './app.js';
 import { allPassed, runChecks } from './doctor.js';
-import { assertBindAllowed, bindHost, liveRefusal, resolvePort } from './safety.js';
+import { assertBindAllowed, bindHost, isLoopbackHost, liveRefusal, resolvePort } from './safety.js';
 import { defaultMode, deployModeFrom, modeFrom } from './config.js';
-import { applySharedSettings, liveSettingsFor, missingIn, takeLiveSettingsFromEnv } from './settings.js';
+import { applySharedSettings, fullWanted, liveSettingsFor, missingFull, missingIn, takeLiveSettingsFromEnv } from './settings.js';
+import { createReal, realConfig } from './real.js';
 import { createLive, hostToAllow, liveConfig } from './live.js';
 import { createHealth } from './health.js';
 import { createWorkspaces } from './workspaces.js';
@@ -30,17 +31,24 @@ const host = assertBindAllowed(bindHost(), process.env);
 // (never in process.env). When they are complete and no guard refuses, the netguard allows the one PingOne host; with CAL_ALLOW_LIVE=0, no configuration,
 // a refusing guard or a loopback test base it allows nothing and the lab reaches no network.
 const liveSettings = hosted ? {} : liveSettingsFor(process.env);
-const live = hosted ? createLive() : createLive({ config: liveConfig(liveSettings, process.env), missing: missingIn(liveSettings) });
+// Full Real (owner, 2026-11-10): the CAL_* settings. When any of them is set, the old identity-provider-only path (PINGONE_CLIENT_*, AI-DEMO2's worker
+// client) is not built at all: its secret is never read into a client, and only the full chain can be selected.
+const wanted = !hosted && fullWanted(liveSettings);
+const real = hosted ? createReal() : createReal({ config: realConfig(liveSettings, process.env), missing: missingFull(liveSettings), wanted });
+const live = hosted || wanted ? createLive() : createLive({ config: liveConfig(liveSettings, process.env), missing: missingIn(liveSettings) });
 const liveRefused = liveRefusal({ env: process.env, bind: host, headers: {} });
-const liveOn = live.configured() && liveRefused === null;
-const liveHost = hostToAllow(live, liveRefused);
-if (liveHost) guard.allowHost(liveHost);
+const fullOn = real.configured() && liveRefused === null;
+const liveOn = fullOn || (live.configured() && liveRefused === null);
+// The netguard: in full Real, the PingOne auth host and the Agent Gateway host (loopback is always allowed); in the old path, the one PingOne host;
+// otherwise nothing. Mock runs never use them (a test asserts zero attempts).
+const allowHosts = fullOn ? real.hosts().filter((h) => !isLoopbackHost(h)) : [hostToAllow(live, liveRefused)].filter(Boolean);
+for (const h of allowHosts) guard.allowHost(h);
 // The llama.cpp brain (Step 2, owner opt-in): one origin from CAL_BRAIN_URL, loopback or host.docker.internal only. Loopback is already allowed; from Docker the
 // netguard allows host.docker.internal and nothing else. Unset or invalid: no brain, and the page offers Scripted only.
 const brainCfg = brainConfig(process.env);
 allowBrainHost(guard, brainCfg);
 const brain = createBrain({ config: brainCfg });
-const app = createApp({ bind: host, workspaces: createWorkspaces({ defaultMode: defaultMode() }), live, brain, health: createHealth({ runtime: () => (liveOn ? 'live' : 'offline') }) });
+const app = createApp({ bind: host, workspaces: createWorkspaces({ defaultMode: defaultMode() }), live, real, brain, health: createHealth({ runtime: () => (liveOn ? 'live' : 'offline') }) });
 const { url } = await startHttpServer({ port: resolvePort(), host, app });
-console.log(`[customer-agent-lab] lab at ${url} (opens in ${mode} mode; ${hosted ? 'hosted build, mock only' : 'loopback'}; ${liveOn ? `live is on: outbound only to ${live.origin()}` : 'no outbound network'}${brain.configured() ? `; brain: ${brain.label()}` : ''})`);
+console.log(`[customer-agent-lab] lab at ${url} (opens in ${mode} mode; ${hosted ? 'hosted build, mock only' : 'loopback'}; ${fullOn ? `full Real is on: outbound only to ${real.origins().join(' and ')}` : liveOn ? `Real (identity provider only) is on: outbound only to ${live.origin()}` : 'no outbound network'}${brain.configured() ? `; brain: ${brain.label()}` : ''})`);
 console.log(`[customer-agent-lab] health: ${url}api/health`);

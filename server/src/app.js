@@ -23,6 +23,8 @@ import { toolFor } from './cast.js';
 import { situationOf } from './situations.js';
 import { parseTraceparent, randomTraceparent } from './trace.js';
 import { createLive, LiveRefused } from './live.js';
+import { createReal, RealRefused, REDIRECT_URI } from './real.js';
+import { realGate } from './realGate.js';
 import { shelfInfo } from './shelfLink.js';
 import { promptsFor, routeOf } from './routes.js';
 import { createBrain, REASONS } from './brain.js';
@@ -31,15 +33,29 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const WEB_DIST = process.env.WEB_DIST || path.resolve(HERE, '../../web/dist');
 const CONFIG = process.env.CUSTOMER_CONFIG || path.resolve(HERE, '../../customer.config.json');
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
-const KEYS = Object.freeze({ run: ['vertical', 'persona', 'mode', 'brain', 'said'], mode: ['mode'], reset: [], pick: ['vertical', 'text'] });
+const KEYS = Object.freeze({ run: ['vertical', 'persona', 'mode', 'brain', 'said'], mode: ['mode'], reset: [], pick: ['vertical', 'text'], signin: ['password'], signout: [] });
 
 // What a list or detail answer shows for a use case: the manifest row, plus the tool resolved for the vertical and whether the run is guided (the
 // lab opens the product's page and does not compute the outcome) or computed by the engine. `labInputs` are the lab-invented numbers and events fed to the engine (empty for most).
 // `route` says where the use case runs (data/handoff.json): Here, Here + go deeper, Hand off (another standalone app) or Guide.
-const view = (uc, cast) => ({ ...uc, tool: uc.primaryTool ? toolFor(cast, uc.primaryTool) : null, live: liveNote(uc), guided: !isFlow(uc), labInputs: { ...situationOf(uc.id) }, route: { ...routeOf(uc.id) } });
+// `realGate`: whether full Real runs this use case (realGate.js), or the fixed reason it stays Mock in Real mode.
+const view = (uc, cast) => ({ ...uc, tool: uc.primaryTool ? toolFor(cast, uc.primaryTool) : null, live: liveNote(uc), guided: !isFlow(uc), labInputs: { ...situationOf(uc.id) }, route: { ...routeOf(uc.id) }, realGate: realGate(uc, cast) });
+
+export const REAL_LABELS = {
+  full: 'Real: sign-in (pi.flow), agent token, token exchange and the Agent Gateway',
+  'idp-only': 'Real, identity provider only: two real calls (discovery and a client-credentials token)',
+  none: 'Real is not configured',
+};
+// Every hop of the mock engine says where it ran (rule 19: REAL or MOCK by what actually ran, never mixed within a hop).
+const withSource = (run) => ({ ...run, hops: run.hops.map((h) => ({ ...h, source: h.verdict === 'skip' ? 'not-run' : 'mock' })) });
+// Real mode, a use case that stays Mock: the mock engine's run, every hop labelled MOCK with the reason.
+const mockInReal = (run, reason) => ({
+  ...run, realGate: { real: false, reason },
+  hops: run.hops.map((h) => ({ ...h, source: h.verdict === 'skip' ? 'not-run' : 'mock', label: `${h.label ?? h.title} [MOCK]`, note: `MOCK in Real mode: ${reason}.${h.note ? ` ${h.note}` : ''}` })),
+});
 
 export function createApp({
-  health = createHealth(), configFile = CONFIG, env = process.env, bind = '127.0.0.1', workspaces = createWorkspaces({ defaultMode: defaultMode() }), webDist = WEB_DIST, live = createLive(), brain = createBrain(),
+  health = createHealth(), configFile = CONFIG, env = process.env, bind = '127.0.0.1', workspaces = createWorkspaces({ defaultMode: defaultMode() }), webDist = WEB_DIST, live = createLive(), brain = createBrain(), real = createReal(),
 } = {}) {
   const app = express();
   app.disable('x-powered-by');
@@ -82,13 +98,29 @@ export function createApp({
   const guardCtx = (req) => ({ env, bind, headers: req.headers });
   // Mock sign-in only: the shelf's own proxy headers are not a refusal (see trustedProxyHeaders). Live keeps the strict context above.
   // Rule 19: Real can be chosen when the guards hold AND the PingOne settings are complete; otherwise the fixed how-to (names only) is the reason.
-  const realRefusal = (req) => liveRefusal(guardCtx(req)) ?? (live.configured() ? null : notConfiguredText(live.missing?.() ?? []));
+  // Which Real this lab has: 'full' (sign-in, agent token, token exchange, Agent Gateway), 'idp-only' (the OLD two calls with the worker client, only
+  // while none of the full-Real settings is set) or null. Once any CAL_* full-Real setting is there, the old path is ignored entirely.
+  const realLevel = () => (real.configured() ? 'full' : real.wanted() ? null : live.configured() ? 'idp-only' : null);
+  const realRefusal = (req) => liveRefusal(guardCtx(req)) ?? (realLevel() ? null : notConfiguredText(real.missing(), real.problem()));
   const mockCtx = (req) => ({ env, bind, headers: trustedProxyHeaders(req.headers, proxyOrigin()) });
   // vertical: absent means the default; present must be a known id. Returns the id, or null after answering.
   const verticalOf = (v, res) => {
     if (v === undefined) return DEFAULT_VERTICAL;
     if (!isKnownVertical(v)) { res.status(400).json({ error: 'bad_vertical', detail: 'vertical is not one of the listed ids' }); return null; }
     return v;
+  };
+
+  // A Real run (full or identity provider only) joins the workspace's history. The network calls are done outside the workspace lock; the cap is
+  // checked again inside it.
+  const recordLive = async (id, uc, vertical, run, res) => {
+    const out = await workspaces.write(id, (s) => {
+      if (s.runs.length >= MAX_RUNS) throw refuse('workspace_full', `this workspace already holds ${MAX_RUNS} runs; Reset it to continue`, 409);
+      s.seq += 1;
+      s.runs.push({ seq: s.seq, id: uc.id, vertical, persona: null, outcome: run.outcome, matchesExpected: null, traceId: run.traceId });
+      return { seq: s.seq, run };
+    });
+    res.set('traceparent', out.run.traceparent);
+    return res.json({ ok: true, workspace: id, seq: out.seq, run: out.run });
   };
 
   api.get('/info', (req, res) => {
@@ -102,7 +134,13 @@ export function createApp({
       realAvailable, // rule 19: whether Real (this app's live PingOne path) is configured
       guards: { mockSignIn: mockSignInRefusal(mockCtx(req)) === null ? 'allowed' : 'refused', live: realAvailable ? 'allowed' : 'refused' },
       shelfUrl: shelfInfo(env).shelfUrl, // the header Shelf button uses this one (a proxy-mounted page cannot reach /api/shelf with cookies omitted)
-      liveSettings: { configured: live.configured(), origin: live.origin() }, // the one origin live mode may reach (no environment id, no client)
+      liveSettings: { configured: live.configured() && !real.wanted(), origin: real.wanted() ? null : live.origin() }, // the old path's one origin (no environment id, no client)
+      // Full Real (owner, 2026-11-10): which Real this lab has, the settings it still needs (names only), the redirect URI the user app must list,
+      // and the origins a Real run may reach. Never a value of a setting.
+      real: {
+        level: realLevel(), label: REAL_LABELS[realLevel() ?? 'none'], missing: realLevel() === 'full' ? [] : real.missing(),
+        redirectUri: REDIRECT_URI, origins: realLevel() === 'full' ? real.origins() : realLevel() === 'idp-only' ? [live.origin()] : [],
+      },
     });
   });
 
@@ -167,6 +205,42 @@ export function createApp({
     if (!uc) return res.status(404).json({ error: 'unknown_use_case' });
     const v = verticalOf(req.query.vertical, res); if (!v) return;
     res.json({ vertical: v, usecase: view(uc, loadCast(configFile, isFullVertical(v) ? v : DEFAULT_VERTICAL)) });
+  });
+
+  // The Sign in dialog (full Real). GET: whether sign-in is available, who is signed in, and the username to prefill (from CAL_DEMO_USERNAME).
+  // POST {password}: the pi.flow sign-in on the server (real.js). The password is used once and never stored, logged or returned; errors are fixed text.
+  const signInRefusal = (req) => liveRefusal(guardCtx(req)) ?? (realLevel() === 'full' ? null : notConfiguredText(real.missing(), real.problem()));
+  api.get('/signin', (req, res) => {
+    const id = ws(req, res); if (!id) return;
+    noStore(res);
+    const why = signInRefusal(req);
+    const s = why ? null : real.session(id);
+    res.json({ available: why === null, reason: why, method: 'pi.flow', redirect: false, username: why ? null : real.username(), signedIn: Boolean(s), user: s ? real.userOf(s) : null });
+  });
+  api.post('/signin', jsonWrites, async (req, res, next) => {
+    try {
+      const id = ws(req, res); if (!id) return;
+      noStore(res);
+      if (!strict(req, res, KEYS.signin)) return;
+      const why = signInRefusal(req);
+      if (why) return res.status(409).json({ error: 'real_not_available', message: why });
+      const pw = bodyOf(req).password;
+      if (typeof pw !== 'string' || pw.length < 1 || pw.length > 256) return res.status(400).json({ error: 'bad_password', detail: 'type the password (1 to 256 characters)' });
+      let out;
+      try { out = await real.signIn(id, pw, parseTraceparent(req.headers.traceparent) ? req.headers.traceparent : randomTraceparent()); } catch (e) {
+        if (e instanceof RealRefused) return res.status(e.status).json({ error: e.code, message: e.message });
+        throw e;
+      }
+      if (!out.ok) return res.status(out.status).json({ error: out.error, message: out.message, pingone: out.pingone ?? null, steps: out.steps });
+      return res.json({ signedIn: true, user: out.user, steps: out.steps });
+    } catch (e) { return next(e); }
+  });
+  api.post('/signout', jsonWrites, (req, res) => {
+    const id = ws(req, res); if (!id) return;
+    noStore(res);
+    if (!strict(req, res, KEYS.signout)) return;
+    real.signOut(id);
+    res.json({ signedIn: false });
   });
 
   // Rule 19 (owner, 2026-11-02): GET /api/info gains source + realAvailable; POST /api/mode {source:"mock"|"real"}
@@ -240,9 +314,36 @@ export function createApp({
       if (requested === 'live') {
         const why = liveRefusal(guardCtx(req));
         if (why) return res.status(403).json({ error: 'live_not_allowed', detail: why, live: liveNote(uc) });
-        if (!live.configured()) return res.status(503).json({ error: 'live_not_configured', detail: live.problem(), live: liveNote(uc) });
+        const level = realLevel();
+        if (!level) return res.status(503).json({ error: 'live_not_configured', detail: notConfiguredText(real.missing(), real.problem()), live: liveNote(uc) });
         if (workspaces.peek(id).runs.length >= MAX_RUNS) return res.status(409).json({ error: 'workspace_full', detail: `this workspace already holds ${MAX_RUNS} runs; Reset it to continue` });
         const traceparent = parseTraceparent(req.headers.traceparent) ? req.headers.traceparent : randomTraceparent();
+        const cast = loadCast(configFile, vertical);
+        if (level === 'full') {
+          const gate = realGate(uc, cast);
+          if (!gate.real) {
+            // Real mode, but this use case stays Mock: the mock engine runs it (mock sign-in rules apply) and every hop says MOCK and why.
+            const whyMock = mockSignInRefusal(mockCtx(req));
+            if (whyMock) return res.status(403).json({ error: 'mock_signin_refused', detail: `This use case runs Mock in Real mode (${gate.reason}), and the mock sign-in is refused: ${whyMock}` });
+            const out = await workspaces.write(id, (s) => {
+              if (s.runs.length >= MAX_RUNS) throw refuse('workspace_full', `this workspace already holds ${MAX_RUNS} runs; Reset it to continue`, 409);
+              const run = mockInReal(runUseCase(uc, { cast, vertical, persona: body.persona, brain: body.brain, said: body.said === undefined ? undefined : cleanFree(body.said, 400), traceparent, seed: 'run' }), gate.reason);
+              s.seq += 1;
+              s.runs.push({ seq: s.seq, id: uc.id, vertical, persona: run.persona, outcome: run.outcome, matchesExpected: run.matchesExpected, traceId: run.traceId });
+              return { seq: s.seq, run };
+            });
+            res.set('traceparent', out.run.traceparent);
+            return res.json({ ok: true, workspace: id, seq: out.seq, run: out.run });
+          }
+          const session = real.session(id);
+          if (!session) return res.status(401).json({ error: 'sign_in_required', detail: 'Sign in first: Real runs as you. Use Sign in (pi.flow, the username is filled in for you).' });
+          let run;
+          try { run = await real.run(uc, { vertical, tool: gate.tool, traceparent, session }); } catch (e) {
+            if (e instanceof RealRefused) return res.status(e.code === 'busy' ? 429 : e.status).json({ error: e.code === 'busy' ? 'live_busy' : e.code, detail: e.message });
+            throw e;
+          }
+          return recordLive(id, uc, vertical, run, res);
+        }
         let run;
         try { run = await live.run(uc, { vertical, traceparent }); } catch (e) {
           if (e instanceof LiveRefused) {
@@ -251,21 +352,13 @@ export function createApp({
           }
           throw e;
         }
-        // The network call is done outside the workspace lock; the cap is checked again inside it.
-        const out = await workspaces.write(id, (s) => {
-          if (s.runs.length >= MAX_RUNS) throw refuse('workspace_full', `this workspace already holds ${MAX_RUNS} runs; Reset it to continue`, 409);
-          s.seq += 1;
-          s.runs.push({ seq: s.seq, id: uc.id, vertical, persona: null, outcome: run.outcome, matchesExpected: null, traceId: run.traceId });
-          return { seq: s.seq, run };
-        });
-        res.set('traceparent', out.run.traceparent);
-        return res.json({ ok: true, workspace: id, seq: out.seq, run: out.run });
+        return recordLive(id, uc, vertical, run, res);
       }
       const why = mockSignInRefusal(mockCtx(req));
       if (why) return res.status(403).json({ error: 'mock_signin_refused', detail: why });
       const out = await workspaces.write(id, (s) => {
         if (s.runs.length >= MAX_RUNS) throw refuse('workspace_full', `this workspace already holds ${MAX_RUNS} runs; Reset it to continue`, 409);
-        const run = runUseCase(uc, { cast: loadCast(configFile, vertical), vertical, persona: body.persona, brain: body.brain, said: body.said === undefined ? undefined : cleanFree(body.said, 400), traceparent: parseTraceparent(req.headers.traceparent) ? req.headers.traceparent : randomTraceparent(), seed: 'run' });
+        const run = withSource(runUseCase(uc, { cast: loadCast(configFile, vertical), vertical, persona: body.persona, brain: body.brain, said: body.said === undefined ? undefined : cleanFree(body.said, 400), traceparent: parseTraceparent(req.headers.traceparent) ? req.headers.traceparent : randomTraceparent(), seed: 'run' }));
         s.seq += 1;
         s.runs.push({ seq: s.seq, id: uc.id, vertical, persona: run.persona, outcome: run.outcome, matchesExpected: run.matchesExpected, traceId: run.traceId });
         return { seq: s.seq, run };
@@ -282,6 +375,7 @@ export function createApp({
       noStore(res);
       if (!strict(req, res, KEYS.reset)) return;
       await workspaces.reset(id);
+      real.signOut(id); // Reset also ends this workspace's Real sign-in
       return res.json({ reset: 'ok', workspace: id });
     } catch (e) { return next(e); }
   });

@@ -349,7 +349,7 @@ test('rule 19: POST /api/mode switches source; Real is 409 while the live guards
     const bad = await post(url, '/api/mode', { source: 'sideways' }); assert.equal(bad.status, 400);
     const extra = await post(url, '/api/mode', { source: 'mock', extra: 1 }); assert.equal(extra.status, 400);
     const refused = await post(url, '/api/mode', { source: 'real' }); assert.equal(refused.status, 409);
-    assert.match((await refused.json()).message, /^Real is not configured: fill .*PINGONE_\* .*\.env/, 'no settings: the 409 says what to fill in');
+    assert.match((await refused.json()).message, /^Real is not configured: fill PINGONE_ENVIRONMENT_ID, CAL_USER_CLIENT_ID, .*CAL_GATEWAY_SCOPE in this app's \.env/, 'no settings: the 409 names the full-Real settings to fill in');
     assert.equal((await (await get(url, '/api/info')).json()).source, 'mock', 'a refused switch changes nothing');
     const ok = await post(url, '/api/mode', { source: 'mock' }); assert.equal(ok.status, 200); assert.equal((await ok.json()).source, 'mock');
   });
@@ -374,8 +374,8 @@ test('owner 2026-11-10 (option a): Real is available when the PingOne settings a
   const missing = ['PINGONE_ENVIRONMENT_ID', 'PINGONE_CLIENT_SECRET'];
   await withServer(async (url) => {
     assert.equal((await (await get(url, '/api/info')).json()).realAvailable, false);
-    const m = await (await get(url, '/api/mode')).json(); assert.equal(m.live, 'refused'); assert.match(m.liveReason, /fill PINGONE_ENVIRONMENT_ID, PINGONE_CLIENT_SECRET in this app's \.env/);
-    const r = await post(url, '/api/mode', { source: 'real' }); assert.equal(r.status, 409); assert.match((await r.json()).message, /PINGONE_ENVIRONMENT_ID, PINGONE_CLIENT_SECRET/);
+    const m = await (await get(url, '/api/mode')).json(); assert.equal(m.live, 'refused'); assert.match(m.liveReason, /fill PINGONE_ENVIRONMENT_ID, CAL_USER_CLIENT_ID, .* in this app's \.env/, 'the how-to names the full-Real settings (owner 2026-11-10)');
+    const r = await post(url, '/api/mode', { source: 'real' }); assert.equal(r.status, 409); assert.match((await r.json()).message, /PINGONE_ENVIRONMENT_ID, CAL_USER_CLIENT_ID/);
   }, { env: MOCK_OK, live: createLive({ config: liveConfig({ PINGONE_CLIENT_ID: 'cid' }, {}), missing }) });
   await withServer(async (url) => {
     assert.equal((await (await get(url, '/api/info')).json()).realAvailable, false, 'CAL_ALLOW_LIVE=0 is the OFF switch');

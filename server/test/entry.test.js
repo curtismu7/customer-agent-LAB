@@ -39,9 +39,19 @@ test('step 3: no source reads a credential from process.env; the one credential 
   for (const f of fs.readdirSync(dir).filter((x) => x.endsWith('.js') && x !== 'credentials.js' && x !== 'mask.js')) {
     const code = fs.readFileSync(new URL(f, dir), 'utf8');
     assert.ok(!/process\.env\.[A-Z_]*(TOKEN|SECRET|PASSWORD|KEY)/.test(code), `${f}: no credential env var`);
-    assert.equal(/CLIENT_SECRET|clientSecret/.test(code), ['settings.js', 'live.js'].includes(f), `${f}: only settings.js and live.js touch the client secret`);
+    assert.equal(/CLIENT_SECRET|clientSecret/.test(code), ['settings.js', 'live.js', 'real.js'].includes(f), `${f}: only settings.js, live.js and real.js touch a client secret`);
   }
   const idx = fs.readFileSync(new URL('../src/index.js', import.meta.url), 'utf8');
   assert.ok(idx.indexOf('liveRefusal(') < idx.indexOf('guard.allowHost('), 'the netguard allows the PingOne host only after the live opt-in check');
   assert.ok(!/process\.env\[[^\]]*\]\s*=|env\.PINGONE/.test(fs.readFileSync(new URL('../src/live.js', import.meta.url), 'utf8')), 'live.js never writes or reads the environment for the client');
+});
+
+test('full Real: real.js and mcpClient.js never log and never read the environment; the password is a function argument only', () => {
+  for (const f of ['real.js', 'mcpClient.js', 'realGate.js']) {
+    const code = fs.readFileSync(new URL(`../src/${f}`, import.meta.url), 'utf8');
+    assert.ok(!/console\./.test(code), `${f}: no console output`);
+    assert.ok(!/process\.env/.test(code.replace(/^\s*\/\/.*$/gm, '')), `${f}: reads no environment variable`);
+  }
+  const real = fs.readFileSync(new URL('../src/real.js', import.meta.url), 'utf8');
+  assert.ok(!/session\s*=\s*\{[^}]*password/.test(real) && !/sessions\.set\([^)]*password/.test(real), 'the session never holds the password');
 });

@@ -26,7 +26,7 @@ describe("header, banner and side nav", () => {
     api = mockApi(); vi.stubGlobal("fetch", () => new Promise(() => {}));
     render(<App />);
     expect(screen.getByTestId("banner").textContent).toBe(BANNER_UNKNOWN);
-    expect(BANNER_UNKNOWN).toMatch(/MOCK mode, REAL only in LIVE mode/);
+    expect(BANNER_UNKNOWN).toMatch(/MOCK mode, REAL only in REAL mode/);
   });
 
   test("the hosted build shows the server's hosted and simulated banner, not the mode banner", async () => {
@@ -428,7 +428,7 @@ describe("mode toggle", () => {
     await runIt(u);
     const r = screen.getByTestId("refusal");
     expect(r.getAttribute("data-code")).toBe("live_not_configured"); expect(r.getAttribute("data-state")).toBe("warn");
-    expect(r.textContent).toMatch(/Live is not set up.*HTTP 503.*PINGONE_ENVIRONMENT_ID/);
+    expect(r.textContent).toMatch(/Real is not set up.*HTTP 503.*PINGONE_ENVIRONMENT_ID/);
   });
 });
 

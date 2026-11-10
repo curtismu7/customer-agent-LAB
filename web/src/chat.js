@@ -51,6 +51,14 @@ export function reasoningOf(turn, run) {
   if (!run) return steps;
   if (run.kind === "guided") { steps.push("This use case is a guided page: the lab shows it and does not compute the outcome"); return steps; }
   if (run.kind === "live") { steps.push("Live mode: only the identity provider was called"); return steps; }
+  if (run.kind === "real") {
+    const ran = run.hops.filter((h) => h.source === "real").length;
+    steps.push(`Real: ${ran} of ${run.hops.length} hops called real servers (PingOne and the Agent Gateway); nothing mock was mixed in`);
+    const d = run.hops.find((h) => h.decision);
+    if (d) steps.push(`${d.title}: ${d.decision.outcome}${d.decision.by ? ` by ${d.decision.by}` : ""}`);
+    return steps;
+  }
+  if (run.realGate && run.realGate.real === false) steps.push(`Real mode, but this use case runs Mock: ${run.realGate.reason}`);
   const decision = run.hops.find((h) => h.decision);
   const stop = run.hops.find((h) => h.verdict && h.verdict !== "ok" && h.verdict !== "skip");
   const ranN = run.hops.filter((h) => h.verdict !== "skip").length; // the not-in-path hops did not run
@@ -90,6 +98,12 @@ export function replyOf(run) {
   const hops = run?.hops || [];
   const body = (kind) => { const h = hops.find((x) => x.kind === kind); return h ? { status: h.response?.status, ...(h.response?.body || {}) } : null; };
   if (run.kind === "live") return { who: run.outcome === "LIVE_OK" ? "Agent" : "PingOne", text: run.narration };
+  // Full Real: the server wrote the reply from what the real servers answered (a 403 is Authorize's DENY, a 428 a REAL hold with a simulated approval).
+  if (run.kind === "real") {
+    const r = run.reply || {};
+    if (r.approval) return { who: r.who || "Authorize", approval: { head: String(r.approval.head || ""), body: String(r.approval.body || "") } };
+    return { who: typeof r.who === "string" ? r.who : "Agent", text: typeof r.text === "string" ? r.text : run.narration };
+  }
   if (run.kind === "guided") return { who: "Agent", text: `This is a guided page: the lab opens the page the product would open and does not compute the outcome (catalog label ${run.outcome}).` };
   const refused = body("tool-refused");
   if (refused) {

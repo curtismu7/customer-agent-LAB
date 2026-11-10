@@ -14,7 +14,8 @@ import { deployModeFrom, modeFrom } from './config.js';
 import { MANIFEST, TRACKS } from './manifest.js';
 import { KNOWN_STEPS, chainOf, runUseCase } from './flow.js';
 import { signMockJwt, verifyMockJwt } from './mockjwt.js';
-import { APP_ENV_FILE, liveSettingsFor, missingIn, missingLiveSettings, settingsPath } from './settings.js';
+import { APP_ENV_FILE, fullWanted, liveSettingsFor, missingFull, settingsPath } from './settings.js';
+import { realConfig } from './real.js';
 import { liveConfig } from './live.js';
 import { DIAGRAM_NAMES, buildDiagram } from './diagramData.js';
 
@@ -43,13 +44,13 @@ export async function runChecks({ env = process.env } = {}) {
   let stat = null;
   try { stat = fs.statSync(file); } catch { /* absent */ }
   if (env.CAL_LIVE_FROM_ENV === '1') {
-    const missing = missingIn(liveSettingsFor(env));
-    add('settings-file', 'pass', `Docker: docker-compose.yml passed the PINGONE_* settings from the app's .env beside it; ${missing.length ? `Live settings missing: ${missing.join(', ')}` : 'the Live settings are all set'} (values are never printed)`);
-  } else if (!stat || !stat.isFile()) add('settings-file', 'info', `${which}: not there. Mock needs none; for Live copy .env.example to .env (chmod 600) and fill its four PINGONE_* settings`);
+    const missing = missingFull(liveSettingsFor(env));
+    add('settings-file', 'pass', `Docker: docker-compose.yml passed the Real settings from the app's .env beside it; ${missing.length ? `full-Real settings missing: ${missing.join(', ')}` : 'the full-Real settings are all set'} (values are never printed)`);
+  } else if (!stat || !stat.isFile()) add('settings-file', 'info', `${which}: not there. Mock needs none; for Real copy .env.example to .env (chmod 600) and fill its full-Real settings (PINGONE_ENVIRONMENT_ID and the CAL_* names)`);
   else {
     const open = stat.mode & 0o077;
-    const missing = missingLiveSettings(file);
-    const liveText = missing.length ? `Live settings missing: ${missing.join(', ')}` : 'the Live settings are all set';
+    const missing = missingFull(liveSettingsFor(env));
+    const liveText = missing.length ? `full-Real settings missing: ${missing.join(', ')}` : 'the full-Real settings are all set';
     add('settings-file', open ? 'info' : 'pass', `${which}: ${open ? 'readable by others, chmod 600 it' : 'mode 600'}; ${liveText} (values are never printed)`);
   }
   add('mock-signin', env.ALLOW_MOCK_SIGNIN === '1' ? 'pass' : 'info', env.ALLOW_MOCK_SIGNIN === '1' ? 'ALLOW_MOCK_SIGNIN=1: mock persona sign-in is allowed on loopback' : 'ALLOW_MOCK_SIGNIN is not 1: runs are refused until you start the lab with ALLOW_MOCK_SIGNIN=1 (scripts/run.sh and Docker set it)');
@@ -99,14 +100,21 @@ export async function runChecks({ env = process.env } = {}) {
   add('netguard', ng.ok ? 'pass' : 'fail', ng.ok ? `blocked fetch, socket, socket-by-IP, dns lookup, dns resolve and udp to a non-loopback host (${ng.blocked}/6)` : ng.detail);
   // Live (step 3) is the one thing that can leave the machine: two calls to the one configured PingOne environment. Booleans and fixed words only, never a value.
   // Option (a), owner 2026-11-10: Real is available whenever the PingOne settings are complete; CAL_ALLOW_LIVE=0 is the explicit OFF switch.
-  const cfg = liveConfig(liveSettingsFor(env), env);
+  // Full Real (owner, 2026-11-10): any CAL_* setting makes it the target and the old worker-client path is ignored; the missing ones are named.
+  const settings = liveSettingsFor(env);
+  const wanted = fullWanted(settings);
+  const full = realConfig(settings, env);
+  const cfg = wanted ? { problem: 'ignored: the full-Real settings are being used' } : liveConfig(settings, env);
   const refused = liveRefusal({ env, bind: bindHost(env), headers: {} });
   let liveOn = false;
   if (env.CAL_ALLOW_LIVE === '0') add('live', 'pass', 'Real is switched off (CAL_ALLOW_LIVE=0): this lab reaches no network');
-  else if (cfg.problem) add('live', 'pass', `Real is not configured (${cfg.problem}): Mock only, this lab reaches no network`);
-  else if (refused) add('live', 'info', `Real is configured but refused: ${refused}`);
-  else { liveOn = true; add('live', 'pass', `Real is on: a live run makes two calls, only to ${new URL(cfg.base).origin} (the configured PingOne environment); the netguard allows that one host`); }
-  add('tenant', 'pass', liveOn ? 'mock runs touch no tenant and no network; a live run reaches the one configured PingOne environment and nothing else' : 'simulated only: no tenant, no credentials, no outbound network');
+  else if (wanted && full.problem) add('live', 'info', `full Real is not configured yet: ${missingFull(settings).length ? `missing ${missingFull(settings).join(', ')}` : full.problem}. Mock only, this lab reaches no network (the old PINGONE_CLIENT_* path is ignored)`);
+  else if (wanted && refused) add('live', 'info', `full Real is configured but refused: ${refused}`);
+  else if (wanted) { liveOn = true; add('live', 'pass', `full Real is on: sign-in (pi.flow), agent token and token exchange at ${new URL(full.base).origin}, MCP to ${new URL(full.gatewayUrl).origin}; the netguard allows those two hosts`); }
+  else if (cfg.problem) add('live', 'pass', `Real is not configured (full Real needs ${missingFull(settings).join(', ')}): Mock only, this lab reaches no network`);
+  else if (refused) add('live', 'info', `Real (identity provider only) is configured but refused: ${refused}`);
+  else { liveOn = true; add('live', 'pass', `Real, identity provider only (the old worker client, until the full-Real settings exist; still missing ${missingFull(settings).join(', ')}): two calls, only to ${new URL(cfg.base).origin}; the netguard allows that one host`); }
+  add('tenant', 'pass', liveOn ? 'mock runs touch no tenant and no network; a Real run reaches only the hosts named above' : 'simulated only: no tenant, no credentials, no outbound network');
   return checks;
 }
 

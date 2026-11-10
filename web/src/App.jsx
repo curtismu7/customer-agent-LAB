@@ -18,6 +18,7 @@ import { chooseTab, cleanConfig, loadConfig, saveConfig, setView } from "./quick
 import { workspaceId } from "./workspace";
 import { loadResume, saveResume, takeReturn } from "./resume";
 import ShelfLink from "./components/ShelfLink.jsx";
+import SignInDialog from "./components/SignInDialog";
 import "./layout.css";
 
 // The nav holds the agent's own areas only. An extra page joins the "More" menu beside it when a run of a use case that opens it succeeds, and
@@ -32,7 +33,7 @@ const EXTRA_PREFIX = "page-";
 // Full-page evidence views of the agent area (#sequence, #reel): the nav keeps Agent selected.
 export const FULL_PAGES = ["sequence", "reel"];
 // The banner is never blank and never claims one mode before it knows: until the story answers it says both, honestly.
-export const BANNER_UNKNOWN = "SIMULATED in MOCK mode, REAL only in LIVE mode (loopback only). Mock: an engine produces every token, hop and decision offline. Live, the owner's opt-in: two real calls to the owner's PingOne environment and nothing else.";
+export const BANNER_UNKNOWN = "SIMULATED in MOCK mode, REAL only in REAL mode (loopback only). Mock: an engine produces every token, hop and decision offline. Real: a real sign-in, token exchange and Agent Gateway call to the owner's PingOne and SE, for the use cases SE serves; every hop says REAL or MOCK.";
 const PRESENTER_TALK = { agent: ["say-first", "tracks", "delegation", "live"], runs: ["honesty"], diagram: ["delegation", "obligations", "attacks"], talk: [], extra: ["obligations", "honesty"] };
 const THEME_KEY = "cal.theme";
 const THEMES = [["auto", "Auto"], ["light", "Light"], ["dark", "Dark"]];
@@ -76,6 +77,10 @@ export default function App() {
   const [resetSignal, setResetSignal] = useState(0);
   const [resetMsg, setResetMsg] = useState("");
   const [error, setError] = useState(null);
+  // Full Real (owner, 2026-11-10): who is signed in for this workspace, the Sign in dialog, and the run that waits for the sign-in.
+  const [signin, setSignin] = useState(null);
+  const [signOpen, setSignOpen] = useState(false);
+  const pendingRun = useRef(null);
   const runRef = useRef(null);
   const runSeq = useRef(0);
   const turnSeq = useRef(resumed?.turns.length || 0);
@@ -98,6 +103,9 @@ export default function App() {
   // If the server does not answer, the mode stays unknown (the chip and the banner say so); a mode it never told us is not claimed.
   const loadMode = useCallback(() => getJson("/api/mode").then((m) => { setMode(m.mode); setModeFailed(false); setLiveReason(m.live === "allowed" ? null : m.liveReason); }, () => setModeFailed(true)), []);
   useEffect(() => { getJson("/api/info").then(setInfo, (e) => setError(e.message)); loadMode(); }, [loadMode]);
+  const realLevel = info?.real?.level ?? null;
+  const loadSignin = useCallback(() => getJson("/api/signin").then(setSignin, () => setSignin(null)), []);
+  useEffect(() => { if (realLevel === "full") loadSignin(); }, [realLevel, loadSignin]);
   // The llama.cpp brain: is it configured, and (only once the visitor has picked it) does the model answer. The plain call touches no model.
   const [brainInfo, setBrainInfo] = useState(null);
   useEffect(() => { getJson(`/api/brain${cfg.brain === "llama" ? "?check=1" : ""}`).then(setBrainInfo, () => setBrainInfo({ configured: false, available: false, message: "The server did not answer." })); }, [cfg.brain]);
@@ -197,6 +205,8 @@ export default function App() {
     const res = await postJson(`/api/run/${encodeURIComponent(u.id)}`, { vertical, persona: who, ...typed }, { traceparent: newTraceparent() }).catch(() => ({ ok: false, status: 0, body: { error: "network", detail: "The server did not answer. Is it running?" } }));
     if (mine !== runSeq.current) return; // a Reset or a newer run took over
     setRunning(false);
+    // Real runs as the person: no sign-in yet opens the Sign in dialog, and the run goes again once it succeeds.
+    if (res.status === 401 && res.body?.error === "sign_in_required") { pendingRun.current = { u, turn: turn ? { said: turn.said, how: turn.how, source: turn.source } : null, who }; setSignOpen(true); }
     setResults((r) => ({ ...r, [key]: res }));
     setRunCount((n) => n + 1);
     if (tid) patchTurn(tid, { status: "done", result: res });
@@ -258,7 +268,13 @@ export default function App() {
   const chooseMode = async (m) => {
     if (m === mode || (m === "live" && hostedOnly)) return;
     const res = await postJson("/api/mode", { source: m === "live" ? "real" : "mock" }).catch(() => ({ ok: false, status: 0, body: { detail: "The server did not answer." } }));
-    if (res.ok) { setMode(res.body.source === "real" ? "live" : "mock"); setModeMsg(res.body.source === "real" ? "Real selected. A run makes two real calls to your PingOne environment (its discovery document and the agent's own token) and runs nothing else." : "Mock selected."); }
+    if (res.ok) {
+      setMode(res.body.source === "real" ? "live" : "mock");
+      setModeMsg(res.body.source !== "real" ? "Mock selected." : realLevel === "full"
+        ? "Real selected. Sign in (pi.flow), then a run calls PingOne (agent token, token exchange) and the Agent Gateway for the use cases SE serves; the others run Mock and say why."
+        : "Real selected, identity provider only. A run makes two real calls to your PingOne environment (its discovery document and the worker client's token) and runs nothing else.");
+      if (res.body.source === "real" && realLevel === "full") loadSignin();
+    }
     else setModeMsg(`${m === "live" ? "Real" : "That mode"} was refused (HTTP ${res.status || "none"}): ${res.body?.message || res.body?.detail || "no reason given"}`);
     loadMode();
   };
@@ -273,8 +289,20 @@ export default function App() {
     setResetSignal((n) => n + 1);
     if (viewFromHash().startsWith(EXTRA_PREFIX)) select("agent");
     await loadMode();
+    if (realLevel === "full") loadSignin();
     setResetMsg(ok ? "Reset: your workspace's runs, results, the chat, extra pages and the diagram are back to the start." : "Reset failed on the server; the view was cleared anyway.");
-  }, [loadMode]);
+  }, [loadMode, loadSignin, realLevel]);
+
+  const signedIn = Boolean(signin?.signedIn);
+  const afterSignIn = (body) => {
+    setSignOpen(false);
+    setSignin((s) => ({ ...(s || {}), signedIn: true, user: body.user }));
+    setModeMsg(`Signed in with PingOne (pi.flow) as ${body.user?.name || "the demo user"}.`);
+    const p = pendingRun.current; pendingRun.current = null;
+    if (p?.u) startRun(p.u, p.turn, p.who);
+  };
+  const signOut = async () => { await postJson("/api/signout", {}).catch(() => null); pendingRun.current = null; loadSignin(); setModeMsg("Signed out."); };
+  const realTitle = info?.real?.label || "Real";
 
   const onKeyNav = (e, i) => {
     const fwd = e.key === "ArrowDown" || e.key === "ArrowRight";
@@ -327,11 +355,17 @@ export default function App() {
             <button type="button" aria-pressed={mode === "mock"} onClick={() => chooseMode("mock")} data-testid="mode-mock" data-mode="mock">Mock</button>
             {hostedOnly
               ? <button type="button" aria-pressed="false" disabled aria-disabled="true" aria-describedby="real-hosted-note" data-testid="mode-live" data-mode="live">Real</button>
-              : <button type="button" aria-pressed={mode === "live"} onClick={() => chooseMode("live")} disabled={Boolean(liveReason) && mode !== "live"} aria-disabled={Boolean(liveReason) && mode !== "live" ? "true" : undefined} title={liveReason || "Real: two real calls to your PingOne environment, identity provider only"} data-testid="mode-live" data-mode="live">Real</button>}
+              : <button type="button" aria-pressed={mode === "live"} onClick={() => chooseMode("live")} disabled={Boolean(liveReason) && mode !== "live"} aria-disabled={Boolean(liveReason) && mode !== "live" ? "true" : undefined} title={liveReason || realTitle} data-testid="mode-live" data-mode="live">Real</button>}
             {hostedOnly && <span className="seg__note" id="real-hosted-note" data-testid="real-hosted-note">{HOSTED_REAL_NOTE}</span>}
             {/* rule 19 (2026-11-03): the conformance gate greps for a mode-real testid in the UI; this hidden marker aliases the Real button. */}
             <span hidden aria-hidden="true" data-testid="mode-real" />
           </div>
+          {mode === "live" && realLevel === "full" && (signedIn
+            ? <>
+                <span className="chip" data-testid="signed-in-user">Signed in: {signin?.user?.name || "demo user"}</span>
+                <button type="button" onClick={signOut} data-testid="signout">Sign out</button>
+              </>
+            : <button type="button" onClick={() => setSignOpen(true)} data-testid="signin-open">Sign in</button>)}
           <button type="button" aria-expanded={qcOpen} aria-controls={qcOpen && current === "agent" && !page ? "quick-config" : undefined} onClick={() => { setQcOpen((v) => !v); if (page || current !== "agent") select("agent"); }} data-testid="qc-open">Quick Config</button>
           <button type="button" onClick={reset} data-testid="reset">Reset</button>
           <button type="button" aria-pressed={presenter} onClick={() => setPresenter((v) => !v)} data-testid="presenter">{presenter ? "Exit presenter (Esc)" : "Presenter (P)"}</button>
@@ -345,7 +379,7 @@ export default function App() {
       </header>
       <p className="banner" role="note" data-state={hosted ? "hosted" : mode === "live" ? "live" : "mock"} data-testid="banner">{banner}</p>
       <div className="statusline">
-        <span className="chip" data-testid="mode">Mode: {mode || (modeFailed ? "unknown" : "...")}{mode === "live" ? " (real calls, identity provider only)" : mode === "mock" ? " (engine, offline)" : modeFailed ? " (server did not answer)" : ""}</span>
+        <span className="chip" data-testid="mode">Mode: {mode || (modeFailed ? "unknown" : "...")}{mode === "live" ? (realLevel === "full" ? " (real: sign-in, token exchange, Agent Gateway)" : " (real calls, identity provider only)") : mode === "mock" ? " (engine, offline)" : modeFailed ? " (server did not answer)" : ""}</span>
         <span className="chip" data-testid="workspace">Workspace: {workspaceId()}</span>
         {modeMsg && <p className="notice" role="status" data-testid="mode-msg">{modeMsg}</p>}
       </div>
@@ -376,7 +410,7 @@ export default function App() {
                 <AgentColumn agent={cast.castAgent} brand={cast.castBrand} userId={userId} vertical={vertical} verticalLabel={verticalLabel} stub={stub} prompts={prompts} turns={shownTurns}
                   status={busy ? "running" : statusOf(lastTurn)} onSay={say} onHop={onHop} onPreview={preview} running={busy} />
                 {qcOpen ? (
-                  <QuickConfig id="quick-config" mode={mode} liveReason={liveReason} hostedOnly={hostedOnly} onMode={chooseMode} config={cfg}
+                  <QuickConfig id="quick-config" mode={mode} liveReason={liveReason} realTitle={realTitle} hostedOnly={hostedOnly} onMode={chooseMode} config={cfg}
                     brainInfo={brainInfo} onBrain={(b) => setCfg((c) => ({ ...c, brain: b }))} onRouting={(r) => setCfg((c) => ({ ...c, routing: r }))}
                     onView={(v, s) => setCfg((c) => setView(c, v, s))} onText={(t) => setCfg((c) => ({ ...c, text: t }))} onPresenter={setPresenter}
                     onReset={() => setCfg(cleanConfig(null))} onClose={() => { setQcOpen(false); document.querySelector('[data-testid="qc-open"]')?.focus(); }} />
@@ -400,6 +434,7 @@ export default function App() {
           {extraKey && opened[extraKey] && <ExtraPage opens={extraKey} entry={opened[extraKey]} />}
         </div>
       </main>
+      <SignInDialog isOpen={signOpen} username={signin?.username} onClose={() => { setSignOpen(false); pendingRun.current = null; }} onSignedIn={afterSignIn} />
     </div>
   );
 }
