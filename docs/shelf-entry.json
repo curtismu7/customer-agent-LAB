@@ -4,7 +4,7 @@
       "id": "customer-agent-lab",
       "name": "Customer Agent LAB",
       "kind": "Demo",
-      "description": "The customer-facing AI agent with all 87 of its use cases in eight tracks, each routed Here, Here + go deeper, Hand off or Guide. Movie reel, sequence view and step detail at AI-DEMO2 depth in movable evidence cards; hand-offs to 30 labs whose Back strip resumes the chat; an Agent to agent page; Scripted or an opt-in llama.cpp brain. Mock produces every token and hop offline.",
+      "description": "The customer-facing AI agent with all 87 use cases, each routed Here, Here + go deeper, Hand off or Guide. AI-DEMO2-depth movie reel, sequence view and step detail in movable cards; hand-offs to 30 labs whose Back strip resumes the chat; an A2A page; Scripted or llama.cpp brain. Mock runs offline.",
       "url": "http://localhost:5603",
       "healthPath": "/api/health",
       "composeFile": "customer-agent-LAB/docker-compose.yml",
