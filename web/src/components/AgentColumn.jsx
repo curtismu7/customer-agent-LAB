@@ -81,7 +81,7 @@ export default function AgentColumn({ agent, brand, userId, vertical, verticalLa
     const last = box?.querySelector(".turn:last-child");
     if (!box || !last || box.scrollHeight <= box.clientHeight) return;
     let top = last.offsetTop - box.offsetTop - 8;
-    // A hand-off reply taller than the column: keep its card whole in view (the reasoning above it may scroll off the top first).
+    // A hand-off reply taller than the column: keep its card whole in view.
     const card = last.querySelector('[data-testid="handoff-card"]');
     if (card) { const b = box.getBoundingClientRect(); const bottom = card.getBoundingClientRect().bottom - b.top + box.scrollTop + 8; top = Math.max(top, bottom - box.clientHeight); }
     box.scrollTop = Math.max(0, top);

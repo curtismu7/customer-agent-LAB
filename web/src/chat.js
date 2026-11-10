@@ -69,3 +69,35 @@ export const HANDOFF_WHY = (uc) => {
     `${r.also ? `It can open ${r.app} or ${r.also}` : `Its home is ${r.app}`}${r.basis ? ` (routing table: ${r.basis})` : ""}`,
   ];
 };
+
+// Who refused a run, as the reply's label, and the gateway's error codes in plain words. A code with no entry is shown as it is.
+export const REFUSED_BY = { authorize: "Authorize", gateway: "Gateway", bff: "Back end (BFF)" };
+export const REASON_WORDS = {
+  insufficient_scope: "the token does not carry the scope this tool needs",
+  invalid_audience: "the token was issued for a different audience",
+  invalid_dpop_proof: "the DPoP proof did not match the token",
+  invalid_signature: "the token signature did not verify",
+  missing_act: "the token does not name the acting agent (no act claim)",
+  rate_limited: "too many calls in a short time (rate limit)",
+  validation_unavailable: "it could not validate the token right now",
+  policy_denied: "its policy does not allow this call",
+  user_token_forwarding_disabled: "it does not pass your own sign-in token to a tool; the token must be exchanged first",
+};
+
+// The one reply a chat turn shows, derived from the run itself (nothing generated, no amount the engine did not produce):
+// { who, text, approval } where approval is an APPROVAL entry when the run stopped for a person.
+export function replyOf(run) {
+  const hops = run?.hops || [];
+  const body = (kind) => { const h = hops.find((x) => x.kind === kind); return h ? { status: h.response?.status, ...(h.response?.body || {}) } : null; };
+  if (run.kind === "live") return { who: run.outcome === "LIVE_OK" ? "Agent" : "PingOne", text: run.narration };
+  if (run.kind === "guided") return { who: "Agent", text: `This is a guided page: the lab opens the page the product would open and does not compute the outcome (catalog label ${run.outcome}).` };
+  const refused = body("tool-refused");
+  if (refused) {
+    const who = REFUSED_BY[refused.refused_by] || String(refused.refused_by || "The system");
+    const reason = refused.reason ? (Object.hasOwn(REASON_WORDS, refused.reason) ? REASON_WORDS[refused.reason] : refused.reason) : "no reason given";
+    return { who, text: `${who === "Gateway" ? "The gateway" : who} refused this request${refused.status ? ` (HTTP ${refused.status})` : ""}: ${reason}. Nothing was sent to the tool.` };
+  }
+  if (Object.hasOwn(APPROVAL, run.outcome)) return { who: "Authorize", approval: APPROVAL[run.outcome] };
+  const said = body("agent-reply")?.reply;
+  return { who: "Agent", text: typeof said === "string" && said ? said : run.narration };
+}

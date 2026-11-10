@@ -14,8 +14,8 @@
 .shell-nav__list { display: flex; flex-wrap: wrap; gap: 6px; }
 .shell-nav__list button { border-radius: 999px; min-height: 34px; padding: 4px 9px; }
 .shell-bar button, .shell-bar select { font-size: 13px; }
-/* one fixed-width menu for the extra pages, so their number never widens the bar (a long label is cut, the full one is in the list) */
-.shell-more select { width: 6.5rem; border-radius: 999px; min-height: 34px; padding: 4px 10px; border-style: dashed; }
+/* one menu for the extra pages, as wide as its longest label (at most "Consent and step-up"), so the selected page reads whole */
+.shell-more select { width: auto; max-width: 100%; border-radius: 999px; min-height: 34px; padding: 4px 10px; border-style: dashed; }
 .shell-more select[data-current="true"] { border-style: solid; font-weight: 700; }
 .shell-right { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .shell-right button { min-height: 34px; padding: 4px 8px; }
@@ -103,20 +103,12 @@
 .turn__said { margin: 3px 0 0; font-weight: 700; color: var(--text); }
 .turn__body { display: grid; gap: 8px; min-width: 0; }
 .turn__body p { margin: 0; }
-.turn__block .kicker { margin-top: 0; display: flex; gap: 6px; align-items: center; }
 .turn__refused { color: var(--danger-text); }
 .turn__answer { display: grid; gap: 6px; justify-items: start; }
+.turn__who { margin: 3px 0 0; }
+.turn__ev { justify-self: start; min-height: 32px; padding: 0; border: 0; background: none; color: var(--muted); font-size: 12px; text-decoration: underline; }
 .steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 13px; }
 .steps__n { display: inline-block; margin-right: 6px; padding: 0 6px; border: 1px solid var(--border); border-radius: 6px; font-family: var(--font-mono); font-size: 11px; color: var(--muted); }
-.tcards { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 120px), 1fr)); gap: 6px; }
-.tcard { display: grid; gap: 2px; padding: 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); font-size: 12px; }
-.tcard b { color: var(--text); font-size: 12px; }
-.pills { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
-.pill { min-height: 32px; padding: 2px 10px; border-radius: 999px; font-family: var(--font-mono); font-size: 11px; font-weight: 600; text-transform: uppercase; }
-.pill[data-state="ok"] { border-color: var(--status-ok); color: var(--status-ok); }
-.pill[data-state="warn"] { border-color: var(--status-warn); color: var(--status-warn); }
-.pill[data-state="bad"] { border-color: var(--danger-text); color: var(--danger-text); }
-.pill[data-state="info"] { border-style: dashed; color: var(--muted); }
 .approval { display: grid; gap: 6px; }
 .approval__head { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 
@@ -135,11 +127,8 @@
 .composer input { flex: 1 1 auto; min-width: 0; }
 
 /* hand-off card and go deeper */
-.handoff { display: grid; gap: 6px; border-top-color: var(--status-info); font-size: 13px; }
-.handoff__note { font-size: 12px; }
+.handoff { display: grid; gap: 6px; }
 .handoff p { margin: 0; }
-.handoff__title { margin: 0; font-size: 15px; }
-.handoff__ids { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; font-family: var(--font-mono); }
 .handoff__actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .deeper { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding-top: 6px; border-top: 1px dashed var(--border); }
 .deeper .kicker { margin: 0; }
@@ -152,6 +141,7 @@
 .evtabs { display: flex; flex-wrap: wrap; gap: 6px; }
 .evcol__panel { display: grid; gap: 10px; min-width: 0; }
 .evsum { display: grid; gap: 10px; }
+.evwhy .kicker { margin-top: 0; }
 .evsum__carry { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); }
 .evsum__list { list-style: none; margin: 0; padding: 0; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; }
 .evsum__list li { padding: 6px 10px; }

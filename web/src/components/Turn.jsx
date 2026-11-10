@@ -1,63 +1,24 @@
-import { APPROVAL, HANDOFF_WHY, pillOf, reasoningOf } from "../chat";
-import { isHandoff } from "../handoff";
+import { replyOf } from "../chat";
+import { isHandoff, routeOf } from "../handoff";
 import { outcomeState } from "../lib";
 import { visible } from "../safeText";
 import { Tag } from "./Bits";
 import { GoDeeper, HandoffCard } from "./HandoffCard";
 
-const claimSub = (v) => (v && typeof v === "object" ? v.sub : v);
-
-// The tokens a run used, as small cards: label, sub and act. The full raw tokens are on the Tokens tab of the evidence column.
-function TokenCards({ tokens }) {
-  if (!tokens?.length) return null;
-  return (
-    <div className="turn__block" data-testid="turn-tokens">
-      <p className="kicker">Tokens used {tokens.some((t) => t.mock) && <Tag state="info" title="Issued by this lab, signed with a public mock key">MOCK</Tag>}{tokens.some((t) => t.live) && <Tag state="ok" title="A real token, shown masked">LIVE</Tag>}</p>
-      <ul className="tcards">
-        {tokens.map((t, i) => (
-          <li key={`${t.label}-${i}`} className="tcard">
-            <b>{visible(t.label)}</b>
-            {t.claims?.sub && <span className="mono">sub {visible(String(t.claims.sub))}</span>}
-            {t.claims?.act && <span className="mono">act {visible(String(claimSub(t.claims.act)))}</span>}
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-// One tool-call pill per hop that ran, coloured by the hop verdict and always carrying the word. A click opens that hop in the evidence column.
-// Hops not in this run (verdict skip) get no pill, so a click can never select a hidden hop; their count is shown instead.
-function Pills({ hops, onHop }) {
-  const ran = hops.filter((h) => h.verdict !== "skip");
-  const notRun = hops.length - ran.length;
-  return (
-    <ul className="pills" aria-label="Tool calls, one per hop" data-testid="turn-pills">
-      {ran.map((h) => {
-        const [word, state] = pillOf(h.verdict);
-        return (
-          <li key={h.n}>
-            <button type="button" className="pill" data-state={state} onClick={() => onHop?.(h.n)} aria-label={`Hop ${h.n} ${h.kind}, ${word}: show it in the evidence`} data-testid={`pill-${h.n}`}>
-              {h.kind}{h.verdict && h.verdict !== "ok" ? ` · ${word}` : ""}
-            </button>
-          </li>
-        );
-      })}
-      {notRun > 0 && <li className="muted" data-testid="turn-not-run">+{notRun} not in this run</li>}
-    </ul>
-  );
-}
-
-// One exchange: what the visitor typed (or picked), then the agent's reply built from the run.
+// One exchange: what the visitor typed (or picked), then ONE reply: the agent's answer, or the refusal or hold as the system that answered gave it,
+// labelled with who answered. How the use case was chosen, the hops and the tokens are in the evidence column, not here (owner, 2026-11-09).
 export default function Turn({ turn, onHop, onPreview, userId, running }) {
   const res = turn.result;
   const run = res?.ok ? res.body.run : null;
   const uc = turn.uc;
   const handoff = uc && isHandoff(uc) && !turn.preview;
+  const guide = uc && routeOf(uc).route === "Guide";
   // A note in the conversation (for example "Back from a2a-lab (UC47)"): no You / AI exchange.
   if (turn.status === "note") return <li className="turn turn--note muted" data-testid="turn-note" data-status="note" role="note">{visible(turn.said)}</li>;
   // A turn restored after a hand-off keeps ids and words only, never the run: say what it was and how to see the evidence again.
   const restoredRun = turn.restored && !run && !handoff && turn.status !== "nomatch";
+  const reply = run && !guide ? replyOf(run) : null;
+  const who = handoff || guide ? "Agent" : reply?.who;
   return (
     <li className="turn" data-testid="turn" data-status={turn.status}>
       <div className="turn__you">
@@ -66,21 +27,12 @@ export default function Turn({ turn, onHop, onPreview, userId, running }) {
       </div>
       <div className="turn__agent">
         <span className="avatar avatar--agent" aria-hidden="true">AI</span>
-        <div className="turn__body">
+        <div className="turn__body" data-testid="turn-reply">
+          {who && (run || handoff || guide) && <p className="turn__who kicker" data-testid="turn-who">{who}</p>}
           {turn.status === "nomatch" && turn.brainNote && <p className="muted" data-testid="turn-brain-note">{visible(turn.brainNote)}</p>}
           {turn.status === "nomatch" && (
             <p data-testid="turn-nomatch">I have no scripted answer for that. Try one of the prompts under What to type, or pick a use case on the left. (The Scripted brain matches your words to a use case; it never makes an answer up.)</p>
           )}
-          {uc && (
-            <div className="turn__block">
-              <p className="kicker">Reasoning</p>
-              <ol className="steps" data-testid="turn-reasoning">
-                {reasoningOf(turn, run).map((s, i) => <li key={i}><span className="steps__n">Step {i + 1}</span> {visible(s)}</li>)}
-                {handoff && HANDOFF_WHY(uc).map((s, i) => <li key={`h${i}`}><span className="steps__n">Step {i + 2}</span> {visible(s)}</li>)}
-              </ol>
-            </div>
-          )}
-          {handoff && <p data-testid="turn-handoff-say">This one runs in its own app. Open it with {visible(turn.vertical)}{userId ? ` and ${userId}` : ""} already chosen, or preview it here.</p>}
           {handoff && <HandoffCard uc={uc} vertical={turn.vertical} userId={userId} canPreview={!uc.guided} onPreview={() => onPreview?.(turn)} previewing={running} />}
           {restoredRun && (
             <p className="muted" data-testid="turn-restored">
@@ -90,26 +42,21 @@ export default function Turn({ turn, onHop, onPreview, userId, running }) {
           )}
           {turn.status === "running" && <p className="muted" data-testid="turn-running">Working on it...</p>}
           {res && !res.ok && <p className="turn__refused" data-testid="turn-refused">The server refused this run{res.status ? ` (HTTP ${res.status})` : " (no answer)"}: {visible(res.body?.detail || res.body?.message || "no reason given")}</p>}
-          {run && (
-            <>
-              <TokenCards tokens={run.tokens} />
-              <Pills hops={run.hops} onHop={(n) => onHop?.(turn, n)} />
-              {Object.hasOwn(APPROVAL, run.outcome) ? (
-                <div className="approval card card--warn" data-testid="turn-approval">
-                  <p className="approval__head"><Tag state="warn">{run.outcome}</Tag> <b>{APPROVAL[run.outcome].head}</b></p>
-                  <p>{APPROVAL[run.outcome].body}</p>
-                  <p className="muted">{visible(run.narration)}</p>
-                </div>
-              ) : (
-                <div className="turn__answer" data-testid="turn-answer">
-                  <p>{visible(run.narration)}</p>
-                  <Tag state={outcomeState(run.outcome)} testId="turn-outcome">{run.outcome}</Tag>
-                  {turn.preview && <> <Tag state="info">preview, mock engine</Tag></>}
-                </div>
-              )}
-              <GoDeeper uc={uc} vertical={turn.vertical} userId={userId} />
-            </>
+          {run && guide && <p data-testid="turn-guide-say">This one is a guide: the learning pages and scripts cover it, and there is no lab for it yet.</p>}
+          {reply?.approval && (
+            <div className="approval card card--warn" data-testid="turn-approval">
+              <p className="approval__head"><Tag state="warn">{run.outcome}</Tag> <b>{reply.approval.head}</b></p>
+              <p>{reply.approval.body}</p>
+            </div>
           )}
+          {reply && !reply.approval && (
+            <div className="turn__answer" data-testid="turn-answer">
+              <p data-testid="turn-answer-text">{visible(reply.text)}</p>
+              <span><Tag state={outcomeState(run.outcome)} testId="turn-outcome">{run.outcome}</Tag>{turn.preview && <> <Tag state="info">preview, mock engine</Tag></>}</span>
+            </div>
+          )}
+          {run && !guide && <GoDeeper uc={uc} vertical={turn.vertical} userId={userId} />}
+          {run && <button type="button" className="turn__ev" onClick={() => onHop?.(turn, null)} data-testid="turn-evidence">See evidence →</button>}
         </div>
       </div>
     </li>
