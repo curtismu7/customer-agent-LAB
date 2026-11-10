@@ -3,9 +3,9 @@
 # Do not change the 127.0.0.1 below. HOST_PORT must stay in 5600-5699 (5603 is the Docker default; 5601 is taken by Kibana; 5600 is the host-run port).
 # ALLOW_MOCK_SIGNIN=1 is the owner's opt-in to the mock persona sign-in; CAL_PUBLISH=loopback tells the guards that the publish above is loopback-only
 # (a test pins both). Remove ALLOW_MOCK_SIGNIN to turn mock sign-in off.
-# Settings: the app's own .env beside this file (copy .env.example), passed in with env_file and optional (a missing .env is fine).
-# Docker stays Mock: the lines under environment: win over env_file, so CAL_ALLOW_LIVE, IDP and CAL_DEPLOY_MODE are pinned here and a .env cannot switch
-# a guard on; and the server reads the PINGONE_* Live settings only from a .env file inside the image, which has none (.dockerignore).
+# Settings: the app's own .env beside this file (copy .env.example). Compose reads it only to fill the ${...} values below (a missing .env is fine);
+# there is deliberately no env_file, so the PINGONE_* Live settings (client secret included) never enter the container. Docker stays Mock:
+# CAL_ALLOW_LIVE, IDP and CAL_DEPLOY_MODE are pinned here, and the image has no .env (.dockerignore).
 # CAL_DEPLOY_MODE=local is this compose file; the dormant hosted build sets hosted in its own k8s manifest.
 # CAL_BRAIN_URL (owner opt-in, off by default): the local llama.cpp model on the Mac, e.g. CAL_BRAIN_URL=http://host.docker.internal:8090.
 # When set, the netguard allows that one host, and the lab calls it only after a visitor picks the llama.cpp brain (a test pins the empty default).
@@ -14,9 +14,6 @@ name: customer-agent-lab
 services:
   customer-agent-lab:
     build: .
-    env_file:
-      - path: .env
-        required: false
     ports:
       - "127.0.0.1:${HOST_PORT:-5603}:5600"
     environment:

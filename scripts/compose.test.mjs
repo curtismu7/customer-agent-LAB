@@ -57,12 +57,15 @@ test('the container is locked down: read-only fs, no capabilities, no new privil
 test('the compose file tells the guards the publish is loopback-only, opts in to mock sign-in, and does not switch live on', () => {
   const compose = here('docker-compose.yml');
   assert.match(compose, /CAL_PUBLISH: loopback/); assert.match(compose, /ALLOW_MOCK_SIGNIN: "1"/);
-  assert.match(compose, /^      CAL_ALLOW_LIVE: "0"$/m, 'live stays off: pinned under environment:, which wins over env_file');
+  assert.match(compose, /^      CAL_ALLOW_LIVE: "0"$/m, 'live stays off: pinned under environment:');
   assert.match(compose, /name: customer-agent-lab/);
   assert.match(compose, /CAL_BRAIN_URL: \$\{CAL_BRAIN_URL:-\}\n/, 'the llama.cpp brain is off by default in Docker (owner opt-in)');
 });
 
-test('owner 2026-11-09: compose reads the app\'s own .env with env_file, marked optional so a missing file is fine', () => {
+test('owner 2026-11-09: Live secrets never enter the container: no env_file, no PINGONE_* passed through', () => {
   const compose = here('docker-compose.yml');
-  assert.match(compose, /^    env_file:\n      - path: \.env\n        required: false$/m);
+  const body = compose.split('\n').filter((l) => !l.trimStart().startsWith('#')).join('\n');
+  assert.doesNotMatch(body, /env_file/, 'env_file would copy every .env line, the client secret included, into the container');
+  assert.doesNotMatch(body, /PINGONE_/, 'Docker is Mock only: no PingOne setting is passed in');
+  for (const k of ['SHELF_URL', 'CAL_LAB_MODE', 'LAB_ALLOWED_HOSTS']) assert.match(body, new RegExp(`${k}: \\$\\{${k}:-`), `${k} comes from .env by substitution`);
 });
