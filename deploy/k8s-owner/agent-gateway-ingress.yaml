@@ -1,0 +1,40 @@
+# OWNER-RUN (scripts/owner/agent-gateway-ingress.sh). A public URL for the SE Agent Gateway (PingGateway, svc ping-gateway:8080), which has none:
+# on the shared MCP gateway host, /mcp belongs to the Privilege gateway. Only /mcp (Prefix) and /health (Exact) are exposed. Same class, issuer and
+# annotation style as the cimd-lab and agentconnect ingresses in this namespace, with a lower request rate.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: agent-gateway
+  namespace: ping-devops-cmuir
+  labels: { app: agent-gateway-public }
+spec:
+  secretName: agent-gateway-tls
+  dnsNames:
+    - agent-gateway.ai-demo.ping-devops.com
+  issuerRef:
+    kind: ClusterIssuer
+    name: letsencrypt-pdo
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: agent-gateway
+  namespace: ping-devops-cmuir
+  labels: { app: agent-gateway-public }
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "256k"
+    nginx.ingress.kubernetes.io/limit-rps: "5"
+    nginx.ingress.kubernetes.io/limit-burst-multiplier: "3"
+    nginx.ingress.kubernetes.io/limit-connections: "10"
+spec:
+  ingressClassName: nginx-public
+  tls:
+    - hosts: [agent-gateway.ai-demo.ping-devops.com]
+      secretName: agent-gateway-tls
+  rules:
+    - host: agent-gateway.ai-demo.ping-devops.com
+      http:
+        paths:
+          - { path: /mcp, pathType: Prefix, backend: { service: { name: ping-gateway, port: { number: 8080 } } } }
+          - { path: /health, pathType: Exact, backend: { service: { name: ping-gateway, port: { number: 8080 } } } }
