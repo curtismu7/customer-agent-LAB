@@ -15,19 +15,22 @@ import { DEFAULTS, cleanConfig, chooseTab, setView } from "./quickConfig";
 import PROMPTS_DATA from "../../data/prompts.json";
 import HANDOFF_DATA from "../../data/handoff.json";
 
-// The fixture catalog plus the routes and prompts the Step 1 UI reads. UC2 is a computed hand-off, UC-LEARN2 a guided one.
+// The fixture catalog plus the routes and prompts the Step 1 UI reads. UC2.6 is a computed hand-off, UC-LEARN2 a guided one. UC2 runs here and
+// opens the Agent to agent page; its route is the real one from data/handoff.json (owner, 2026-11-09: keep #page-a2a).
 const ROUTES = { UC1: { route: "Here + go deeper", app: "delegation-lab", basis: "named in lab entry" }, "UC-LEARN2": { route: "Hand off", app: "pingone-mcp-inspector", basis: "named in lab entry" } };
-const HANDOFF_UC = { id: "UC2", track: "foundations", title: "A2A delegation", buyerStory: "b", pingOneSolution: "s", trigger: { type: "chip", text: "hand off to a specialist" }, expectedOutcome: "PERMIT", evidence: { tokenChain: [], activity: [] }, maturity: "works", productRoles: {}, primaryTool: null, needs: [], flag: null, opens: "none", linkOut: null, tool: null, live: { status: "idp-only", message: "m" }, guided: false, labInputs: {}, route: { route: "Hand off", app: "a2a-lab", basis: "named in lab entry" } };
+const A2A_UC = { id: "UC2", track: "foundations", title: "A2A delegation", buyerStory: "b", pingOneSolution: "s", trigger: { type: "chip", text: "hand off to a specialist" }, expectedOutcome: "PERMIT", evidence: { tokenChain: [], activity: [] }, maturity: "works", productRoles: {}, primaryTool: null, needs: [], flag: null, opens: "a2a", linkOut: null, tool: null, live: { status: "idp-only", message: "m" }, guided: false, labInputs: {}, route: HANDOFF_DATA.routes.UC2 };
+const HANDOFF_UC = { id: "UC2.6", track: "foundations", title: "A2A generalist mismatch", buyerStory: "b", pingOneSolution: "s", trigger: { type: "chip", text: "simulate an agent identity mismatch" }, expectedOutcome: "PERMIT", evidence: { tokenChain: [], activity: [] }, maturity: "works", productRoles: {}, primaryTool: null, needs: [], flag: null, opens: "none", linkOut: null, tool: null, live: { status: "idp-only", message: "m" }, guided: false, labInputs: {}, route: { route: "Hand off", app: "a2a-lab", basis: "named in lab entry" } };
 const PROMPTS = [
   { uc: "UC1", text: "show my balance", title: "Delegated access (consent only)", track: "foundations", expectedOutcome: "PERMIT", route: "Here + go deeper" },
   { uc: "UC7", text: "transfer $600 from checking to savings", title: "Transfer needs step-up", track: "controls", expectedOutcome: "STEP_UP", route: "Here + go deeper" },
   { uc: "UC5", text: "use the wrong scope", title: "Wrong or insufficient scope", track: "attacks", expectedOutcome: "DENY_403", route: "Here" },
-  { uc: "UC2", text: "hand off to a specialist", title: "A2A delegation", track: "foundations", expectedOutcome: "PERMIT", route: "Hand off" },
+  { uc: "UC2", text: "hand off to a specialist", title: "A2A delegation", track: "foundations", expectedOutcome: "PERMIT", route: HANDOFF_DATA.routes.UC2.route },
+  { uc: "UC2.6", text: "simulate an agent identity mismatch", title: "A2A generalist mismatch", track: "foundations", expectedOutcome: "PERMIT", route: "Hand off" },
 ];
 const routed = (vertical) => {
   const c = catalog(vertical);
   c.tracks = c.tracks.map((t) => ({ ...t, usecases: t.usecases.map((u) => ({ ...u, route: ROUTES[u.id] || { route: "Here", app: null, basis: null } })) }));
-  const f = c.tracks.find((t) => t.track === "foundations"); f.usecases = [...f.usecases, HANDOFF_UC]; f.count += 1; c.total += 1;
+  const f = c.tracks.find((t) => t.track === "foundations"); f.usecases = [...f.usecases, A2A_UC, HANDOFF_UC]; f.count += 2; c.total += 2;
   return c;
 };
 const STORY_CAST = { castAgent: "concierge-agent", castBrand: "Fabrikam Bank", castUser: "alex.morgan", castUser2: "sam.rivera", castHost: "fabrikam" };
@@ -82,7 +85,7 @@ describe("Agno layout: setup sidebar, agent column, evidence column", () => {
     expect(brain.value).toBe("scripted");
     expect(within(brain).getByText("llama.cpp · not configured").disabled).toBe(true);
     expect(within(screen.getByTestId("uc-UC1")).getByTestId("route-tag").textContent).toBe("PERMIT +");
-    expect(within(screen.getByTestId("uc-UC2")).getByTestId("route-tag").textContent).toBe("Opens a2a-lab");
+    expect(within(screen.getByTestId("uc-UC2.6")).getByTestId("route-tag").textContent).toBe("Opens a2a-lab");
     expect(within(screen.getByTestId("uc-UC5")).getByTestId("route-tag").textContent).toBe("DENY_403");
     expect(within(side).getByTestId("sessions-empty")).toBeTruthy();
   });
@@ -93,7 +96,7 @@ describe("Agno layout: setup sidebar, agent column, evidence column", () => {
     await u.click(screen.getByTestId("mode-several"));
     expect(screen.getByTestId("several-note").textContent).toMatch(/run in their own apps/);
     expect(screen.queryByTestId("uc-UC1")).toBeNull();
-    expect(screen.getByTestId("uc-UC2")).toBeTruthy();
+    expect(screen.getByTestId("uc-UC2.6")).toBeTruthy();
   });
 });
 
@@ -102,9 +105,9 @@ describe("What to type and the Scripted brain", () => {
     await boot();
     expect(screen.getByTestId("starters")).toBeTruthy();
     expect(screen.getByTestId("wtt-heading").textContent).toBe("What to type · Banking · Fabrikam Bank");
-    expect(within(screen.getByTestId("wtt-away")).getAllByRole("button").map((b) => b.textContent)).toEqual(["hand off to a specialist"]);
+    expect(within(screen.getByTestId("wtt-away")).getAllByRole("button").map((b) => b.textContent)).toEqual(["simulate an agent identity mismatch"]);
     expect(within(screen.getByTestId("what-to-type")).getByText("Opens its own app")).toBeTruthy();
-    expect(screen.queryByTestId("starter-UC2")).toBeNull(); // starter cards are prompts that run here
+    expect(screen.queryByTestId("starter-UC2.6")).toBeNull(); // starter cards are prompts that run here
     expect(screen.getAllByTestId(/^wtt-UC/).map((b) => b.textContent)).toEqual(PROMPTS.map((p) => p.text));
     const u = userEvent.setup();
     await u.click(screen.getByTestId("wtt-UC1"));
@@ -220,12 +223,12 @@ describe("hand-off and go deeper", () => {
   test("a hand-off picked in the sidebar answers in the conversation: reasoning, the card inline, Ready to hand off; ids only, no link off the proxy, and Preview here runs the mock engine", async () => {
     await boot();
     const u = userEvent.setup();
-    await u.click(screen.getByTestId("uc-UC2"));
+    await u.click(screen.getByTestId("uc-UC2.6"));
     const turn = screen.getByTestId("turn");
-    expect(within(turn).getByTestId("turn-said").textContent).toBe("UC2 A2A delegation (picked from the list)");
+    expect(within(turn).getByTestId("turn-said").textContent).toBe("UC2.6 A2A generalist mismatch (picked from the list)");
     const why = within(turn).getByTestId("turn-reasoning").textContent;
-    expect(why).toMatch(/You picked UC2 A2A delegation from the list/);
-    expect(why).toMatch(/UC2 needs several agents or the product's own pages, so it runs in its own app/);
+    expect(why).toMatch(/You picked UC2\.6 A2A generalist mismatch from the list/);
+    expect(why).toMatch(/UC2\.6 needs several agents or the product's own pages, so it runs in its own app/);
     expect(why).toMatch(/Its home is a2a-lab \(routing table: named in lab entry\)/);
     expect(within(turn).getByTestId("turn-handoff-say").textContent).toMatch(/^This one runs in its own app/);
     expect(screen.getByTestId("agent-status").textContent).toBe("Ready to hand off");
@@ -233,14 +236,14 @@ describe("hand-off and go deeper", () => {
     const card = within(turn).getByTestId("handoff-card");
     expect(card.textContent).toMatch(/a2a-lab/);
     expect(card.textContent).toMatch(/named in lab entry/);
-    expect(within(card).getByRole("list", { name: "Carried in the link" }).textContent).toBe("from=customer-agentuc=UC2vertical=bankinguser=alex.morgan");
+    expect(within(card).getByRole("list", { name: "Carried in the link" }).textContent).toBe("from=customer-agentuc=UC2.6vertical=bankinguser=alex.morgan");
     expect(card.textContent).toMatch(/Never carried: tokens, secrets or keys, cookies/);
     expect(within(card).getByTestId("handoff-open-shelf").textContent).toMatch(/Start a2a-lab from the Shelf/);
     expect(within(card).queryByTestId("handoff-open")).toBeNull();
     expect(screen.getByTestId("handoff-summary").textContent).toMatch(/Hands off · 2/);
     expect(document.querySelectorAll("a[href]")).toHaveLength(0);
     await u.click(within(card).getByTestId("handoff-preview"));
-    await waitFor(() => expect(posts("UC2")).toHaveLength(1));
+    await waitFor(() => expect(posts("UC2.6")).toHaveLength(1));
     await screen.findByTestId("turn-answer");
     expect(screen.queryByTestId("handoff-summary")).toBeNull();
   });
@@ -248,10 +251,10 @@ describe("hand-off and go deeper", () => {
   test("the Opens its own app chip answers with the hand-off reply and card, runs nothing, and the status reads Ready to hand off", async () => {
     await boot();
     const u = userEvent.setup();
-    await u.click(within(screen.getByTestId("wtt-away")).getByTestId("wtt-UC2"));
+    await u.click(within(screen.getByTestId("wtt-away")).getByTestId("wtt-UC2.6"));
     const turn = screen.getByTestId("turn");
     expect(turn.getAttribute("data-status")).toBe("handoff");
-    expect(within(turn).getByTestId("turn-reasoning").textContent).toMatch(/Matched your words to UC2 A2A delegation.*runs in its own app/);
+    expect(within(turn).getByTestId("turn-reasoning").textContent).toMatch(/Matched your words to UC2\.6 A2A generalist mismatch.*runs in its own app/);
     expect(within(turn).getByTestId("handoff-card")).toBeTruthy();
     expect(screen.getByTestId("agent-status").textContent).toBe("Ready to hand off");
     expect(A.calls.filter((c) => c.method === "POST" && c.path.startsWith("/api/run/"))).toHaveLength(0);
@@ -269,10 +272,10 @@ describe("hand-off and go deeper", () => {
     window.history.replaceState(null, "", "/customer-agent/");
     await boot();
     const u = userEvent.setup();
-    await u.click(screen.getByTestId("uc-UC2"));
+    await u.click(screen.getByTestId("uc-UC2.6"));
     const open = screen.getByTestId("handoff-open");
     expect(open.textContent).toBe("Open a2a-lab");
-    expect(open.getAttribute("data-href")).toBe("../a2a-lab/?from=customer-agent&uc=UC2&vertical=banking&user=alex.morgan");
+    expect(open.getAttribute("data-href")).toBe("../a2a-lab/?from=customer-agent&uc=UC2.6&vertical=banking&user=alex.morgan");
     // the card lists exactly what the link carries, in order
     const listed = within(screen.getByTestId("handoff-card")).getByRole("list", { name: "Carried in the link" }).querySelectorAll("li");
     expect([...listed].map((li) => li.textContent)).toEqual([...new URLSearchParams(open.getAttribute("data-href").split("?")[1])].map(([k, v]) => `${k}=${v}`));
@@ -341,7 +344,7 @@ describe("hand-off and go deeper", () => {
   test("the second app is named everywhere the first one is: reasoning, route tag, and the hand-off summary lists rows sharing either app", () => {
     const uc39 = { id: "UC39", title: "Centralized MCP revocation", route: { route: "Hand off", app: "agent-kill-switch", also: "agent-registry-demo", basis: "owner decision 2026-11-09" } };
     const nhi = { id: "UC-NHI2", title: "Registry", route: { route: "Hand off", app: "agent-registry-demo", basis: "named in lab entry" } };
-    const other = { id: "UC2", title: "A2A delegation", route: { route: "Hand off", app: "a2a-lab", basis: "named in lab entry" } };
+    const other = { id: "UC2.6", title: "A2A generalist mismatch", route: { route: "Hand off", app: "a2a-lab", basis: "named in lab entry" } };
     expect(HANDOFF_WHY(uc39)[1]).toBe("It can open agent-kill-switch or agent-registry-demo (routing table: owner decision 2026-11-09)");
     expect(HANDOFF_WHY(nhi)[1]).toBe("Its home is agent-registry-demo (routing table: named in lab entry)");
     render(<RouteTag u={uc39} />);
@@ -455,6 +458,35 @@ describe("the llama.cpp brain (Step 2)", () => {
 });
 
 describe("Agent to agent page (owner, 2026-11-09: keep it)", () => {
+  test("typing UC2's chip runs it here: the Agent to agent tab appears, #page-a2a shows UC2's delegation hops, and Go deeper points at a2a-lab", async () => {
+    window.history.replaceState(null, "", "/customer-agent/");
+    const kinds = ["sign-in", "actor-token", "consent", "a2a-exchange-1", "actor-token", "a2a-exchange-2", "a2a-agent-card", "a2a-protocol-message", "gateway-check", "authorize-decision", "tool-dispatched"];
+    const json = (status, body) => Promise.resolve({ ok: status < 300, status, json: () => Promise.resolve(body) });
+    await boot({ runAnswer: (id) => { const b = runBody(decodeURIComponent(id)); b.run.hops = kinds.map((kind, i) => ({ ...b.run.hops[0], n: i + 1, kind, label: kind })); return json(200, b); } });
+    expect(screen.queryByTestId("nav-page-a2a")).toBeNull();
+    const u = userEvent.setup();
+    await u.type(screen.getByTestId("composer-input"), "hand off to a specialist");
+    await u.click(screen.getByTestId("composer-send"));
+    const turn = await screen.findByTestId("turn");
+    await within(turn).findByTestId("turn-answer");
+    expect(turn.getAttribute("data-status")).toBe("done");
+    expect(within(turn).queryByTestId("handoff-card")).toBeNull();
+    expect(posts("UC2")).toHaveLength(1);
+    expect(within(turn).getByTestId("go-deeper").textContent).toMatch(/Go deeper in a2a-lab/);
+    expect(within(turn).getByTestId("deeper-open").getAttribute("data-href")).toBe("../a2a-lab/?from=customer-agent&uc=UC2&vertical=banking&user=alex.morgan");
+    expect(screen.getByTestId("nav-page-a2a").textContent).toBe("Agent to agent"); // the page's entry under More pages
+    await u.selectOptions(screen.getByTestId("nav-more"), "page-a2a");
+    expect(window.location.hash).toBe("#page-a2a");
+    const page = await screen.findByTestId("extra-a2a");
+    expect(within(page).getByRole("heading", { level: 2 }).textContent).toBe("Agent to agent");
+    expect(page.textContent).toMatch(/Opened by UC2: A2A delegation/);
+    expect(page.textContent).toMatch(/agent-card, delegation and trust hops/);
+    expect(page.textContent).toMatch(/PERMIT/);
+    expect(page.textContent).toMatch(/Hops for this page \(4\)/);
+    for (const k of ["a2a-exchange-1", "a2a-exchange-2", "a2a-agent-card", "a2a-protocol-message"]) expect(page.textContent).toMatch(k);
+    for (const k of ["gateway-check", "tool-dispatched", "consent"]) expect(page.textContent).not.toMatch(k);
+  });
+
   test("#page-a2a shows the label, what it is, the outcome and only the delegation hops of the run", () => {
     const hops = ["sign-in", "actor-token", "consent", "a2a-exchange-1", "actor-token", "a2a-exchange-2", "gateway-check", "authorize-decision", "tool-dispatched"]
       .map((kind, i) => ({ ...runBody().run.hops[0], n: i + 1, kind, label: kind }));
@@ -584,13 +616,13 @@ describe("resume after a hand-off", () => {
     const u = userEvent.setup();
     await u.click(screen.getByTestId("wtt-UC1"));
     await within(await screen.findByTestId("turn")).findByTestId("turn-answer");
-    await u.click(within(screen.getByTestId("wtt-away")).getByTestId("wtt-UC2"));
+    await u.click(within(screen.getByTestId("wtt-away")).getByTestId("wtt-UC2.6"));
     await waitFor(() => expect(screen.getAllByTestId("turn")).toHaveLength(2));
     const stored = window.sessionStorage.getItem(`cal.resume.${workspaceId()}`);
     expect(stored).not.toMatch(/eyJ|"hops"|"tokens"|"raw"/);
-    expect(JSON.parse(stored).turns.map((t) => [t.ucId, t.status, t.outcome])).toEqual([["UC1", "done", "PERMIT"], ["UC2", "handoff", undefined]]);
+    expect(JSON.parse(stored).turns.map((t) => [t.ucId, t.status, t.outcome])).toEqual([["UC1", "done", "PERMIT"], ["UC2.6", "handoff", undefined]]);
     cleanup(); // the tab goes to the other app ...
-    window.history.replaceState(null, "", "/?returned=a2a-lab&uc=UC2"); // ... and comes Back
+    window.history.replaceState(null, "", "/?returned=a2a-lab&uc=UC2.6"); // ... and comes Back
     await boot();
     const turns = screen.getAllByTestId("turn");
     expect(turns).toHaveLength(2);
@@ -598,9 +630,9 @@ describe("resume after a hand-off", () => {
     expect(within(turns[0]).getByTestId("turn-restored").textContent).toMatch(/From before you left: PERMIT\. The evidence is not kept: run it again to see it\./);
     expect(within(turns[0]).queryByTestId("turn-tokens")).toBeNull();
     expect(within(turns[1]).getByTestId("handoff-card")).toBeTruthy();
-    expect(screen.getByTestId("turn-note").textContent).toBe("Back from a2a-lab (UC2)");
+    expect(screen.getByTestId("turn-note").textContent).toBe("Back from a2a-lab (UC2.6)");
     expect(window.location.search).toBe("");
-    expect(screen.getByTestId("uc-UC2").getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByTestId("uc-UC2.6").getAttribute("aria-pressed")).toBe("true");
     expect(A.calls.filter((c) => c.method === "POST" && c.path.startsWith("/api/run/"))).toHaveLength(0); // nothing re-ran by itself
   });
 

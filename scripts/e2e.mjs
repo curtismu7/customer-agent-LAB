@@ -322,6 +322,38 @@ try {
     }
   }
 
+  // ---- The Agent to agent page (owner, 2026-11-09: keep #page-a2a): UC2's chip runs here, opens the page, and offers going deeper in a2a-lab ----
+  {
+    const tag = 'a2a-page';
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+    const page = await ctx.newPage();
+    const errors = [];
+    page.on('pageerror', (e) => errors.push(e.message));
+    page.on('console', (m) => { if (m.type() === 'error' && !/status of (403|409|501)/.test(m.text())) errors.push(m.text()); });
+    const t = (id) => page.getByTestId(id);
+    await page.goto(`${base}/`); await t('wtt-UC1').waitFor();
+    check((await t('nav-page-a2a').count()) === 0, `${tag}: no Agent to agent page before a run`);
+    await t('composer-input').fill('hand off to a specialist'); await t('composer-send').click();
+    const turn = page.getByTestId('turn').last();
+    await turn.getByTestId('turn-answer').waitFor();
+    check((await turn.getAttribute('data-status')) === 'done' && (await turn.getByTestId('handoff-card').count()) === 0, `${tag}: "hand off to a specialist" runs UC2 here (no hand-off card)`);
+    check((await turn.getByTestId('go-deeper').textContent()).includes('Go deeper in a2a-lab'), `${tag}: the reply offers going deeper in a2a-lab`);
+    check((await t('nav-page-a2a').innerText()) === 'Agent to agent', `${tag}: the Agent to agent page is in the More menu`);
+    await t('nav-more').selectOption('page-a2a');
+    const a2a = t('extra-a2a');
+    await a2a.waitFor();
+    const text = async () => a2a.textContent(); // textContent: the hop kinds sit inside closed <details>, and headings are styled
+    const kinds = ['a2a-exchange-1', 'a2a-exchange-2', 'a2a-agent-card', 'a2a-protocol-message'];
+    const pageOk = async () => { const x = await text(); return x.includes('Agent to agent') && x.includes('Opened by UC2: A2A delegation') && x.includes('agent-card, delegation and trust hops') && x.includes('PERMIT') && x.includes('Hops for this page (4)') && kinds.every((k) => x.includes(`(${k})`)) && !x.includes('(gateway-check)') && !x.includes('(tool-dispatched)'); };
+    check((await page.evaluate(() => window.location.hash)) === '#page-a2a' && (await pageOk()), `${tag}: the page shows its label, what it is, the outcome and only UC2's four delegation hops`);
+    await t('nav-agent').click(); await t('agent-column').waitFor();
+    await page.goto(`${base}/#page-a2a`); await a2a.waitFor();
+    check(await pageOk(), `${tag}: opening ${base}/#page-a2a after the run shows the page`);
+    await page.screenshot({ path: path.join(shots, 'a2a-page.png') });
+    check(errors.length === 0, `${tag}: no unexpected console error (${errors.slice(0, 2).join(' | ')})`);
+    await ctx.close();
+  }
+
   // ---- Live mode against the fake PingOne -------------------------------------------------------------------------------------------
   for (const [width, height, name] of [[1280, 900, 'desktop'], [375, 800, 'phone']]) {
     for (const scheme of ['light', 'dark']) {

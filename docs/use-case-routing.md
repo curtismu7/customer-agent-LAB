@@ -7,19 +7,19 @@ This table is the tracking copy. Edit a row to change where a use case goes; Ste
 | Route | Count | Meaning |
 |---|---|---|
 | Here | 15 | Runs in this app, one agent, the mock engine decides |
-| Here + go deeper | 9 | Runs here, plus a link to the lab that covers it in depth |
-| Hand off | 52 | Opens the standalone app (same tab, ids only, Back returns here) |
+| Here + go deeper | 10 | Runs here, plus a link to the lab that covers it in depth |
+| Hand off | 51 | Opens the standalone app (same tab, ids only, Back returns here) |
 | Guide | 11 | Learning page or script, no lab yet |
 | **Total** | **87** | 28 different hand-off apps |
 
-Basis: named in lab entry 18, matches lab description 34, owner confirmed 7, owner decision 7, my guess 0.
+Basis: named in lab entry 17, matches lab description 34, owner confirmed 7, owner decision 8, my guess 0.
 
 Status values: `todo`, `agreed`, `built`, `verified`.
 
 | UC | Title | Track | Route | App | Basis | Status | Notes |
 |---|---|---|---|---|---|---|---|
 | UC1 | Delegated access (consent only) | foundations | Here + go deeper | delegation-lab | named in lab entry | todo |  |
-| UC2 | A2A delegation | foundations | Hand off | a2a-lab | named in lab entry | todo |  |
+| UC2 | A2A delegation | foundations | Here + go deeper | a2a-lab | owner decision 2026-11-09 | agreed | keeps the in-app A2A page (#page-a2a); go deeper in a2a-lab |
 | UC2.5 | A2A Orchestrator — Interactive Learning | foundations | Hand off | meridian-a2a-hop | matches lab description | todo |  |
 | UC2.7 | A2A end to end — protocol + identity | learn | Hand off | a2a-lab | named in lab entry | todo |  |
 | UC2.6 | A2A generalist mismatch | foundations | Hand off | a2a-lab | named in lab entry | todo |  |
@@ -107,3 +107,5 @@ Status values: `todo`, `agreed`, `built`, `verified`.
 | UC48 | Consumer Agent — governed flight booking | foundations | Hand off | muse | owner decision 2026-11-09 | agreed | muse has no lab-proxy route yet (Step 3) |
 
 Source: `data/usecases.json` (87 ids, 2026-11-08) and each lab's `docs/shelf-entry.json`. Generated once; edit by hand from here.
+
+2026-11-09 (owner decision): UC2 A2A delegation moved from Hand off to Here + go deeper (a2a-lab), so it runs in Customer Agent LAB and keeps the in-app A2A page (#page-a2a) reachable; UC2.5, UC2.6, UC2.7 and UC46 still hand off. Counts now Here 15 / Here + go deeper 10 / Hand off 51 / Guide 11.

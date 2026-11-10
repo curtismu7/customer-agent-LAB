@@ -12,10 +12,10 @@ Catalog: D24
 
 ## What the app has now
 
-- **87 use cases, each routed** (`data/handoff.json`, from the owner's table in `docs/use-case-routing.md`): **Here** 15 run in this app; **Here + go deeper** 9 run here and offer the lab that covers them in depth; **Hand off** 52 open the standalone app that covers them; **Guide** 11 are learning pages or scripts with no lab yet.
+- **87 use cases, each routed** (`data/handoff.json`, from the owner's table in `docs/use-case-routing.md`): **Here** 15 run in this app; **Here + go deeper** 10 run here and offer the lab that covers them in depth; **Hand off** 51 open the standalone app that covers them; **Guide** 11 are learning pages or scripts with no lab yet.
 - **Evidence at AI-DEMO2 depth:** a flow run emits AI-DEMO2's step list (frame, sign-in, prompt, the tools/list challenge, Authorize before the gateway, dispatch, reply, the not-in-path steps), shown as a **movie reel**, a **sequence view** and a **step detail** panel with the raw request, response and tokens of each step; both open full page too (`#reel`, `#sequence`).
 - **Hand-offs to 30 labs** (28 Hand off targets plus 2 go-deeper only), as relative links from a fixed allow-list when served under the lab proxy, carrying ids only. The other lab's **Back** strip brings the visitor here and the **chat resumes** where it was (words and outcomes only; the run is never stored).
-- **The Agent to agent page** (`#page-a2a`): UC2 and the A2A use cases open it and it shows their delegation hops.
+- **The Agent to agent page** (`#page-a2a`): UC2 runs here and opens it (owner, 2026-11-09), the other A2A use cases open it through Preview here, and it shows their delegation hops.
 - **Two brains:** **Scripted** (the default, offline) and an opt-in local **llama.cpp** model (`CAL_BRAIN_URL`) that only picks a use case id from the vertical's list; when it cannot answer, Routing falls back to Scripted (or, in LLM only, says so and runs nothing).
 - **Movable evidence cards:** the actor and step cards are the shared `FloatingDialog` (drag, resize, pop out), vendored byte for byte and pinned by a hash.
 - **Mock and Real:** Mock (the default) is fully offline; Real (Live) is owner-only and reaches the identity provider only (see "Mock and live modes").

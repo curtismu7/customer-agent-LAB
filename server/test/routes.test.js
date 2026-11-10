@@ -13,12 +13,12 @@ const DATA = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../d
 const raw = (name) => JSON.parse(fs.readFileSync(path.join(DATA, name), 'utf8'));
 const count = (kind) => Object.values(HANDOFF.routes).filter((r) => r.route === kind).length;
 
-test('handoff.json covers exactly the 87 catalog ids, one route each, in the owner table counts (15 / 9 / 52 / 11)', () => {
+test('handoff.json covers exactly the 87 catalog ids, one route each, in the owner table counts (15 / 10 / 51 / 11)', () => {
   const ids = MANIFEST.usecases.map((u) => u.id).sort();
   assert.equal(ids.length, 87);
   assert.deepEqual(Object.keys(HANDOFF.routes).sort(), ids);
   for (const r of Object.values(HANDOFF.routes)) assert.ok(ROUTE_KINDS.includes(r.route), r.route);
-  assert.deepEqual([count('Here'), count('Here + go deeper'), count('Hand off'), count('Guide')], [15, 9, 52, 11]);
+  assert.deepEqual([count('Here'), count('Here + go deeper'), count('Hand off'), count('Guide')], [15, 10, 51, 11]);
 });
 
 test('every Hand off and Here + go deeper row names an app; Here and Guide rows name none; app ids are plain ids', () => {
@@ -36,7 +36,7 @@ test('the route validator refuses a missing id, an extra id, a Hand off without 
   assert.deepEqual(validateRoutes(good), []);
   const drop = structuredClone(good); delete drop.routes.UC1; assert.match(validateRoutes(drop).join(), /UC1: no route/);
   const extra = structuredClone(good); extra.routes.UC999 = { route: 'Here', app: null, basis: null }; assert.match(validateRoutes(extra).join(), /UC999: not in the catalog/);
-  const noApp = structuredClone(good); noApp.routes.UC2.app = null; assert.match(validateRoutes(noApp).join(), /UC2: Hand off needs an app/);
+  const noApp = structuredClone(good); noApp.routes["UC2.6"].app = null; assert.match(validateRoutes(noApp).join(), /UC2\.6: Hand off needs an app/);
   const bad = structuredClone(good); bad.routes.UC3.route = 'Elsewhere'; assert.match(validateRoutes(bad).join(), /UC3: route out of range/);
 });
 
