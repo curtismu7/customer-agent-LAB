@@ -191,11 +191,26 @@ export function policyUsable(actions) {
   return { ok: true, why: 'username/password LOGIN only' };
 }
 
+// A scope missing from the resource is the owner's tenant telling us something: name what the resource does have, and which other
+// resources carry the scope (names and audiences only), so the fix is a decision and not a guess. Read-only.
+async function explainMissingScope(p1, resource, scopes, missing) {
+  const have = scopes.map((s) => s.name).join(', ') || '(none)';
+  const found = [];
+  for (const r of await p1.list('/resources', 'resources')) {
+    if (r.id === resource.id || r.type === 'OPENID_CONNECT') continue;
+    const names = (await p1.list(`/resources/${r.id}/scopes`, 'scopes')).map((s) => s.name);
+    if (missing.some((m) => names.includes(m))) found.push(`"${r.name}" (audience ${r.audience || 'none'})`);
+  }
+  return `the ${resource.name} resource has no scope ${missing.join(', ')}. Its scopes are: ${have}. ` +
+    (found.length ? `Resources that do have it: ${found.join('; ')}. The gateway accepts the audience ${GATEWAY_AUDIENCE} and the scope ${GATEWAY_SCOPE}; tell the coordinator which resource the SE gateway is configured for.`
+      : `No other resource has it. Add the scope ${missing.join(', ')} to ${resource.name} (or tell the coordinator which scope name the SE gateway accepts).`);
+}
+
 async function ensureGrant(p1, appId, resource, scopeNames, apply, log) {
   const scopes = await p1.list(`/resources/${resource.id}/scopes`, 'scopes');
   const want = scopeNames.map((n) => scopes.find((s) => s.name === n));
   const missing = scopeNames.filter((_, i) => !want[i]);
-  if (missing.length) throw new Error(`the ${resource.name} resource has no scope ${missing.join(', ')}`);
+  if (missing.length) throw new Error(await explainMissingScope(p1, resource, scopes, missing));
   const grants = appId ? await p1.list(`/applications/${appId}/grants`, 'grants') : [];
   const g = grants.find((x) => x.resource?.id === resource.id);
   const have = new Set((g?.scopes || []).map((s) => s.id));
