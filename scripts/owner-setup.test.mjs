@@ -83,7 +83,7 @@ test('env writer: the printed lines say "set" and never carry a value', () => {
 
 // ---------- a fake PingOne ----------
 const IDS = { env: '11111111-1111-1111-1111-111111111111', admin: '22222222-2222-2222-2222-222222222222' };
-function fakePingOne({ apps = [], act = true, policyActions = [{ type: 'LOGIN' }], users = [{ id: 'u1', username: 'demouser', population: { id: 'pop1' } }] } = {}) {
+function fakePingOne({ apps = [], act = true, policyActions = [{ type: 'LOGIN' }], users = [{ id: 'u1', username: 'demouser', population: { id: 'pop1' } }], gwScopes = ['gateway:mcp:invoke'], otherGw = null } = {}) {
   const calls = [];
   const state = { apps: apps.map((a) => ({ ...a })), grants: {}, attrs: act ? [{ id: 'at1', name: 'act', value: setup.ACT_EXPRESSION }] : [] };
   const json = (status, body) => ({ ok: status < 400, status, json: async () => body, text: async () => JSON.stringify(body) });
@@ -98,9 +98,11 @@ function fakePingOne({ apps = [], act = true, policyActions = [{ type: 'LOGIN' }
     if (method === 'GET' && p === '') return json(200, { id: IDS.env });
     if (method === 'GET' && p.startsWith('/users?filter=')) return json(200, { _embedded: { users: users.filter((u) => p.includes(`"${u.username}"`)) } });
     if (method === 'GET' && p === '/populations/pop1') return json(200, { name: 'Demo Users' });
-    if (method === 'GET' && p === '/resources') return json(200, { _embedded: { resources: [{ id: 'r-oidc', name: 'openid', type: 'OPENID_CONNECT' }, { id: 'r-gw', name: 'Agent Gateway', type: 'CUSTOM', audience: 'mcpgateway.ping.demo' }, { id: 'r-x', name: 'Other', type: 'CUSTOM', audience: 'other.example' }] } });
+    if (method === 'GET' && p === '/resources') return json(200, { _embedded: { resources: [...(otherGw ? [{ id: 'r-other', name: otherGw.name, type: 'CUSTOM', audience: otherGw.audience }] : []), { id: 'r-oidc', name: 'openid', type: 'OPENID_CONNECT' }, { id: 'r-gw', name: 'Agent Gateway', type: 'CUSTOM', audience: 'mcpgateway.ping.demo' }, { id: 'r-x', name: 'Other', type: 'CUSTOM', audience: 'other.example' }] } });
     if (method === 'GET' && p === '/resources/r-oidc/scopes') return json(200, { _embedded: { scopes: ['openid', 'profile', 'email', 'phone'].map((n) => ({ id: `s-${n}`, name: n })) } });
-    if (method === 'GET' && p === '/resources/r-gw/scopes') return json(200, { _embedded: { scopes: [{ id: 's-gw', name: 'gateway:mcp:invoke' }] } });
+    if (method === 'GET' && p === '/resources/r-gw/scopes') return json(200, { _embedded: { scopes: gwScopes.map((n, k) => ({ id: k === 0 ? 's-gw' : `s-gw${k}`, name: n })) } });
+    if (method === 'GET' && p === '/resources/r-x/scopes') return json(200, { _embedded: { scopes: [] } });
+    if (method === 'GET' && p === '/resources/r-other/scopes') return json(200, { _embedded: { scopes: (otherGw?.scopes || []).map((n, k) => ({ id: `s-o${k}`, name: n })) } });
     if (method === 'GET' && p === '/resources/r-gw/attributes') return json(200, { _embedded: { attributes: state.attrs } });
     if (method === 'POST' && p === '/resources/r-gw/attributes') { state.attrs.push({ id: 'at2', ...body }); return json(201, body); }
     if (method === 'GET' && p === '/applications') return json(200, { _embedded: { applications: state.apps } });
@@ -209,6 +211,18 @@ test('setup run: an unusable default sign-on policy and a missing act mapping be
   // present: never replaced, and no question asked
   await setup.run(setup.parseArgs(['--apply', '--fix-act', '--env-file', envFile]), { fetchImpl: p1.fetchImpl, log: () => {}, credFile, confirm: async () => { throw new Error('asked although present'); } });
   assert.equal(p1.state.attrs.length, 1);
+});
+
+test('a gateway resource without the scope: names its scopes and the other resources that have it, and writes nothing', async () => {
+  const { envFile, credFile } = labFiles(); const before = fs.readFileSync(envFile, 'utf8');
+  const p1 = fakePingOne({ gwScopes: ['mcp:invoke', 'mcp:read'], otherGw: { name: 'Demo PingGateway MCP', audience: 'other.example', scopes: ['gateway:mcp:invoke'] } });
+  await assert.rejects(setup.run(setup.parseArgs(['--apply', '--env-file', envFile]), { fetchImpl: p1.fetchImpl, log: () => {}, credFile, confirm: async () => false }), (e) => {
+    assert.match(e.message, /has no scope gateway:mcp:invoke\. Its scopes are: mcp:invoke, mcp:read\. Resources that do have it: "Demo PingGateway MCP" \(audience other\.example\)/);
+    return true;
+  });
+  assert.equal(fs.readFileSync(envFile, 'utf8'), before, '.env untouched');
+  const none = fakePingOne({ gwScopes: ['mcp:invoke'] });
+  await assert.rejects(setup.run(setup.parseArgs(['--apply', '--env-file', envFile]), { fetchImpl: none.fetchImpl, log: () => {}, credFile, confirm: async () => false }), /No other resource has it/);
 });
 
 test('app descriptions use only characters PingOne accepts (no $ + < = > ^ ` | ~)', () => {
