@@ -31,7 +31,9 @@ export const ACT_EXPRESSION = "${{'client_id': #root.context.requestData.actorTo
 // The only names this script may write into the lab's .env.
 export const ENV_NAMES = ['CAL_USER_CLIENT_ID', 'CAL_USER_CLIENT_SECRET', 'CAL_AGENT_CLIENT_ID', 'CAL_AGENT_CLIENT_SECRET', 'CAL_DEMO_USERNAME', 'CAL_AGENT_GATEWAY_URL', 'CAL_GATEWAY_AUDIENCE', 'CAL_GATEWAY_SCOPE'];
 const SECRET_NAMES = new Set(['CAL_USER_CLIENT_SECRET', 'CAL_AGENT_CLIENT_SECRET']);
-const REGIONS = { com: 'com', eu: 'eu', ca: 'ca', asia: 'asia' };
+// PingOne region codes (na, eu, ca, ap) and their domain forms (com, eu, ca, asia): the same table as server/src/live.js. The credentials file and the
+// lab .env may use either form; they must name the same region.
+const REGIONS = { na: 'com', us: 'com', com: 'com', eu: 'eu', ca: 'ca', ap: 'asia', asia: 'asia' };
 const PLACEHOLDER_ID = /^0{8}-0{4}-0{4}-0{4}-0{12}$/;
 
 export function parseArgs(argv) {
@@ -109,8 +111,8 @@ export const describeWritten = (names) => names.map((n) => `  ${n}: set${SECRET_
 export function resolveTarget(labEnv, cred) {
   const region = String(labEnv.PINGONE_REGION || cred.PINGONE_REGION || 'com').toLowerCase();
   const credRegion = String(cred.PINGONE_REGION || region).toLowerCase();
-  if (!REGIONS[region]) throw new Error('PINGONE_REGION must be com, eu, ca or asia');
-  if (credRegion !== region) throw new Error('the lab .env and the admin credentials name different regions');
+  if (!REGIONS[region] || !REGIONS[credRegion]) throw new Error('PINGONE_REGION must be na (or com), eu, ca or ap (or asia)');
+  if (REGIONS[credRegion] !== REGIONS[region]) throw new Error('the lab .env and the admin credentials name different regions');
   const pick = (v) => (v && !PLACEHOLDER_ID.test(String(v)) ? String(v) : '');
   const envId = pick(labEnv.PINGONE_ENVIRONMENT_ID) || pick(cred.PINGONE_ENVIRONMENT_ID);
   if (!envId) throw new Error('no PINGONE_ENVIRONMENT_ID in the lab .env (or the admin credentials file)');

@@ -211,13 +211,25 @@ test('setup run: an unusable default sign-on policy and a missing act mapping be
   assert.equal(p1.state.attrs.length, 1);
 });
 
+test('region codes: na and com are the same region, ap and asia too; different regions still stop the run', () => {
+  const cred = (r) => ({ PINGONE_REGION: r, PINGONE_ADMIN_ENV_ID: 'a', PINGONE_ADMIN_CLIENT_ID: 'b', PINGONE_ADMIN_CLIENT_SECRET: 'c' });
+  const lab = (r) => ({ PINGONE_ENVIRONMENT_ID: IDS.env, PINGONE_REGION: r });
+  assert.equal(setup.resolveTarget(lab('na'), cred('na')).region, 'com');
+  assert.equal(setup.resolveTarget(lab('na'), cred('com')).region, 'com');
+  assert.equal(setup.resolveTarget(lab('NA'), cred('na')).region, 'com');
+  assert.equal(setup.resolveTarget(lab('ap'), cred('asia')).region, 'asia');
+  assert.equal(setup.resolveTarget(lab('eu'), cred('eu')).region, 'eu');
+  assert.throws(() => setup.resolveTarget(lab('na'), cred('eu')), /different regions/);
+  assert.throws(() => setup.resolveTarget(lab('na'), cred('nope')), /must be na/);
+});
+
 test('setup run: the gateway resource is found by audience; no user, a placeholder environment or a region mismatch stop the run', async () => {
   const { envFile, credFile } = labFiles();
   await assert.rejects(setup.run(setup.parseArgs(['--env-file', envFile, '--user', 'nobody']), { fetchImpl: fakePingOne().fetchImpl, log: () => {}, credFile }), /no user with username "nobody"/);
   const ph = labFiles({ envText: 'PINGONE_ENVIRONMENT_ID=00000000-0000-0000-0000-000000000000\n' });
   await assert.rejects(setup.run(setup.parseArgs(['--env-file', ph.envFile]), { fetchImpl: fakePingOne().fetchImpl, log: () => {}, credFile: ph.credFile }), /no PINGONE_ENVIRONMENT_ID/);
   assert.throws(() => setup.resolveTarget({ PINGONE_ENVIRONMENT_ID: IDS.env, PINGONE_REGION: 'eu' }, { PINGONE_REGION: 'com', PINGONE_ADMIN_ENV_ID: 'a', PINGONE_ADMIN_CLIENT_ID: 'b', PINGONE_ADMIN_CLIENT_SECRET: 'c' }), /different regions/);
-  assert.throws(() => setup.resolveTarget({ PINGONE_ENVIRONMENT_ID: IDS.env, PINGONE_REGION: 'evil.example' }, {}), /must be com, eu, ca or asia/);
+  assert.throws(() => setup.resolveTarget({ PINGONE_ENVIRONMENT_ID: IDS.env, PINGONE_REGION: 'evil.example' }, {}), /must be na \(or com\), eu, ca or ap \(or asia\)/);
   const src = fs.readFileSync(path.join(root, 'scripts/owner/pingone-real-setup.mjs'), 'utf8');
   assert.ok(!/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/.test(src.replace(/0{8}-0{4}-0{4}-0{4}-0{12}/g, '')), 'no hardcoded id');
   assert.match(src, /r\.audience === GATEWAY_AUDIENCE/);
