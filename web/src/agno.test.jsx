@@ -551,8 +551,8 @@ describe("evidence views, Quick Config and the full-page diagrams", () => {
     expect(screen.queryByTestId("evidence-column")).toBeNull();
     expect(screen.getByTestId("qc-brain-scripted").getAttribute("aria-pressed")).toBe("true");
     expect(screen.getByTestId("qc-brain-llama").disabled).toBe(true);
-    await u.click(screen.getByTestId("qc-mode-real"));
-    expect((await screen.findByTestId("mode-msg")).textContent).toMatch(/Real was refused \(HTTP 409\).*CAL_ALLOW_LIVE=1/);
+    await waitFor(() => expect(screen.getByTestId("qc-mode-real").disabled).toBe(true));
+    expect(screen.getByTestId("qc-mode-real").getAttribute("title")).toMatch(/^Real is not configured: fill PINGONE_/);
     expect(screen.getByTestId("qc-mode-mock").getAttribute("aria-pressed")).toBe("true");
     expect(screen.getByTestId("qc-sequence-embedded").getAttribute("aria-pressed")).toBe("true");
     await u.click(screen.getByTestId("qc-reel-embedded"));

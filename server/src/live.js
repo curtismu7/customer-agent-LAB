@@ -91,7 +91,8 @@ async function readCapped(response, max) {
 export const NOT_RUN_REASON = 'Live mode in this lab reaches the identity provider only. These steps need a real customer sign-in (pi.flow, which this lab does not drive), the gateway, the policy engine or the tool server: other origins the lab may not call. They are not run and not simulated here; switch to Mock to see them.';
 
 // config: from liveConfig() (or { problem }). fetchImpl defaults to the global fetch at call time, so the netguard's guarded fetch is the one used.
-export function createLive({ config = liveConfig({}, {}), fetchImpl = (...a) => globalThis.fetch(...a), timeoutMs = TIMEOUT_MS, maxBytes = MAX_BODY_BYTES } = {}) {
+// missing: the names (never values) of the required settings that are not set, for the Real button's how-to (index.js passes them).
+export function createLive({ config = liveConfig({}, {}), missing = [], fetchImpl = (...a) => globalThis.fetch(...a), timeoutMs = TIMEOUT_MS, maxBytes = MAX_BODY_BYTES } = {}) {
   let inFlight = 0;
   const configured = () => !config.problem;
   const urls = configured() ? endpoints(config.base) : null;
@@ -165,7 +166,7 @@ export function createLive({ config = liveConfig({}, {}), fetchImpl = (...a) => 
     } finally { inFlight -= 1; }
   }
 
-  return { configured, problem: () => (configured() ? null : config.problem), origin: () => (configured() ? new URL(config.base).origin : null), run };
+  return { configured, problem: () => (configured() ? null : config.problem), missing: () => (configured() ? [] : [...missing]), origin: () => (configured() ? new URL(config.base).origin : null), run };
 }
 
 // The one host the netguard may be told to allow: the configured PingOne host, and only when live is configured, the opt-in holds (refusal is null) and

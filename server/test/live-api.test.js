@@ -40,8 +40,12 @@ test('a live run can be asked for in the body without switching the workspace; a
   await withLive(async (url) => {
     const live = await run(url, 'UC7', { mode: 'live' }); assert.equal(live.status, 200); assert.equal(live.body.run.mode, 'live');
     assert.equal((await (await get(url, '/api/mode')).json()).mode, 'mock', 'the workspace mode is unchanged');
-    assert.equal((await run(url, 'UC7', {})).status, 403);
+    assert.equal((await run(url, 'UC7', {})).status, 403, 'IDP=pingone pins Real: the mock sign-in is refused');
   }, { env: { ...LIVE_ENV, ALLOW_MOCK_SIGNIN: '1' } });
+  await withLive(async (url) => {
+    const live = await run(url, 'UC7', { mode: 'live' }); assert.equal(live.status, 200); assert.equal(live.body.run.mode, 'live');
+    const mock = await run(url, 'UC7', {}); assert.equal(mock.status, 200, 'IDP unset (Docker): Mock runs with the mock sign-in beside a configured Real'); assert.equal(mock.body.run.mode, 'mock');
+  }, { env: { ALLOW_MOCK_SIGNIN: '1' } });
 });
 
 test('every refusal is honest and fixed text: guard 403, unconfigured 503, stub vertical 501, bad persona 400, unknown field 400, full workspace 409; a PingOne refusal is a 200 run with a deny hop', async () => {
@@ -55,7 +59,10 @@ test('every refusal is honest and fixed text: guard 403, unconfigured 503, stub 
   }, { behaviour: 'bad-secret' });
   await withServer(async (url) => {
     const r = await run(url, 'UC1', { mode: 'live' }); assert.equal(r.status, 403); assert.equal(r.body.error, 'live_not_allowed');
-  }, { env: { IDP: 'pingone' } });
+  }, { env: { CAL_ALLOW_LIVE: '0' } });
+  await withServer(async (url) => {
+    const r = await run(url, 'UC1', { mode: 'live' }); assert.equal(r.status, 503); assert.equal(r.body.error, 'live_not_configured');
+  }, { env: {} });
 });
 
 test('a full workspace refuses a live run (409) before any call is made, and Reset frees it', async () => {
@@ -120,7 +127,10 @@ test('the real entry point wires health: runtime is live when the opt-in holds a
   };
   try {
     assert.equal(await runtimeOf(5691, { IDP: 'pingone', CAL_ALLOW_LIVE: '1' }), 'live');
-    assert.equal(await runtimeOf(5692, {}), 'offline');
+    assert.equal(await runtimeOf(5692, {}), 'live', 'option a: complete settings are enough, no opt-in');
+    assert.equal(await runtimeOf(5693, { CAL_ALLOW_LIVE: '0' }), 'offline', 'CAL_ALLOW_LIVE=0 is the OFF switch');
+    const empty = path.join(dir, 'empty.env'); fs.writeFileSync(empty, '', { mode: 0o600 });
+    assert.equal(await runtimeOf(5695, { CAL_ENV_FILE: empty }), 'offline', 'no settings: Mock only');
     // The dormant hosted build ignores the .env: a file that would open in live (which hosted refuses to start with) still starts, mock and offline.
     const hostedFile = path.join(dir, 'hosted.env');
     fs.writeFileSync(hostedFile, `CAL_LAB_MODE=live\n${fs.readFileSync(file, 'utf8')}`, { mode: 0o600 });

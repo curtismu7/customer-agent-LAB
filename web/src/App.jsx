@@ -251,7 +251,8 @@ export default function App() {
     setQcOpen(false);
   };
 
-  // The Mock | Live toggle. The server decides: a refused Live stays Mock and says why, in the server's own words.
+  // The Mock | Live toggle. The server decides: when it says Real is refused (not configured, switched off, a guard) the Real button is disabled and its
+  // tooltip is the server's how-to; a refused switch stays Mock and says why, in the server's own words.
   // The hosted build is mock only: its Real button is disabled with a note, and Real never asks the server there.
   const hostedOnly = info?.hosted === true;
   const chooseMode = async (m) => {
@@ -326,7 +327,7 @@ export default function App() {
             <button type="button" aria-pressed={mode === "mock"} onClick={() => chooseMode("mock")} data-testid="mode-mock" data-mode="mock">Mock</button>
             {hostedOnly
               ? <button type="button" aria-pressed="false" disabled aria-disabled="true" aria-describedby="real-hosted-note" data-testid="mode-live" data-mode="live">Real</button>
-              : <button type="button" aria-pressed={mode === "live"} onClick={() => chooseMode("live")} title={liveReason || "Real: two real calls to your PingOne environment, identity provider only"} data-testid="mode-live" data-mode="live">Real</button>}
+              : <button type="button" aria-pressed={mode === "live"} onClick={() => chooseMode("live")} disabled={Boolean(liveReason) && mode !== "live"} aria-disabled={Boolean(liveReason) && mode !== "live" ? "true" : undefined} title={liveReason || "Real: two real calls to your PingOne environment, identity provider only"} data-testid="mode-live" data-mode="live">Real</button>}
             {hostedOnly && <span className="seg__note" id="real-hosted-note" data-testid="real-hosted-note">{HOSTED_REAL_NOTE}</span>}
             {/* rule 19 (2026-11-03): the conformance gate greps for a mode-real testid in the UI; this hidden marker aliases the Real button. */}
             <span hidden aria-hidden="true" data-testid="mode-real" />

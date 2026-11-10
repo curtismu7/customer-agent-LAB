@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
-import { hostCheck, sameOriginWrites, liveRefusal, mockSignInRefusal, allowedExtraHosts, trustedProxyHeaders } from './safety.js';
+import { hostCheck, sameOriginWrites, liveRefusal, mockSignInRefusal, notConfiguredText, allowedExtraHosts, trustedProxyHeaders } from './safety.js';
 import { createHealth } from './health.js';
 import { DEFAULT_VERTICAL, isFullVertical, isKnownVertical, isPersona, loadCast, verticalList, PERSONAS } from './cast.js';
 import { defaultMode, isHosted, modeOf, MODES } from './config.js';
@@ -81,6 +81,8 @@ export function createApp({
   };
   const guardCtx = (req) => ({ env, bind, headers: req.headers });
   // Mock sign-in only: the shelf's own proxy headers are not a refusal (see trustedProxyHeaders). Live keeps the strict context above.
+  // Rule 19: Real can be chosen when the guards hold AND the PingOne settings are complete; otherwise the fixed how-to (names only) is the reason.
+  const realRefusal = (req) => liveRefusal(guardCtx(req)) ?? (live.configured() ? null : notConfiguredText(live.missing?.() ?? []));
   const mockCtx = (req) => ({ env, bind, headers: trustedProxyHeaders(req.headers, proxyOrigin()) });
   // vertical: absent means the default; present must be a known id. Returns the id, or null after answering.
   const verticalOf = (v, res) => {
@@ -91,14 +93,14 @@ export function createApp({
 
   api.get('/info', (req, res) => {
     noStore(res);
-    const realAvailable = liveRefusal(guardCtx(req)) === null;
+    const realAvailable = realRefusal(req) === null;
     res.json({
       mode: defaultMode(), modes: MODES, simulated: true,
       hosted: isHosted(env), hostedBanner: isHosted(env) ? HOSTED_BANNER : null, // the hosted build (mock only) and the banner the page shows for it
       total: MANIFEST.meta.total, counts: MANIFEST.meta.counts, sourceRef: MANIFEST.source, personas: PERSONAS, verticals: verticalList(),
       source: workspaces.peek('default').mode === 'live' ? 'real' : 'mock', // rule 19: the default workspace's current source
       realAvailable, // rule 19: whether Real (this app's live PingOne path) is configured
-      guards: { mockSignIn: mockSignInRefusal(mockCtx(req)) === null ? 'allowed' : 'refused', live: liveRefusal(guardCtx(req)) === null ? 'allowed' : 'refused' },
+      guards: { mockSignIn: mockSignInRefusal(mockCtx(req)) === null ? 'allowed' : 'refused', live: realAvailable ? 'allowed' : 'refused' },
       shelfUrl: shelfInfo(env).shelfUrl, // the header Shelf button uses this one (a proxy-mounted page cannot reach /api/shelf with cookies omitted)
       liveSettings: { configured: live.configured(), origin: live.origin() }, // the one origin live mode may reach (no environment id, no client)
     });
@@ -179,7 +181,7 @@ export function createApp({
       }
       const mode = b.source === 'real' ? 'live' : 'mock';
       if (mode === 'live') {
-        const why = liveRefusal(guardCtx(req));
+        const why = realRefusal(req);
         if (why) return res.status(409).json({ error: 'conflict', message: why });
       }
       await workspaces.write(id, (s) => { s.mode = mode; });
@@ -191,7 +193,8 @@ export function createApp({
     const id = ws(req, res); if (!id) return;
     noStore(res);
     const s = workspaces.peek(id);
-    res.json({ workspace: id, mode: s.mode, modes: MODES, live: liveRefusal(guardCtx(req)) === null ? 'allowed' : 'refused', liveReason: liveRefusal(guardCtx(req)) });
+    const why = realRefusal(req);
+    res.json({ workspace: id, mode: s.mode, modes: MODES, live: why === null ? 'allowed' : 'refused', liveReason: why });
   });
 
   api.put('/mode', jsonWrites, async (req, res, next) => {

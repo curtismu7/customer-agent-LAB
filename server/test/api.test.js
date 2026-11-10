@@ -7,6 +7,8 @@ import { createWorkspaces, MAX_RUNS } from '../src/workspaces.js';
 import { MANIFEST, TRACKS } from '../src/manifest.js';
 import { get, post, put, run, W, withServer, MOCK_OK } from './helpers.js';
 import { SECRETS, NEEDLE } from './secrets.js';
+import { createLive, liveConfig } from '../src/live.js';
+import { settingsFor } from './fakePingone.js';
 
 test('GET /api/health is demo-health/1, public, GET only, no store, small', async () => {
   await withServer(async (url) => {
@@ -176,12 +178,12 @@ test('rule 11: a mock run is refused (403) unless ALLOW_MOCK_SIGNIN=1, IDP is mo
 test('live mode: selecting it is refused (403) unless every guard is satisfied; when satisfied but the lab has no PingOne settings a live run is refused honestly (503)', async () => {
   await withServer(async (url) => {
     const before = await (await get(url, '/api/mode')).json();
-    assert.equal(before.mode, 'mock'); assert.equal(before.live, 'refused'); assert.match(before.liveReason, /CAL_ALLOW_LIVE=1/);
+    assert.equal(before.mode, 'mock'); assert.equal(before.live, 'refused'); assert.match(before.liveReason, /CAL_ALLOW_LIVE=0/);
     const r = await put(url, '/api/mode', { mode: 'live' }); assert.equal(r.status, 403); assert.equal((await r.json()).error, 'live_not_allowed');
     assert.equal((await (await get(url, '/api/mode')).json()).mode, 'mock', 'a refused switch changes nothing');
     const direct = await run(url, 'UC1', { mode: 'live' }); assert.equal(direct.status, 403); assert.equal(direct.body.error, 'live_not_allowed');
     assert.equal((await (await put(url, '/api/mode', { mode: 'mock' })).json()).mode, 'mock');
-  });
+  }, { env: { ...MOCK_OK, CAL_ALLOW_LIVE: '0' } });
   await withServer(async (url) => {
     const r = await put(url, '/api/mode', { mode: 'live' }); assert.equal(r.status, 200); assert.equal((await r.json()).mode, 'live');
     const out = await run(url, 'UC12');
@@ -347,6 +349,7 @@ test('rule 19: POST /api/mode switches source; Real is 409 while the live guards
     const bad = await post(url, '/api/mode', { source: 'sideways' }); assert.equal(bad.status, 400);
     const extra = await post(url, '/api/mode', { source: 'mock', extra: 1 }); assert.equal(extra.status, 400);
     const refused = await post(url, '/api/mode', { source: 'real' }); assert.equal(refused.status, 409);
+    assert.match((await refused.json()).message, /^Real is not configured: fill .*PINGONE_\* .*\.env/, 'no settings: the 409 says what to fill in');
     assert.equal((await (await get(url, '/api/info')).json()).source, 'mock', 'a refused switch changes nothing');
     const ok = await post(url, '/api/mode', { source: 'mock' }); assert.equal(ok.status, 200); assert.equal((await ok.json()).source, 'mock');
   });
@@ -356,7 +359,39 @@ test('rule 19: POST /api/mode switches source; Real is 409 while the live guards
     const info = await (await get(url, '/api/info')).json();
     assert.ok(!('environmentId' in info.liveSettings), 'info never leaks settings values');
     const back = await post(url, '/api/mode', { source: 'mock' }); assert.equal(back.status, 200); assert.equal((await back.json()).source, 'mock');
-  }, { env: { CAL_ALLOW_LIVE: '1', IDP: 'pingone' } });
+  }, { env: { CAL_ALLOW_LIVE: '1', IDP: 'pingone' }, live: configuredLive() });
+});
+
+// FAKE settings only (fakePingone.js); no test here makes a call, so nothing reaches PingOne.
+const configuredLive = () => createLive({ config: liveConfig(settingsFor(), {}) });
+
+test('owner 2026-11-10 (option a): Real is available when the PingOne settings are complete, with no opt-in; unavailable (409, names the gaps) when they are not', async () => {
+  await withServer(async (url) => {
+    const info = await (await get(url, '/api/info')).json();
+    assert.equal(info.realAvailable, true); assert.equal(info.guards.live, 'allowed'); assert.equal(info.guards.mockSignIn, 'allowed');
+    assert.equal((await (await get(url, '/api/mode')).json()).liveReason, null);
+  }, { env: MOCK_OK, live: configuredLive() });
+  const missing = ['PINGONE_ENVIRONMENT_ID', 'PINGONE_CLIENT_SECRET'];
+  await withServer(async (url) => {
+    assert.equal((await (await get(url, '/api/info')).json()).realAvailable, false);
+    const m = await (await get(url, '/api/mode')).json(); assert.equal(m.live, 'refused'); assert.match(m.liveReason, /fill PINGONE_ENVIRONMENT_ID, PINGONE_CLIENT_SECRET in this app's \.env/);
+    const r = await post(url, '/api/mode', { source: 'real' }); assert.equal(r.status, 409); assert.match((await r.json()).message, /PINGONE_ENVIRONMENT_ID, PINGONE_CLIENT_SECRET/);
+  }, { env: MOCK_OK, live: createLive({ config: liveConfig({ PINGONE_CLIENT_ID: 'cid' }, {}), missing }) });
+  await withServer(async (url) => {
+    assert.equal((await (await get(url, '/api/info')).json()).realAvailable, false, 'CAL_ALLOW_LIVE=0 is the OFF switch');
+    const r = await post(url, '/api/mode', { source: 'real' }); assert.equal(r.status, 409); assert.match((await r.json()).message, /CAL_ALLOW_LIVE=0/);
+  }, { env: { ...MOCK_OK, CAL_ALLOW_LIVE: '0' }, live: configuredLive() });
+});
+
+test('the toggle switches Mock -> Real -> Mock -> Real at runtime with no restart, and the mock sign-in still runs Mock with the PingOne settings present', async () => {
+  await withServer(async (url) => {
+    for (const source of ['real', 'mock', 'real', 'mock']) {
+      const r = await post(url, '/api/mode', { source }); assert.equal(r.status, 200, source); assert.equal((await r.json()).source, source);
+      assert.equal((await (await get(url, '/api/info')).json()).source, source);
+      assert.equal((await (await get(url, '/api/mode')).json()).mode, source === 'real' ? 'live' : 'mock');
+    }
+    const mock = await run(url, 'UC1'); assert.equal(mock.status, 200, 'IDP unset: the mock persona sign-in works in Mock'); assert.equal(mock.body.run.mode, 'mock');
+  }, { env: MOCK_OK, live: configuredLive() });
 });
 
 test('reel depth: the run API takes brain and said; bad types are refused; a hostile said stays inert data on the prompt hop only', async () => {

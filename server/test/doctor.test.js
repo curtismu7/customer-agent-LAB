@@ -78,19 +78,21 @@ test('step 2: the web check is information, not a failure, when the app is not b
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
-test('step 3: the live check is a pass when live is off, information when it is opted in but cannot run, and a pass naming the one host when it can; no value is printed', async () => {
+test('step 3 (option a): the live check is a pass when Real is not configured or switched off, information when a guard refuses, and a pass naming the one host when it can; no value is printed', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cal-live-'));
   const f = path.join(dir, '.env');
   const secret = ['hunter2', 'hunter2', 'x9'].join('');
   try {
     const live = async (env) => (await runChecks({ env: { CAL_ENV_FILE: f, ...env } })).find((x) => x.id === 'live');
     fs.writeFileSync(f, '', { mode: 0o600 });
-    assert.equal((await live({})).level, 'pass'); assert.match((await live({})).detail, /live is off/);
-    assert.equal((await live({ CAL_ALLOW_LIVE: '1', IDP: 'pingone' })).level, 'info'); assert.match((await live({ CAL_ALLOW_LIVE: '1', IDP: 'pingone' })).detail, /cannot run: .*PINGONE_ENVIRONMENT_ID/);
+    assert.equal((await live({})).level, 'pass'); assert.match((await live({})).detail, /Real is not configured \(.*PINGONE_ENVIRONMENT_ID\): Mock only/);
     fs.writeFileSync(f, `PINGONE_ENVIRONMENT_ID=11111111-2222-4333-8444-555555555555\nPINGONE_CLIENT_ID=cid\nPINGONE_CLIENT_SECRET=${secret}\n`, { mode: 0o600 });
-    const refused = await live({ CAL_ALLOW_LIVE: '1' }); assert.equal(refused.level, 'info'); assert.match(refused.detail, /refused: Live mode needs IDP/);
+    const off = await live({ CAL_ALLOW_LIVE: '0' }); assert.equal(off.level, 'pass'); assert.match(off.detail, /switched off \(CAL_ALLOW_LIVE=0\)/);
+    const refused = await live({ IDP: 'mock' }); assert.equal(refused.level, 'info'); assert.match(refused.detail, /configured but refused: Real is off: IDP is pinned to mock/);
+    assert.equal((await live({})).level, 'pass', 'complete settings and no opt-in: Real is on');
     const ok = await live({ CAL_ALLOW_LIVE: '1', IDP: 'pingone' });
     assert.equal(ok.level, 'pass'); assert.match(ok.detail, /only to https:\/\/auth\.pingone\.com \(/);
+    assert.match((await live({})).detail, /Real is on: .*only to https:\/\/auth\.pingone\.com \(/);
     assert.ok(!JSON.stringify(await runChecks({ env: { CAL_ENV_FILE: f, CAL_ALLOW_LIVE: '1', IDP: 'pingone' } })).match(/hunter2|11111111-2222|cid/), 'no environment id, client or secret in any line');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });

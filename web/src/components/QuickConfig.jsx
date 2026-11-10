@@ -26,10 +26,10 @@ export default function QuickConfig({ id, mode, liveReason, hostedOnly = false, 
             <button type="button" aria-pressed={mode === "mock"} onClick={() => onMode("mock")} data-testid="qc-mode-mock">Mock</button>
             {hostedOnly
               ? <button type="button" aria-pressed="false" disabled aria-disabled="true" aria-describedby="qc-real-hosted-note" data-testid="qc-mode-real">Real</button>
-              : <button type="button" aria-pressed={mode === "live"} onClick={() => onMode("live")} data-testid="qc-mode-real" title={liveReason || "Real: two real calls to your PingOne environment"}>Real</button>}
+              : <button type="button" aria-pressed={mode === "live"} onClick={() => onMode("live")} disabled={Boolean(liveReason) && mode !== "live"} aria-disabled={Boolean(liveReason) && mode !== "live" ? "true" : undefined} data-testid="qc-mode-real" title={liveReason || "Real: two real calls to your PingOne environment"}>Real</button>}
           </Seg>
           {hostedOnly && <p className="muted" id="qc-real-hosted-note" data-testid="qc-real-hosted-note">{HOSTED_REAL_NOTE}</p>}
-          <p className="muted">Real is the PingOne token path, owner only. When it is off the server answers 409 and says why; it never falls back to Mock silently.</p>
+          <p className="muted">Real is the PingOne token path, owner only. It is available when this app's .env holds the PingOne settings; otherwise the button is disabled and its tooltip says what to fill in (the server answers 409). It never falls back to Mock silently.</p>
         </div>
         <div className="qc__item">
           <p className="kicker">Agent brain</p>

@@ -25,8 +25,13 @@ const port = Number(process.env.E2E_PORT) || 5690;
 if (port < 5603 || port > 5697) { console.error('E2E_PORT must be inside 5603-5697 (the live and hosted instances take the next two ports)'); process.exit(2); }
 const base = `http://127.0.0.1:${port}`;
 if (!fs.existsSync(path.join(root, 'web', 'dist', 'index.html'))) { console.error('Run `npm run build` first.'); process.exit(2); }
-const env = { ...process.env, PORT: String(port), ALLOW_MOCK_SIGNIN: '1', IDP: 'mock' };
-delete env.CALAB_BIND; delete env.CAL_ALLOW_LIVE; delete env.CAL_LAB_MODE;
+// The Mock instance has no PingOne settings (an empty settings file, like a fresh clone or CI with no .env) and no IDP pin, so Real is disabled by
+// the missing settings alone and its tooltip says what to fill in.
+const noEnvDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cal-e2e-none-'));
+const noEnvFile = path.join(noEnvDir, '.env');
+fs.writeFileSync(noEnvFile, '', { mode: 0o600 });
+const env = { ...process.env, PORT: String(port), ALLOW_MOCK_SIGNIN: '1', CAL_ENV_FILE: noEnvFile };
+for (const k of ['CALAB_BIND', 'CAL_ALLOW_LIVE', 'CAL_LAB_MODE', 'IDP', 'CAL_LIVE_FROM_ENV', 'CAL_LIVE_TEST_BASE', 'PINGONE_ENVIRONMENT_ID', 'PINGONE_REGION', 'PINGONE_CLIENT_ID', 'PINGONE_CLIENT_SECRET']) delete env[k];
 const server = spawn(process.execPath, ['server/src/index.js'], { cwd: root, env, stdio: 'inherit' });
 let up = false;
 for (let i = 0; i < 160 && !up; i++) { try { up = (await fetch(`${base}/api/health`)).ok; } catch { await sleep(250); } }
@@ -45,16 +50,17 @@ const overlapScript = `(() => {
   return { labels: labels.length, overlaps };
 })()`;
 
-// Live mode (step 3) is driven against a FAKE PingOne on loopback: a second lab instance with the owner's opt-in, a temp settings file (mode 600, fake values)
-// and CAL_LIVE_TEST_BASE pointing at the fake. No real tenant is touched; the real PingOne path is UNVERIFIED and owner-run.
+// Live mode (step 3) is driven against a FAKE PingOne on loopback: a second lab instance with NO opt-in and no IDP pin (option a, owner 2026-11-10: the
+// settings alone make Real available), a temp settings file (mode 600, fake values) and CAL_LIVE_TEST_BASE pointing at the fake. The toggle is switched
+// Mock -> Real -> Mock -> Real in one page against the one running server: no restart. No real tenant is touched; the real PingOne path is UNVERIFIED and owner-run.
 const livePort = port + 1;
 const liveBase = `http://127.0.0.1:${livePort}`;
 const fake = await startFakePingOne();
 const settingsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cal-e2e-'));
 const settingsFile = path.join(settingsDir, '.env');
 fs.writeFileSync(settingsFile, `${Object.entries(settingsFor()).map(([k, v]) => `${k}=${v}`).join('\n')}\n`, { mode: 0o600 });
-const liveEnv = { ...process.env, PORT: String(livePort), IDP: 'pingone', CAL_ALLOW_LIVE: '1', CAL_ENV_FILE: settingsFile, CAL_LIVE_TEST_BASE: fake.base };
-delete liveEnv.CALAB_BIND; delete liveEnv.CAL_LAB_MODE; delete liveEnv.ALLOW_MOCK_SIGNIN;
+const liveEnv = { ...process.env, PORT: String(livePort), ALLOW_MOCK_SIGNIN: '1', CAL_ENV_FILE: settingsFile, CAL_LIVE_TEST_BASE: fake.base };
+for (const k of ['CALAB_BIND', 'CAL_LAB_MODE', 'IDP', 'CAL_ALLOW_LIVE', 'CAL_LIVE_FROM_ENV']) delete liveEnv[k];
 const liveServer = spawn(process.execPath, ['server/src/index.js'], { cwd: root, env: liveEnv, stdio: 'inherit' });
 let liveUp = false;
 for (let i = 0; i < 160 && !liveUp; i++) { try { liveUp = (await fetch(`${liveBase}/api/health`)).ok; } catch { await sleep(250); } }
@@ -152,8 +158,8 @@ try {
       await t('vertical').selectOption('government'); await pick('UC1'); await t('run').click(); await t('refusal').waitFor();
       check((await t('refusal').getAttribute('data-code')) === 'vertical_stub' && (await t('refusal').innerText()).includes('Not built'), `${tag}: a stub vertical shows the honest not built state (HTTP 501)`);
       await t('vertical').selectOption('banking');
-      await t('mode-live').click(); await t('mode-msg').waitFor();
-      check((await t('mode-msg').innerText()).includes('refused') && (await t('mode').innerText()).includes('mock'), `${tag}: Live is refused with the server's message and stays Mock`);
+      await page.waitForFunction(() => document.querySelector('[data-testid="mode-live"]').disabled === true);
+      check(/^Real is not configured: fill PINGONE_ENVIRONMENT_ID, PINGONE_CLIENT_ID, PINGONE_CLIENT_SECRET in this app's \.env/.test(await t('mode-live').getAttribute('title')) && (await t('mode-live').getAttribute('aria-disabled')) === 'true' && (await t('mode').innerText()).includes('mock'), `${tag}: with no .env Real is disabled, its tooltip says what to fill in, and the page stays Mock`);
       check((await overflow()) <= 0, `${tag}: the agent page does not scroll sideways (${await overflow()} px)`);
       if (tag === 'desktop-light') await page.screenshot({ path: path.join(shots, 'run.png'), fullPage: true });
 
@@ -183,6 +189,7 @@ try {
       await t('speed').selectOption('800'); await t('simulate').click(); await t('diagram-now').waitFor(); await sleep(1100);
       check(/Step [2-6]:/.test(await t('diagram-now').innerText()), `${tag}: Simulate advances at the chosen speed`);
       await t('diagram-reset').click();
+      await page.locator('.react-flow__node').first().scrollIntoViewIfNeeded(); // the drag needs the box inside the viewport, whatever sits above it
       const box = await page.locator('.react-flow__node').first().boundingBox();
       await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2); await page.mouse.down();
       await page.mouse.move(box.x + box.width / 2 + 60, box.y + box.height / 2 + 40, { steps: 5 }); await page.mouse.up();
@@ -425,8 +432,13 @@ try {
       await t('nav-diagram').click(); await page.locator('.react-flow__node').first().waitFor();
       check((await overflow()) <= 0, `${tag}: the diagram page in live does not scroll sideways`);
       await t('mode-mock').click(); await page.waitForFunction(() => document.querySelector('[data-testid="mode"]').textContent.includes('Mode: mock'));
-      await t('nav-agent').click(); await t('run').click(); await t('refusal').waitFor();
-      check((await t('refusal').getAttribute('data-code')) === 'mock_signin_refused', `${tag}: under IDP=pingone a mock run is refused (rule 11)`);
+      const seenBefore = fake.seen.length;
+      await t('nav-agent').click(); await t('run').click();
+      await page.waitForFunction(() => { const o = document.querySelector('[data-testid="outcome"]'); return o && !o.textContent.startsWith('LIVE_'); });
+      check((await t('banner').getAttribute('data-state')) === 'mock' && (await t('refusal').count()) === 0 && fake.seen.length === seenBefore, `${tag}: back in Mock without a restart, a mock run signs in with the mock persona and runs (outcome ${await t('outcome').innerText()}), no call to the fake`);
+      await t('mode-live').click(); await page.waitForFunction(() => document.querySelector('[data-testid="mode"]').textContent.includes('Mode: live'));
+      check((await t('banner').getAttribute('data-state')) === 'live', `${tag}: and Real again, same server, no restart`);
+      await t('mode-mock').click(); await page.waitForFunction(() => document.querySelector('[data-testid="mode"]').textContent.includes('Mode: mock'));
       check(external.filter((u) => !u.startsWith(liveBase)).length === 0, `${tag}: the browser made no request to another origin (${external.length})`);
       check(errors.every((e) => /status of (403|409)/.test(e)), `${tag}: no unexpected console error (${errors.filter((e) => !/status of (403|409)/.test(e)).slice(0, 2).join(' | ')})`);
       await ctx.close();
@@ -471,6 +483,6 @@ try {
       await ctx.close();
     }
   }
-} finally { if (browser) await browser.close(); server.kill(); liveServer.kill(); hostedServer.kill(); await fake.close(); fs.rmSync(settingsDir, { recursive: true, force: true }); }
+} finally { if (browser) await browser.close(); server.kill(); liveServer.kill(); hostedServer.kill(); await fake.close(); fs.rmSync(settingsDir, { recursive: true, force: true }); fs.rmSync(noEnvDir, { recursive: true, force: true }); }
 console.log(`\n${checks - failures} of ${checks} checks passed`);
 process.exit(failures ? 1 : 0);
