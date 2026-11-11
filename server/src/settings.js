@@ -38,7 +38,11 @@ export const LIVE_REQUIRED = ['PINGONE_ENVIRONMENT_ID', 'PINGONE_CLIENT_ID', 'PI
 // ignored entirely (PINGONE_CLIENT_ID/SECRET are AI-DEMO2's worker credentials and are never used for the user or agent flow).
 export const FULL_KEYS = ['CAL_USER_CLIENT_ID', 'CAL_USER_CLIENT_SECRET', 'CAL_AGENT_CLIENT_ID', 'CAL_AGENT_CLIENT_SECRET', 'CAL_DEMO_USERNAME', 'CAL_AGENT_GATEWAY_URL', 'CAL_GATEWAY_AUDIENCE', 'CAL_GATEWAY_SCOPE'];
 export const FULL_REQUIRED = ['PINGONE_ENVIRONMENT_ID', ...FULL_KEYS];
-export const REAL_KEYS = [...LIVE_KEYS, ...FULL_KEYS];
+// Optional (never required, never makes full Real "wanted"): the scope the agent token and exchange 1 ask for (the scope of the resource whose `act`
+// attribute stamps the agent into the token). Empty or absent means the default; the owner's setup script writes it only when it is not the default.
+export const DEFAULT_AGENT_SCOPE = 'agent:invoke';
+export const OPTIONAL_KEYS = ['CAL_AGENT_SCOPE'];
+export const REAL_KEYS = [...LIVE_KEYS, ...FULL_KEYS, ...OPTIONAL_KEYS];
 export function readLiveSettings(file) {
   try {
     const parsed = parseEnv(fs.readFileSync(file, 'utf8'));

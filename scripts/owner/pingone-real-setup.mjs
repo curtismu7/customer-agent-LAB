@@ -3,9 +3,14 @@
 //
 //   node scripts/owner/pingone-real-setup.mjs                 # dry run (default): reads PingOne, writes nothing, prints the plan
 //   node scripts/owner/pingone-real-setup.mjs --apply         # creates what is missing and writes the CAL_* names into .env
-//   node scripts/owner/pingone-real-setup.mjs --apply --fix-act   # also adds the gateway resource's `act` attribute, ONLY if absent (asks first)
+//   node scripts/owner/pingone-real-setup.mjs --apply --fix-act   # also adds the `act` attribute to the agent-scope resource, ONLY if absent (asks first)
 //
-// Flags: --user <username> (default demouser), --env-file <path> (default: this repo's .env).
+// Flags: --user <username> (default demouser), --env-file <path> (default: this repo's .env), --agent-scope <name> (default agent:invoke, or CAL_AGENT_SCOPE
+// from the lab's .env).
+// The lab does TWO token exchanges: exchange 1 (the user's token + the agent as actor, scope = the agent scope) gets `act` from the resource that OWNS the
+// agent scope; exchange 2 (scope = the gateway scope) carries it to the gateway. So the AGENT app is granted both scopes. The resource that owns the agent
+// scope is found by the scope's NAME (never by id): none or several stops the run. Its `act` attribute is checked and reported. The gateway resource is
+// shared with other apps: this script never changes it (it only reads it).
 // Admin (org worker) credentials come from ~/.config/demo-kit/provisioning.json (STANDALONE_CRED_FILE overrides): KEY=VALUE lines
 // PINGONE_REGION, PINGONE_ADMIN_ENV_ID, PINGONE_ADMIN_CLIENT_ID, PINGONE_ADMIN_CLIENT_SECRET. The target environment is PINGONE_ENVIRONMENT_ID
 // from the lab's .env (or from the credentials file). It never prints a secret, a password or an id: names, "found", "set", and the agent
@@ -28,33 +33,42 @@ export const GATEWAY_SCOPE = 'gateway:mcp:invoke';
 export const AGENT_GATEWAY_URL = 'https://agent-gateway.ai-demo.ping-devops.com/mcp';
 export const REDIRECT_URIS = ['https://local.ping-devops.com:8443/customer-agent/callback', 'http://127.0.0.1:5603/callback'];
 export const OIDC_SCOPES = ['openid', 'profile', 'email'];
-// The act expression AI-DEMO2 uses on its delegation resources (an RFC 8693 act OBJECT with the actor's client id). Used only by --fix-act.
-export const ACT_EXPRESSION = "${{'client_id': #root.context.requestData.actorToken.client_id}}";
+// The scope that gets the agent into the token (exchange 1 and the agent's client-credentials token ask for it). The default for the lab's CAL_AGENT_SCOPE.
+export const AGENT_SCOPE = 'agent:invoke';
+// What the `act` attribute of the resource that owns the agent scope must read: act.sub = the actor token's client_id, i.e. the agent app's client id
+// (an RFC 8693 act OBJECT). Used only by --fix-act, and only on that resource.
+export const AGENT_ACT_EXPRESSION = "${{'sub': #root.context.requestData.actorToken.client_id}}";
+// What the gateway resource's `act` attribute reads (exchange 2 carries the subject token's act through). READ ONLY: the resource is shared with other apps.
+export const GATEWAY_ACT_PASSTHROUGH = '${#root.context.requestData.subjectToken.act}';
 // The only names this script may write into the lab's .env.
 export const ENV_NAMES = ['CAL_USER_CLIENT_ID', 'CAL_USER_CLIENT_SECRET', 'CAL_AGENT_CLIENT_ID', 'CAL_AGENT_CLIENT_SECRET', 'CAL_DEMO_USERNAME', 'CAL_AGENT_GATEWAY_URL', 'CAL_GATEWAY_AUDIENCE', 'CAL_GATEWAY_SCOPE'];
+// Written only when it is not the default AGENT_SCOPE.
+export const OPTIONAL_ENV_NAMES = ['CAL_AGENT_SCOPE'];
 const SECRET_NAMES = new Set(['CAL_USER_CLIENT_SECRET', 'CAL_AGENT_CLIENT_SECRET']);
+const SCOPE_NAME = /^[A-Za-z0-9:._-]{1,100}$/;
 // PingOne region codes (na, eu, ca, ap) and their domain forms (com, eu, ca, asia): the same table as server/src/live.js. The credentials file and the
 // lab .env may use either form; they must name the same region.
 const REGIONS = { na: 'com', us: 'com', com: 'com', eu: 'eu', ca: 'ca', ap: 'asia', asia: 'asia' };
 const PLACEHOLDER_ID = /^0{8}-0{4}-0{4}-0{4}-0{12}$/;
 
 export function parseArgs(argv) {
-  const o = { apply: false, fixAct: false, user: 'demouser', envFile: path.join(repoRoot, '.env'), help: false };
+  const o = { apply: false, fixAct: false, user: 'demouser', envFile: path.join(repoRoot, '.env'), agentScope: null, help: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--apply') o.apply = true;
     else if (a === '--dry-run') o.apply = false;
     else if (a === '--fix-act') o.fixAct = true;
     else if (a === '--help' || a === '-h') o.help = true;
-    else if (a === '--user' || a === '--env-file') {
+    else if (a === '--user' || a === '--env-file' || a === '--agent-scope') {
       const v = argv[++i];
       if (!v || v.startsWith('--')) throw new Error(`${a} needs a value`);
-      if (a === '--user') o.user = v; else o.envFile = path.resolve(v);
+      if (a === '--user') o.user = v; else if (a === '--agent-scope') o.agentScope = v; else o.envFile = path.resolve(v);
     } else throw new Error(`unknown argument: ${a}`);
   }
   if (argv.includes('--apply') && argv.includes('--dry-run')) throw new Error('--apply and --dry-run together: pick one');
   if (o.fixAct && !o.apply) throw new Error('--fix-act changes PingOne: it needs --apply too');
   if (!/^[A-Za-z0-9._@+-]{1,128}$/.test(o.user)) throw new Error('--user must be a plain username');
+  if (o.agentScope !== null && !SCOPE_NAME.test(o.agentScope)) throw new Error('--agent-scope must be one scope name (letters, digits and : . _ -)');
   return o;
 }
 
@@ -72,7 +86,7 @@ const quote = (v) => (/^[A-Za-z0-9._~:/@+-]*$/.test(v) ? v : `"${v.replace(/\\/g
 // Replace or append ONLY the listed names. Backs the file up first (.env.bak.<stamp>, mode 600), writes mode 600, returns the names written.
 // Every other line, including PINGONE_CLIENT_ID/SECRET, is kept exactly.
 export function writeEnvNames(file, values, { stamp = new Date().toISOString().replace(/[:.]/g, '-') } = {}) {
-  for (const k of Object.keys(values)) if (!ENV_NAMES.includes(k)) throw new Error(`refusing to write ${k}: not one of the names this script owns`);
+  for (const k of Object.keys(values)) if (!ENV_NAMES.includes(k) && !OPTIONAL_ENV_NAMES.includes(k)) throw new Error(`refusing to write ${k}: not one of the names this script owns`);
   for (const [k, v] of Object.entries(values)) if (typeof v !== 'string' || !v || /[\r\n]/.test(v)) throw new Error(`refusing to write ${k}: empty or multi-line value`);
   const exists = fs.existsSync(file);
   const before = exists ? fs.readFileSync(file, 'utf8') : '';
@@ -208,7 +222,8 @@ async function explainMissingScope(p1, resource, scopes, missing) {
       : `No other resource has it. Add the scope ${missing.join(', ')} to ${resource.name} (or tell the coordinator which scope name the SE gateway accepts).`);
 }
 
-async function ensureGrant(p1, appId, resource, scopeNames, apply, log) {
+// reused: the app already existed, so a missing grant is DRIFT (the owner ran this script before); on a new app a missing grant is just the plan.
+async function ensureGrant(p1, appId, resource, scopeNames, apply, log, { reused = false } = {}) {
   const scopes = await p1.list(`/resources/${resource.id}/scopes`, 'scopes');
   const want = scopeNames.map((n) => scopes.find((s) => s.name === n));
   const missing = scopeNames.filter((_, i) => !want[i]);
@@ -218,12 +233,32 @@ async function ensureGrant(p1, appId, resource, scopeNames, apply, log) {
   const have = new Set((g?.scopes || []).map((s) => s.id));
   const add = want.filter((s) => !have.has(s.id));
   if (!add.length) { log(`    grant on ${resource.name}: ${scopeNames.join(' ')} already granted`); return; }
-  log(`    grant on ${resource.name}: ${apply ? 'adding' : 'would add'} ${add.map((s) => s.name).join(' ')}`);
-  if (!apply) return;
+  const names = add.map((s) => s.name).join(' ');
+  if (!apply) { log(`    grant on ${resource.name}: ${reused ? 'DRIFT, the app lacks it; ' : ''}would add ${names}`); return; }
   const body = { resource: { id: resource.id }, scopes: [...have].map((id) => ({ id })).concat(add.map((s) => ({ id: s.id }))) };
   if (g) await p1.call('PUT', `/applications/${appId}/grants/${g.id}`, body);
   else await p1.call('POST', `/applications/${appId}/grants`, body);
+  log(`    grant on ${resource.name}: ${reused ? 'DRIFT, the app lacked it; ' : ''}added ${names}`);
 }
+
+// The custom resources that own a scope, by the scope's NAME (never by id). Read only.
+export async function scopeOwners(p1, resources, scopeName) {
+  const owners = [];
+  for (const r of resources) {
+    if (r.type !== 'CUSTOM') continue;
+    if ((await p1.list(`/resources/${r.id}/scopes`, 'scopes')).some((sc) => sc.name === scopeName)) owners.push(r);
+  }
+  return owners;
+}
+const shown = (r) => `"${r.name}" (audience ${r.audience || 'none'})`;
+// None or several: say which resources there are (names and audiences only) and stop. The script never guesses which one to use.
+export function explainScopeOwners(scopeName, owners, resources) {
+  if (owners.length > 1) return `${owners.length} custom resources have the scope ${scopeName}: ${owners.map(shown).join('; ')}. The script does not guess which one the lab should use. Make the scope name unique to one resource in the console, or give --agent-scope another scope name. Nothing was changed.`;
+  const custom = resources.filter((r) => r.type === 'CUSTOM');
+  return `no custom resource has the scope ${scopeName}. The custom resources are: ${custom.length ? custom.map(shown).join('; ') : '(none)'}. Exchange 1 needs a resource that owns ${scopeName} and has an act attribute (${AGENT_ACT_EXPRESSION}): create it in the console, or give --agent-scope the scope name it already has. Nothing was changed.`;
+}
+const same = (a, b) => String(a).replace(/\s+/g, '') === String(b).replace(/\s+/g, '');
+const clip = (v) => String(v).replace(/[\u0000-\u001f\u007f]/g, ' ').slice(0, 300);
 
 async function ensureApp(p1, spec, apply, log) {
   const apps = await p1.list('/applications', 'applications');
@@ -243,8 +278,12 @@ async function ensureApp(p1, spec, apply, log) {
 export async function run(opts, { fetchImpl = fetch, log = console.log, credFile, confirm } = {}) {
   credFile = credFile || process.env.STANDALONE_CRED_FILE || path.join(os.homedir(), '.config', 'demo-kit', 'provisioning.json');
   log(opts.apply ? 'APPLY: missing PingOne objects are created and the lab .env is updated.' : 'DRY RUN (default): PingOne is only read and nothing is written. Add --apply to make the changes.');
-  const target = resolveTarget(readSettings(opts.envFile), readSettings(credFile));
+  const labEnv = readSettings(opts.envFile);
+  const target = resolveTarget(labEnv, readSettings(credFile));
   const p1 = client(target, fetchImpl);
+  // The agent scope: --agent-scope, else the lab .env's CAL_AGENT_SCOPE (so a re-run keeps looking for the scope the lab uses), else the default.
+  const agentScope = opts.agentScope ?? (labEnv.CAL_AGENT_SCOPE ? String(labEnv.CAL_AGENT_SCOPE) : AGENT_SCOPE);
+  if (!SCOPE_NAME.test(agentScope)) throw new Error('CAL_AGENT_SCOPE in the lab .env is not one scope name (letters, digits and : . _ -)');
 
   // a. the environment
   await p1.call('GET', '');
@@ -264,12 +303,20 @@ export async function run(opts, { fetchImpl = fetch, log = console.log, credFile
   const oidc = resources.find((r) => r.type === 'OPENID_CONNECT');
   if (!oidc) throw new Error('the environment has no OpenID Connect resource');
   log(`   gateway resource "${gw[0].name}" (audience ${GATEWAY_AUDIENCE}): found`);
+  // The resource that owns the agent scope, by the scope's NAME across the custom resources (never by id). None or several stops the run here, before
+  // anything is written. It must not be the gateway resource: that one is shared with other apps and this script never changes it.
+  const owners = await scopeOwners(p1, resources, agentScope);
+  if (owners.length !== 1) throw new Error(explainScopeOwners(agentScope, owners, resources));
+  const agentRes = owners[0];
+  if (agentRes.id === gw[0].id) throw new Error(`the scope ${agentScope} belongs to the gateway resource "${gw[0].name}" itself. Exchange 1 needs its own resource: the gateway resource is shared with other apps and this script never changes it. Nothing was changed.`);
+  log(`   agent scope ${agentScope}: owned by resource "${agentRes.name}" (audience ${agentRes.audience || 'none'}): found`);
 
   // c. the customer sign-in app
   log('c. customer sign-in app');
   const user = await ensureApp(p1, USER_APP, opts.apply, log);
-  await ensureGrant(p1, user.app?.id, oidc, OIDC_SCOPES, opts.apply && user.app, log);
-  await ensureGrant(p1, user.app?.id, gw[0], [GATEWAY_SCOPE], opts.apply && user.app, log);
+  const userReused = Boolean(user.app) && !user.created;
+  await ensureGrant(p1, user.app?.id, oidc, OIDC_SCOPES, opts.apply && user.app, log, { reused: userReused });
+  await ensureGrant(p1, user.app?.id, gw[0], [GATEWAY_SCOPE], opts.apply && user.app, log, { reused: userReused });
   const decisions = [];
   const assigned = user.app ? await p1.list(`/applications/${user.app.id}/signOnPolicyAssignments`, 'signOnPolicyAssignments') : [];
   const policies = await p1.list('/signOnPolicies', 'signOnPolicies');
@@ -283,24 +330,36 @@ export async function run(opts, { fetchImpl = fetch, log = console.log, credFile
     if (!verdict.ok) decisions.push(`The sign-on policy "${policy.name}" is not usable by the lab's pi.flow sign-in (${verdict.why}). In the console, assign "Customer Agent LAB Sign-in" a policy with only a username/password LOGIN step, or tell the builder which policy to use.`);
   }
 
-  // d. the agent app, and the gateway resource's act mapping
+  // d. the agent app (both scopes: the gateway scope for exchange 2, the agent scope for its own token and exchange 1), and the act attributes
   log('d. agent app');
   const agent = await ensureApp(p1, AGENT_APP, opts.apply, log);
-  await ensureGrant(p1, agent.app?.id, gw[0], [GATEWAY_SCOPE], opts.apply && agent.app, log);
-  const attrs = await p1.list(`/resources/${gw[0].id}/attributes`, 'attributes');
-  const act = attrs.find((a) => a.name === 'act');
-  if (act) log(`    gateway resource act mapping: present (${act.value}); not changed`);
-  else if (!opts.fixAct) {
-    log('    gateway resource act mapping: ABSENT. Delegated tokens would carry no act. Rerun with --apply --fix-act to add it.');
-    decisions.push('The gateway resource has no act attribute mapping: rerun with --apply --fix-act (it asks before adding).');
+  const agentReused = Boolean(agent.app) && !agent.created;
+  await ensureGrant(p1, agent.app?.id, gw[0], [GATEWAY_SCOPE], opts.apply && agent.app, log, { reused: agentReused });
+  await ensureGrant(p1, agent.app?.id, agentRes, [agentScope], opts.apply && agent.app, log, { reused: agentReused });
+  // The agent-scope resource's act attribute: report it, and (--fix-act, typed yes) add it only when it is absent. It is never replaced.
+  const agentAct = (await p1.list(`/resources/${agentRes.id}/attributes`, 'attributes')).find((a) => a.name === 'act');
+  if (agentAct && same(agentAct.value, AGENT_ACT_EXPRESSION)) log(`    ${agentScope} resource act attribute: present, as expected (${clip(agentAct.value)})`);
+  else if (agentAct) {
+    log(`    ${agentScope} resource act attribute: present but DIFFERENT (${clip(agentAct.value)}); expected ${AGENT_ACT_EXPRESSION}. Not changed: this script never replaces an attribute.`);
+    decisions.push(`The act attribute of the "${agentRes.name}" resource differs from the expected expression. Exchange 1 must put the agent app's client id in act.sub: check it in the console.`);
+  } else if (!opts.fixAct) {
+    log(`    ${agentScope} resource act attribute: ABSENT. Exchange 1 would mint a token with no act, and the lab would stop before the gateway. Expected ${AGENT_ACT_EXPRESSION}. Rerun with --apply --fix-act to add it.`);
+    decisions.push(`The "${agentRes.name}" resource (scope ${agentScope}) has no act attribute: rerun with --apply --fix-act (it asks before adding), or add it in the console.`);
   } else {
-    const ok = await (confirm || askYes)(`Add attribute "act" = ${ACT_EXPRESSION} to the gateway resource "${gw[0].name}"? This changes every token minted for ${GATEWAY_AUDIENCE}. Type yes: `);
-    if (!ok) log('    act mapping: not added (you did not type yes)');
-    else { await p1.call('POST', `/resources/${gw[0].id}/attributes`, { name: 'act', value: ACT_EXPRESSION, type: 'CUSTOM' }); log('    act mapping: added'); }
+    const ok = await (confirm || askYes)(`Add attribute "act" = ${AGENT_ACT_EXPRESSION} to the resource "${agentRes.name}" (the owner of the scope ${agentScope})? Type yes: `);
+    if (!ok) log('    act attribute: not added (you did not type yes)');
+    else { await p1.call('POST', `/resources/${agentRes.id}/attributes`, { name: 'act', value: AGENT_ACT_EXPRESSION, type: 'CUSTOM' }); log('    act attribute: added to the agent-scope resource'); }
+  }
+  // The gateway resource's act attribute (exchange 2 relies on it passing the subject token's act through): READ ONLY, never changed here.
+  const gwAct = (await p1.list(`/resources/${gw[0].id}/attributes`, 'attributes')).find((a) => a.name === 'act');
+  if (gwAct) log(`    gateway resource act attribute: present (${clip(gwAct.value)}${same(gwAct.value, GATEWAY_ACT_PASSTHROUGH) ? ', the pass-through exchange 2 needs' : `; exchange 2 needs the pass-through ${GATEWAY_ACT_PASSTHROUGH}`}); not changed, it is shared with other apps`);
+  else {
+    log(`    gateway resource act attribute: ABSENT. Exchange 2 could not carry act to the gateway. Not changed: it is shared with other apps.`);
+    decisions.push(`The gateway resource has no act attribute, so exchange 2 cannot carry act. It is shared with other apps and this script never edits it: ask the PingOne admin to add ${GATEWAY_ACT_PASSTHROUGH}.`);
   }
 
   if (!opts.apply) {
-    log('e. lab .env: would set ' + ENV_NAMES.join(', ') + ' (dry run: not written)');
+    log('e. lab .env: would set ' + [...ENV_NAMES, ...(agentScope === AGENT_SCOPE ? [] : OPTIONAL_ENV_NAMES)].join(', ') + ' (dry run: not written)');
     for (const d of decisions) log(`OWNER DECISION: ${d}`);
     log('Dry run done. Nothing was changed. Rerun with --apply.');
     return { applied: false, decisions };
@@ -312,6 +371,8 @@ export async function run(opts, { fetchImpl = fetch, log = console.log, credFile
     CAL_USER_CLIENT_ID: user.app.id, CAL_USER_CLIENT_SECRET: await secretOf(user.app),
     CAL_AGENT_CLIENT_ID: agent.app.id, CAL_AGENT_CLIENT_SECRET: await secretOf(agent.app),
     CAL_DEMO_USERNAME: opts.user, CAL_AGENT_GATEWAY_URL: AGENT_GATEWAY_URL, CAL_GATEWAY_AUDIENCE: GATEWAY_AUDIENCE, CAL_GATEWAY_SCOPE: GATEWAY_SCOPE,
+    // Only when it is not the default: the lab falls back to agent:invoke without it.
+    ...(agentScope === AGENT_SCOPE ? {} : { CAL_AGENT_SCOPE: agentScope }),
   };
   const w = writeEnvNames(opts.envFile, values);
   log(`e. lab .env updated (mode 600${w.backup ? `, backup ${path.basename(w.backup)}` : ''}):`);

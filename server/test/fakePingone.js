@@ -1,8 +1,15 @@
 // A fake PingOne on a loopback port, for the live-mode tests and the e2e. It is not PingOne: it answers the paths live mode and full Real call and records
 // what it was sent. The client ids and secrets and the demo password are assembled at run time, so no credential-shaped string sits in the repository.
 // Full Real (owner, 2026-11-10): authorize with response_mode=pi.flow (anything else is refused: there is no redirect login), the flows API
-// username/password step, resume, and the token endpoint for authorization_code (PKCE S256 checked), client_credentials and RFC 8693 token exchange
-// (it adds act). state.full picks a variant: { signin: 'ok' | 'resume' | 'bad-password' | 'mfa' | 'echo-pw' | 'bad-state' | 'no-state', exchange: 'ok' | 'no-act' | 'refuse' }.
+// username/password step, resume, and the token endpoint for authorization_code (PKCE S256 checked), client_credentials and RFC 8693 token exchange.
+// It models the two PingOne resources the two-exchange pattern needs (state.resources), as the real setup has them:
+//   agent   owns the agent scope; its act attribute reads the ACTOR token's client_id into act.sub (act: 'actor'), or is missing (act: 'absent').
+//   gateway owns the gateway scope and chooses the audience; its act attribute passes the SUBJECT token's act through (act: 'passthrough'), or is missing.
+// So exchange 1 (user + agent actor, agent scope) mints act, exchange 2 (the exchange-1 token, gateway scope) keeps it, and the OLD single exchange (the
+// user's token + the agent actor + the gateway scope) or an exchange 2 on a plain user token mints NO act: the bug this fake lets the tests pin.
+// (act: 'empty' mints a useless act: {} with no sub.)
+// state.full picks a variant: { signin: 'ok' | 'resume' | 'bad-password' | 'mfa' | 'echo-pw' | 'bad-state' | 'no-state',
+//   exchange: 'ok' | 'refuse' (the exchange for the agent scope) | 'refuse-2' (the exchange for the gateway scope) }.
 import http from 'node:http';
 import { createHash, randomBytes } from 'node:crypto';
 
@@ -21,17 +28,29 @@ export const DEMO_USERNAME = 'lab-demo-user';
 export const DEMO_PASSWORD = ['Fake', 'Pass', 'word-', 'for-tests-', '42'].join('');
 export const AUDIENCE = 'fake-gateway-audience';
 export const SCOPE = 'fake:mcp:invoke';
+export const AGENT_SCOPE = 'agent:invoke';
+export const AGENT_AUDIENCE = 'fake-agent-audience';
 export const USER_SUB = '99999999-aaaa-4bbb-8ccc-dddddddddddd';
 const jwt = (claims) => [b64u({ alg: 'RS256', typ: 'JWT', kid: 'fake-kid' }), b64u({ iss: `http://fake.invalid/${ENV_ID}/as`, iat: 1700000000, exp: 4102444800, ...claims }), 'ZmFrZXNpZ25hdHVyZWZvcnRlc3Rz'].join('.');
 const basicOf = (id, secret) => `Basic ${Buffer.from(`${id}:${secret}`).toString('base64')}`;
+const claimsIn = (t) => { try { return JSON.parse(Buffer.from(String(t).split('.')[1], 'base64url').toString('utf8')); } catch { return null; } };
+const AT_TYPE = 'urn:ietf:params:oauth:token-type:access_token';
 
 // behaviour: 'ok' | 'bad-secret' | 'discovery-500' | 'redirect' | 'huge' | 'slow' | 'html' | 'opaque'
-export async function startFakePingOne({ behaviour = 'ok', delayMs = 0 } = {}) {
+export async function startFakePingOne({ behaviour = 'ok', delayMs = 0, agentScope = AGENT_SCOPE } = {}) {
   const seen = [];
-  const state = { behaviour, delayMs, full: { signin: 'ok', exchange: 'ok' } };
+  const resources = {
+    agent: { name: 'Fake agent resource', audience: AGENT_AUDIENCE, scopes: [agentScope], act: 'actor' },
+    gateway: { name: 'Fake gateway resource', audience: AUDIENCE, scopes: [SCOPE], act: 'passthrough' },
+  };
+  // agentGrants: the scopes the agent app may ask for (the owner setup script grants both).
+  const state = { behaviour, delayMs, full: { signin: 'ok', exchange: 'ok' }, resources, agentGrants: [agentScope, SCOPE] };
   const flows = new Map(); // flow id -> { cookie, challenge, state, nonce, done }
   const codes = new Map(); // code -> { challenge, nonce }
-  const issued = { user: new Set(), agent: new Set(), delegated: new Set() };
+  // exchange1: tokens minted for the agent scope's resource. delegated: tokens for the gateway scope's resource that carry act (what the gateway and
+  // Authorize accept). noAct: gateway-resource tokens WITHOUT act (the old single-exchange bug): the fake gateway refuses these.
+  const issued = { user: new Set(), agent: new Set(), exchange1: new Set(), delegated: new Set(), noAct: new Set() };
+  const resourceOf = (scope) => { const asked = String(scope || '').split(' ').filter(Boolean); return asked.length && asked.every((sc) => Object.values(resources).some((r) => r.scopes.includes(sc))) ? Object.values(resources).find((r) => r.scopes.includes(asked[0])) : null; };
   const server = http.createServer((req, res) => {
     const body = [];
     req.on('data', (c) => body.push(c));
@@ -86,15 +105,30 @@ export async function startFakePingOne({ behaviour = 'ok', delayMs = 0 } = {}) {
           }
           if (form.grant_type === 'client_credentials') {
             if (auth !== basicOf(AGENT_CLIENT_ID, AGENT_CLIENT_SECRET)) return send(401, { error: 'invalid_client', error_description: 'fake: agent client' });
-            const at = jwt({ sub: AGENT_CLIENT_ID, client_id: AGENT_CLIENT_ID, aud: 'fake-agent-api' }); issued.agent.add(at);
-            return send(200, { access_token: at, token_type: 'Bearer', expires_in: 3600 });
+            const asked = String(form.scope || '').split(' ').filter(Boolean);
+            if (asked.some((sc) => !state.agentGrants.includes(sc))) return send(400, { error: 'invalid_scope', error_description: 'fake: the agent app has no grant for that scope' });
+            const res = asked.length ? resourceOf(form.scope) : null;
+            const at = jwt({ sub: AGENT_CLIENT_ID, client_id: AGENT_CLIENT_ID, aud: res ? res.audience : 'fake-agent-api', ...(asked.length ? { scope: asked.join(' ') } : {}) }); issued.agent.add(at);
+            return send(200, { access_token: at, token_type: 'Bearer', expires_in: 3600, ...(asked.length ? { scope: asked.join(' ') } : {}) });
           }
           if (form.grant_type === 'urn:ietf:params:oauth:grant-type:token-exchange') {
             if (auth !== basicOf(AGENT_CLIENT_ID, AGENT_CLIENT_SECRET)) return send(401, { error: 'invalid_client', error_description: 'fake: agent client' });
-            if (state.full.exchange === 'refuse') return send(400, { error: 'invalid_request', error_description: 'fake: exchange refused' });
-            if (!issued.user.has(form.subject_token) || !issued.agent.has(form.actor_token) || form.audience !== AUDIENCE || form.scope !== SCOPE) return send(400, { error: 'invalid_grant', error_description: 'fake: subject, actor, audience or scope is wrong' });
-            const at = jwt({ sub: USER_SUB, aud: AUDIENCE, scope: SCOPE, client_id: AGENT_CLIENT_ID, ...(state.full.exchange === 'no-act' ? {} : { act: { sub: AGENT_CLIENT_ID } }) }); issued.delegated.add(at);
-            return send(200, { access_token: at, issued_token_type: 'urn:ietf:params:oauth:token-type:access_token', token_type: 'Bearer', expires_in: 900, scope: SCOPE });
+            const res = resourceOf(form.scope);
+            if (!res) return send(400, { error: 'invalid_scope', error_description: 'fake: no resource owns that scope' });
+            if (String(form.scope).split(' ').some((sc) => !state.agentGrants.includes(sc))) return send(400, { error: 'invalid_scope', error_description: 'fake: the agent app has no grant for that scope' });
+            if ((state.full.exchange === 'refuse' && res === resources.agent) || (state.full.exchange === 'refuse-2' && res === resources.gateway)) return send(400, { error: 'invalid_request', error_description: 'fake: exchange refused' });
+            const subject = [...issued.user, ...issued.exchange1, ...issued.delegated, ...issued.noAct].includes(form.subject_token) ? claimsIn(form.subject_token) : null;
+            if (!subject || form.subject_token_type !== AT_TYPE) return send(400, { error: 'invalid_grant', error_description: 'fake: the subject token is not one this fake issued' });
+            let actor = null;
+            if (form.actor_token !== undefined) {
+              if (!issued.agent.has(form.actor_token) || form.actor_token_type !== AT_TYPE) return send(400, { error: 'invalid_grant', error_description: 'fake: the actor token is not an agent token this fake issued' });
+              actor = claimsIn(form.actor_token);
+            }
+            // The resource's act attribute decides: from the actor token (agent resource) or passed through from the subject token (gateway resource).
+            const act = res.act === 'empty' ? {} : res.act === 'actor' ? (actor ? { sub: actor.client_id } : null) : res.act === 'passthrough' ? (subject.act ?? null) : null;
+            const at = jwt({ sub: subject.sub, aud: res.audience, scope: form.scope, client_id: AGENT_CLIENT_ID, ...(act ? { act } : {}) });
+            (res === resources.agent ? issued.exchange1 : act ? issued.delegated : issued.noAct).add(at);
+            return send(200, { access_token: at, issued_token_type: AT_TYPE, token_type: 'Bearer', expires_in: 900, scope: form.scope });
           }
           return send(400, { error: 'unsupported_grant_type' });
         }
@@ -120,7 +154,7 @@ export async function startFakePingOne({ behaviour = 'ok', delayMs = 0 } = {}) {
 export const settingsFor = () => ({ PINGONE_ENVIRONMENT_ID: ENV_ID, PINGONE_REGION: 'com', PINGONE_CLIENT_ID: CLIENT_ID, PINGONE_CLIENT_SECRET: CLIENT_SECRET });
 
 // Full Real settings for the fakes (fake values only). gatewayUrl: the fake gateway's URL (loopback http).
-export const fullSettingsFor = (gatewayUrl) => ({
+export const fullSettingsFor = (gatewayUrl, extra = {}) => ({
   PINGONE_ENVIRONMENT_ID: ENV_ID, PINGONE_REGION: 'com', CAL_USER_CLIENT_ID: USER_CLIENT_ID, CAL_USER_CLIENT_SECRET: USER_CLIENT_SECRET, CAL_AGENT_CLIENT_ID: AGENT_CLIENT_ID,
-  CAL_AGENT_CLIENT_SECRET: AGENT_CLIENT_SECRET, CAL_DEMO_USERNAME: DEMO_USERNAME, CAL_AGENT_GATEWAY_URL: gatewayUrl, CAL_GATEWAY_AUDIENCE: AUDIENCE, CAL_GATEWAY_SCOPE: SCOPE,
+  CAL_AGENT_CLIENT_SECRET: AGENT_CLIENT_SECRET, CAL_DEMO_USERNAME: DEMO_USERNAME, CAL_AGENT_GATEWAY_URL: gatewayUrl, CAL_GATEWAY_AUDIENCE: AUDIENCE, CAL_GATEWAY_SCOPE: SCOPE, ...extra,
 });

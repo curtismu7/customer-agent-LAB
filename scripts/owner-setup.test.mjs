@@ -26,6 +26,8 @@ test('setup: dry run is the default; --apply, --user and --env-file parse; bad c
   assert.throws(() => setup.parseArgs(['--user', '--apply']), /needs a value/);
   assert.throws(() => setup.parseArgs(['--user', 'a b']), /plain username/);
   assert.throws(() => setup.parseArgs(['--force']), /unknown argument/);
+  assert.equal(d.agentScope, null); assert.equal(setup.parseArgs(['--agent-scope', 'custom:agent']).agentScope, 'custom:agent');
+  assert.throws(() => setup.parseArgs(['--agent-scope']), /needs a value/); assert.throws(() => setup.parseArgs(['--agent-scope', 'a b']), /one scope name/);
 });
 
 test('setup: the CLI refuses a bad argument with exit 2 before reading anything', () => {
@@ -83,13 +85,32 @@ test('env writer: the printed lines say "set" and never carry a value', () => {
 
 // ---------- a fake PingOne ----------
 const IDS = { env: '11111111-1111-1111-1111-111111111111', admin: '22222222-2222-2222-2222-222222222222' };
-function fakePingOne({ apps = [], act = true, policyActions = [{ type: 'LOGIN' }], users = [{ id: 'u1', username: 'demouser', population: { id: 'pop1' } }], gwScopes = ['gateway:mcp:invoke'], otherGw = null } = {}) {
+// agentResource: 'one' (default: a custom resource with the scope agent:invoke, found by the scope's NAME), 'none', 'two' (two resources have it) or 'on-gateway'
+// (the gateway resource itself has it). agentAct: 'ok' (the expected expression), 'absent' or 'other'. gwAct: true = the pass-through attribute exists.
+// grants: { <app id>: [...] } already on the apps. Every call is recorded; r-gw is the gateway resource, which must never be written.
+function fakePingOne({ apps = [], gwAct = true, agentAct = 'ok', agentResource = 'one', agentScopeName = 'agent:invoke', grants = {}, policyActions = [{ type: 'LOGIN' }], users = [{ id: 'u1', username: 'demouser', population: { id: 'pop1' } }], gwScopes = ['gateway:mcp:invoke'], otherGw = null } = {}) {
   const calls = [];
-  const state = { apps: apps.map((a) => ({ ...a })), grants: {}, attrs: act ? [{ id: 'at1', name: 'act', value: setup.ACT_EXPRESSION }] : [] };
+  const agentRes = { id: 'r-agent', name: 'Agent Invoke Resource', type: 'CUSTOM', audience: 'https://agent.example/invoke' };
+  const extra = agentResource === 'two' ? [{ id: 'r-agent2', name: 'Second Agent Resource', type: 'CUSTOM', audience: 'https://agent2.example/invoke' }] : [];
+  const scopesOf = {
+    'r-oidc': ['openid', 'profile', 'email', 'phone'].map((n) => ({ id: `s-${n}`, name: n })),
+    'r-gw': gwScopes.map((n, k) => ({ id: k === 0 ? 's-gw' : `s-gw${k}`, name: n })).concat(agentResource === 'on-gateway' ? [{ id: 's-agent', name: agentScopeName }] : []),
+    'r-x': [], 'r-other': (otherGw?.scopes || []).map((n, k) => ({ id: `s-o${k}`, name: n })),
+    'r-agent': agentResource === 'none' || agentResource === 'on-gateway' ? [{ id: 's-other', name: 'something:else' }] : [{ id: 's-agent', name: agentScopeName }, { id: 's-agent-read', name: 'agent:read' }],
+    'r-agent2': [{ id: 's-agent2', name: agentScopeName }],
+  };
+  const state = {
+    apps: apps.map((a) => ({ ...a })), grants: Object.fromEntries(Object.entries(grants).map(([k, v]) => [k, v.map((g) => ({ ...g }))])),
+    attrs: {
+      'r-gw': gwAct ? [{ id: 'at1', name: 'act', value: setup.GATEWAY_ACT_PASSTHROUGH }] : [],
+      'r-agent': agentAct === 'ok' ? [{ id: 'at3', name: 'act', value: setup.AGENT_ACT_EXPRESSION }] : agentAct === 'other' ? [{ id: 'at3', name: 'act', value: "${{'client_id': #root.context.requestData.actorToken.client_id}}" }] : [],
+      'r-agent2': [],
+    },
+  };
   const json = (status, body) => ({ ok: status < 400, status, json: async () => body, text: async () => JSON.stringify(body) });
   const fetchImpl = async (url, init = {}) => {
     const method = init.method || 'GET';
-    calls.push(`${method} ${url}`);
+    calls.push(`${method} ${decodeURIComponent(url)}`);
     if (url === `https://auth.pingone.com/${IDS.admin}/as/token`) return json(200, { access_token: 'admin-token' });
     const base = `https://api.pingone.com/v1/environments/${IDS.env}`;
     assert.ok(url.startsWith(base), `unexpected host or env: ${url}`);
@@ -98,16 +119,15 @@ function fakePingOne({ apps = [], act = true, policyActions = [{ type: 'LOGIN' }
     if (method === 'GET' && p === '') return json(200, { id: IDS.env });
     if (method === 'GET' && p.startsWith('/users?filter=')) return json(200, { _embedded: { users: users.filter((u) => p.includes(`"${u.username}"`)) } });
     if (method === 'GET' && p === '/populations/pop1') return json(200, { name: 'Demo Users' });
-    if (method === 'GET' && p === '/resources') return json(200, { _embedded: { resources: [...(otherGw ? [{ id: 'r-other', name: otherGw.name, type: 'CUSTOM', audience: otherGw.audience }] : []), { id: 'r-oidc', name: 'openid', type: 'OPENID_CONNECT' }, { id: 'r-gw', name: 'Agent Gateway', type: 'CUSTOM', audience: 'https://api.ping.demo:3036/mcp' }, { id: 'r-x', name: 'Other', type: 'CUSTOM', audience: 'other.example' }] } });
-    if (method === 'GET' && p === '/resources/r-oidc/scopes') return json(200, { _embedded: { scopes: ['openid', 'profile', 'email', 'phone'].map((n) => ({ id: `s-${n}`, name: n })) } });
-    if (method === 'GET' && p === '/resources/r-gw/scopes') return json(200, { _embedded: { scopes: gwScopes.map((n, k) => ({ id: k === 0 ? 's-gw' : `s-gw${k}`, name: n })) } });
-    if (method === 'GET' && p === '/resources/r-x/scopes') return json(200, { _embedded: { scopes: [] } });
-    if (method === 'GET' && p === '/resources/r-other/scopes') return json(200, { _embedded: { scopes: (otherGw?.scopes || []).map((n, k) => ({ id: `s-o${k}`, name: n })) } });
-    if (method === 'GET' && p === '/resources/r-gw/attributes') return json(200, { _embedded: { attributes: state.attrs } });
-    if (method === 'POST' && p === '/resources/r-gw/attributes') { state.attrs.push({ id: 'at2', ...body }); return json(201, body); }
+    if (method === 'GET' && p === '/resources') return json(200, { _embedded: { resources: [...(otherGw ? [{ id: 'r-other', name: otherGw.name, type: 'CUSTOM', audience: otherGw.audience }] : []), { id: 'r-oidc', name: 'openid', type: 'OPENID_CONNECT' }, { id: 'r-gw', name: 'Agent Gateway', type: 'CUSTOM', audience: 'https://api.ping.demo:3036/mcp' }, { id: 'r-x', name: 'Other', type: 'CUSTOM', audience: 'other.example' }, agentRes, ...extra] } });
+    let m;
+    if ((m = /^\/resources\/([^/]+)\/scopes$/.exec(p)) && method === 'GET') return json(200, { _embedded: { scopes: scopesOf[m[1]] || [] } });
+    if ((m = /^\/resources\/([^/]+)\/attributes$/.exec(p))) {
+      if (method === 'GET') return json(200, { _embedded: { attributes: state.attrs[m[1]] || [] } });
+      if (method === 'POST') { (state.attrs[m[1]] ||= []).push({ id: 'at-new', ...body }); return json(201, body); }
+    }
     if (method === 'GET' && p === '/applications') return json(200, { _embedded: { applications: state.apps } });
     if (method === 'POST' && p === '/applications') { const a = { id: `app-${state.apps.length + 1}-0123456789`, ...body }; state.apps.push(a); return json(201, a); }
-    let m;
     if ((m = /^\/applications\/([^/]+)\/grants$/.exec(p))) {
       if (method === 'GET') return json(200, { _embedded: { grants: state.grants[m[1]] || [] } });
       (state.grants[m[1]] ||= []).push({ id: `g${Math.random()}`, ...body }); return json(201, body);
@@ -121,6 +141,8 @@ function fakePingOne({ apps = [], act = true, policyActions = [{ type: 'LOGIN' }
   };
   return { fetchImpl, calls, state };
 }
+// The gateway resource is shared with other apps: no call may ever change it or its attributes (reads are fine).
+const gatewayWrites = (p1) => p1.calls.filter((c) => /\/resources\/r-gw(\/|$)/.test(c) && !c.startsWith('GET '));
 
 function labFiles({ envText } = {}) {
   const dir = tmp();
@@ -161,12 +183,18 @@ test('setup run: --apply creates both apps with the right settings and grants, w
   const scopesOf = (appId, res) => (p1.state.grants[appId] || []).filter((g) => g.resource.id === res).flatMap((g) => g.scopes.map((s) => s.id)).sort();
   assert.deepEqual(scopesOf(user.id, 'r-oidc'), ['s-email', 's-openid', 's-profile']); assert.deepEqual(scopesOf(user.id, 'r-gw'), ['s-gw']);
   assert.deepEqual(scopesOf(agent.id, 'r-gw'), ['s-gw']); assert.deepEqual(scopesOf(agent.id, 'r-oidc'), []);
+  assert.deepEqual(scopesOf(agent.id, 'r-agent'), ['s-agent'], 'the AGENT app is granted agent:invoke (and not agent:read) on the resource that owns it, found by the scope name');
+  assert.deepEqual(scopesOf(user.id, 'r-agent'), [], 'the sign-in app is not');
+  assert.deepEqual(gatewayWrites(p1), [], 'the gateway resource is never written');
   const env = parseEnv(fs.readFileSync(envFile, 'utf8'));
   assert.equal(env.CAL_USER_CLIENT_ID, user.id); assert.equal(env.CAL_AGENT_CLIENT_ID, agent.id); assert.equal(env.CAL_AGENT_CLIENT_SECRET, `${SECRET}-${agent.id}`);
   assert.equal(env.CAL_AGENT_GATEWAY_URL, 'https://agent-gateway.ai-demo.ping-devops.com/mcp'); assert.equal(env.CAL_GATEWAY_AUDIENCE, 'https://api.ping.demo:3036/mcp'); assert.equal(env.CAL_GATEWAY_SCOPE, 'gateway:mcp:invoke');
   assert.equal(env.PINGONE_CLIENT_ID, 'old'); assert.equal(env.PINGONE_CLIENT_SECRET, 'old-secret'); assert.equal(mode(envFile), 0o600);
+  assert.equal(env.CAL_AGENT_SCOPE, undefined, 'CAL_AGENT_SCOPE is written only when it is not the default');
   const text = out.join('\n');
   assertNoSecretOrId(text);
+  assert.match(text, /agent scope agent:invoke: owned by resource "Agent Invoke Resource" \(audience https:\/\/agent\.example\/invoke\): found/);
+  assert.match(text, /agent:invoke resource act attribute: present, as expected/); assert.match(text, /gateway resource act attribute: present .*the pass-through exchange 2 needs\); not changed/);
   assert.match(text, new RegExp(`agent client id starts ${agent.id.slice(0, 8)}\\.`)); assert.match(text, /p1az-add-actor\.md/);
   assert.match(text, /can remove them with:\n.*sed -i\.bak\.pingone-removed -E '\/\^\(export \)\?PINGONE_CLIENT_\(ID\|SECRET\)=\/d'/);
   // the printed removal command removes exactly the two old lines
@@ -198,19 +226,116 @@ test('setup run: drift on a reused app is reported, never changed; two apps with
   await assert.rejects(setup.run(setup.parseArgs(['--env-file', envFile]), { fetchImpl: twice.fetchImpl, log: () => {}, credFile }), /2 apps are named/);
 });
 
-test('setup run: an unusable default sign-on policy and a missing act mapping become owner decisions; --fix-act asks and adds only on "yes"', async () => {
+test('setup run: an unusable default sign-on policy and a missing act attribute become owner decisions', async () => {
   const { envFile, credFile } = labFiles();
-  const p1 = fakePingOne({ act: false, policyActions: [{ type: 'LOGIN' }, { type: 'MULTI_FACTOR_AUTHENTICATION' }] });
-  const r = await setup.run(setup.parseArgs(['--env-file', envFile]), { fetchImpl: p1.fetchImpl, log: () => {}, credFile });
-  assert.equal(r.decisions.length, 2); assert.match(r.decisions.join('\n'), /MULTI_FACTOR_AUTHENTICATION/); assert.match(r.decisions.join('\n'), /--fix-act/);
-  let asked = 0;
-  await setup.run(setup.parseArgs(['--apply', '--fix-act', '--env-file', envFile]), { fetchImpl: p1.fetchImpl, log: () => {}, credFile, confirm: async () => { asked++; return false; } });
-  assert.equal(asked, 1); assert.equal(p1.state.attrs.length, 0, '"no" adds nothing');
+  const p1 = fakePingOne({ agentAct: 'absent', policyActions: [{ type: 'LOGIN' }, { type: 'MULTI_FACTOR_AUTHENTICATION' }] }); const { out, log } = capture();
+  const r = await setup.run(setup.parseArgs(['--env-file', envFile]), { fetchImpl: p1.fetchImpl, log, credFile });
+  assert.equal(r.decisions.length, 2); assert.match(r.decisions.join('\n'), /MULTI_FACTOR_AUTHENTICATION/); assert.match(r.decisions.join('\n'), /"Agent Invoke Resource" resource \(scope agent:invoke\) has no act attribute.*--fix-act/);
+  assert.match(out.join('\n'), /agent:invoke resource act attribute: ABSENT\. Exchange 1 would mint a token with no act/);
+  assert.deepEqual(gatewayWrites(p1), []);
+});
+
+test('--fix-act: adds the act attribute to the AGENT-scope resource only, only when absent, only after a typed yes, with the key sub; the gateway resource is never touched', async () => {
+  const { envFile, credFile } = labFiles();
+  // Both resources lack the attribute: only the agent-scope one may get it.
+  const p1 = fakePingOne({ agentAct: 'absent', gwAct: false });
+  let asked = 0; let question = '';
+  await setup.run(setup.parseArgs(['--apply', '--fix-act', '--env-file', envFile]), { fetchImpl: p1.fetchImpl, log: () => {}, credFile, confirm: async (q) => { asked++; question = q; return false; } });
+  assert.equal(asked, 1); assert.deepEqual(p1.state.attrs['r-agent'], [], '"no" adds nothing'); assert.deepEqual(gatewayWrites(p1), []);
+  assert.match(question, /resource "Agent Invoke Resource" \(the owner of the scope agent:invoke\)/); assert.ok(!question.includes('Agent Gateway'), 'the question never names the gateway resource');
   await setup.run(setup.parseArgs(['--apply', '--fix-act', '--env-file', envFile]), { fetchImpl: p1.fetchImpl, log: () => {}, credFile, confirm: async () => true });
-  assert.deepEqual(p1.state.attrs.map((a) => [a.name, a.value, a.type]), [['act', setup.ACT_EXPRESSION, 'CUSTOM']]);
-  // present: never replaced, and no question asked
-  await setup.run(setup.parseArgs(['--apply', '--fix-act', '--env-file', envFile]), { fetchImpl: p1.fetchImpl, log: () => {}, credFile, confirm: async () => { throw new Error('asked although present'); } });
-  assert.equal(p1.state.attrs.length, 1);
+  assert.deepEqual(p1.state.attrs['r-agent'].map((a) => [a.name, a.value, a.type]), [['act', setup.AGENT_ACT_EXPRESSION, 'CUSTOM']]);
+  assert.equal(setup.AGENT_ACT_EXPRESSION, "${{'sub': #root.context.requestData.actorToken.client_id}}", 'the key is sub, not client_id');
+  assert.match(setup.AGENT_ACT_EXPRESSION, /^\$\{\{'sub': /); assert.ok(!/client_id'\s*:/.test(setup.AGENT_ACT_EXPRESSION));
+  assert.deepEqual(p1.state.attrs['r-gw'], [], 'the gateway resource got nothing');
+  assert.deepEqual(gatewayWrites(p1), [], 'no write to the gateway resource, not even with --fix-act and an absent gateway attribute');
+  // Present (as expected or different): never replaced, never asked.
+  for (const agentAct of ['ok', 'other']) {
+    const q = fakePingOne({ agentAct });
+    await setup.run(setup.parseArgs(['--apply', '--fix-act', '--env-file', envFile]), { fetchImpl: q.fetchImpl, log: () => {}, credFile, confirm: async () => { throw new Error('asked although present'); } });
+    assert.equal(q.state.attrs['r-agent'].length, 1); assert.ok(!q.calls.some((c) => /\/attributes$/.test(c) && !c.startsWith('GET ')));
+  }
+  // A different value is reported, with the expected one, and becomes an owner decision.
+  const other = fakePingOne({ agentAct: 'other' }); const { out, log } = capture();
+  const r = await setup.run(setup.parseArgs(['--env-file', envFile]), { fetchImpl: other.fetchImpl, log, credFile });
+  assert.match(out.join('\n'), /present but DIFFERENT .*client_id.*expected \$\{\{'sub'/); assert.match(r.decisions.join('\n'), /differs from the expected expression/);
+});
+
+test('the script has no code path that writes to the gateway resource; the act attribute is only ever posted to the agent-scope resource', () => {
+  const src = fs.readFileSync(path.join(root, 'scripts/owner/pingone-real-setup.mjs'), 'utf8');
+  const writes = [...src.matchAll(/p1\.call\('(POST|PUT|PATCH|DELETE)', `([^`]*)`/g)].map((m) => `${m[1]} ${m[2]}`);
+  assert.ok(writes.length >= 3, writes.join('\n'));
+  assert.ok(writes.every((w) => !/\/resources\/\$\{gw/.test(w)), writes.join('\n'));
+  assert.deepEqual(writes.filter((w) => /\/resources\//.test(w)), ['POST /resources/${agentRes.id}/attributes']);
+  assert.ok(!/ACT_EXPRESSION\b/.test(src.replace(/AGENT_ACT_EXPRESSION|GATEWAY_ACT_PASSTHROUGH/g, '')), 'the old gateway act expression (key client_id) is gone');
+  assert.ok(!src.includes("'client_id': #root"), 'no client_id key');
+});
+
+test('agent scope lookup: found by the scope NAME (not by id, resource name or audience); none and several stop the run with the names and audiences, before anything is written', async () => {
+  const { envFile, credFile } = labFiles(); const before = fs.readFileSync(envFile, 'utf8');
+  const none = fakePingOne({ agentResource: 'none', apps: [] }); const a = capture();
+  await assert.rejects(setup.run(setup.parseArgs(['--apply', '--env-file', envFile]), { fetchImpl: none.fetchImpl, log: a.log, credFile, confirm: async () => true }), (e) => {
+    assert.match(e.message, /^no custom resource has the scope agent:invoke\. The custom resources are: .*"Agent Gateway" \(audience https:\/\/api\.ping\.demo:3036\/mcp\); "Other" \(audience other\.example\); "Agent Invoke Resource" \(audience https:\/\/agent\.example\/invoke\)\./);
+    assert.match(e.message, /--agent-scope.*Nothing was changed\.$/); return true;
+  });
+  assert.ok(none.calls.every((c) => c.startsWith('GET ') || c.endsWith('/as/token')), 'nothing written'); assert.equal(none.state.apps.length, 0, 'no app was created'); assert.equal(fs.readFileSync(envFile, 'utf8'), before);
+  const two = fakePingOne({ agentResource: 'two' });
+  await assert.rejects(setup.run(setup.parseArgs(['--apply', '--env-file', envFile]), { fetchImpl: two.fetchImpl, log: () => {}, credFile }), (e) => {
+    assert.match(e.message, /^2 custom resources have the scope agent:invoke: "Agent Invoke Resource" \(audience https:\/\/agent\.example\/invoke\); "Second Agent Resource" \(audience https:\/\/agent2\.example\/invoke\)\. The script does not guess/); return true;
+  });
+  assert.ok(two.calls.every((c) => c.startsWith('GET ') || c.endsWith('/as/token')) && two.state.apps.length === 0);
+  // The scope on the gateway resource itself: refused (that resource is never touched).
+  const onGw = fakePingOne({ agentResource: 'on-gateway', gwAct: false });
+  await assert.rejects(setup.run(setup.parseArgs(['--apply', '--fix-act', '--env-file', envFile]), { fetchImpl: onGw.fetchImpl, log: () => {}, credFile, confirm: async () => true }), /belongs to the gateway resource "Agent Gateway" itself.*never changes it/);
+  assert.deepEqual(gatewayWrites(onGw), []); assert.equal(onGw.state.apps.length, 0);
+  assert.equal(fs.readFileSync(envFile, 'utf8'), before, '.env untouched by every refusal');
+});
+
+test('a custom agent scope (--agent-scope, or CAL_AGENT_SCOPE already in the lab .env) is looked up by that name and written to .env; the default is never written', async () => {
+  const { envFile, credFile } = labFiles();
+  const p1 = fakePingOne({ agentScopeName: 'custom:agent' }); const { out, log } = capture();
+  await assert.rejects(setup.run(setup.parseArgs(['--env-file', envFile]), { fetchImpl: p1.fetchImpl, log: () => {}, credFile }), /no custom resource has the scope agent:invoke/, 'the default name is not found when the scope is called something else');
+  await setup.run(setup.parseArgs(['--apply', '--agent-scope', 'custom:agent', '--env-file', envFile]), { fetchImpl: p1.fetchImpl, log, credFile });
+  const env = parseEnv(fs.readFileSync(envFile, 'utf8'));
+  assert.equal(env.CAL_AGENT_SCOPE, 'custom:agent'); assert.match(out.join('\n'), /CAL_AGENT_SCOPE: set/);
+  assert.deepEqual(p1.state.grants[p1.state.apps[1].id].filter((g) => g.resource.id === 'r-agent').flatMap((g) => g.scopes.map((x) => x.id)), ['s-agent']);
+  // A later run without the flag keeps using the scope the lab .env names.
+  const again = fakePingOne({ agentScopeName: 'custom:agent', apps: p1.state.apps, grants: p1.state.grants });
+  await setup.run(setup.parseArgs(['--apply', '--env-file', envFile]), { fetchImpl: again.fetchImpl, log: () => {}, credFile });
+  assert.equal(parseEnv(fs.readFileSync(envFile, 'utf8')).CAL_AGENT_SCOPE, 'custom:agent'); assert.equal(again.state.apps.length, 2);
+  // The default name given explicitly is the default: not written.
+  const { envFile: e2, credFile: c2 } = labFiles(); const dflt = fakePingOne();
+  await setup.run(setup.parseArgs(['--apply', '--agent-scope', 'agent:invoke', '--env-file', e2]), { fetchImpl: dflt.fetchImpl, log: () => {}, credFile: c2 });
+  assert.equal(parseEnv(fs.readFileSync(e2, 'utf8')).CAL_AGENT_SCOPE, undefined);
+  const bad = labFiles({ envText: `PINGONE_ENVIRONMENT_ID=${IDS.env}\nCAL_AGENT_SCOPE=has space\n` });
+  await assert.rejects(setup.run(setup.parseArgs(['--env-file', bad.envFile]), { fetchImpl: fakePingOne().fetchImpl, log: () => {}, credFile: bad.credFile }), /CAL_AGENT_SCOPE in the lab \.env is not one scope name/);
+  assert.throws(() => setup.writeEnvNames(path.join(tmp(), '.env'), { CAL_AGENT_SCOPE: 'x:y', PINGONE_CLIENT_ID: 'z' }), /not one of the names/);
+  assert.deepEqual(setup.ENV_NAMES.length, 8, 'the eight names stay the same'); assert.deepEqual(setup.OPTIONAL_ENV_NAMES, ['CAL_AGENT_SCOPE']);
+});
+
+test('re-run after the first setup (the agent app exists with only the gateway scope): the missing agent-scope grant is reported as DRIFT and added; then a third run changes nothing', async () => {
+  const { envFile, credFile } = labFiles();
+  // The state the owner is in: both apps exist (as the first run made them), the agent app has only the gateway grant, the .env has the eight names.
+  const userApp = { id: 'app-1-0123456789', ...setup.USER_APP }; const agentApp = { id: 'app-2-0123456789', ...setup.AGENT_APP };
+  const grants = { [agentApp.id]: [{ id: 'g-gw', resource: { id: 'r-gw' }, scopes: [{ id: 's-gw' }] }], [userApp.id]: [{ id: 'g-oidc', resource: { id: 'r-oidc' }, scopes: ['s-openid', 's-profile', 's-email'].map((id) => ({ id })) }, { id: 'g-ugw', resource: { id: 'r-gw' }, scopes: [{ id: 's-gw' }] }] };
+  const p1 = fakePingOne({ apps: [userApp, agentApp], grants });
+  const dry = capture();
+  await setup.run(setup.parseArgs(['--env-file', envFile]), { fetchImpl: p1.fetchImpl, log: dry.log, credFile });
+  assert.match(dry.out.join('\n'), /grant on Agent Invoke Resource: DRIFT, the app lacks it; would add agent:invoke/); assert.deepEqual(p1.state.grants[agentApp.id].length, 1, 'the dry run adds nothing');
+  const first = capture();
+  await setup.run(setup.parseArgs(['--apply', '--env-file', envFile]), { fetchImpl: p1.fetchImpl, log: first.log, credFile });
+  const t1 = first.out.join('\n');
+  assert.match(t1, /grant on Agent Invoke Resource: DRIFT, the app lacked it; added agent:invoke/); assert.match(t1, /grant on Agent Gateway: gateway:mcp:invoke already granted/);
+  assert.deepEqual(p1.state.grants[agentApp.id].map((g) => [g.resource.id, g.scopes.map((x) => x.id)]), [['r-gw', ['s-gw']], ['r-agent', ['s-agent']]], 'the gateway grant is untouched and the agent-scope grant is added');
+  assert.equal(p1.state.apps.length, 2, 'no app is created again'); assert.deepEqual(gatewayWrites(p1), []);
+  assert.deepEqual(p1.calls.filter((c) => c.startsWith('PUT ')), [], 'nothing else is rewritten');
+  const env = parseEnv(fs.readFileSync(envFile, 'utf8')); assert.equal(env.CAL_AGENT_SCOPE, undefined); assert.equal(env.CAL_GATEWAY_SCOPE, 'gateway:mcp:invoke');
+  // Idempotent: the next run adds nothing and calls nothing that writes (but the token and the .env).
+  const writes = () => p1.calls.filter((c) => (c.startsWith('POST ') || c.startsWith('PUT ') || c.startsWith('DELETE ')) && !c.endsWith('/as/token')).length;
+  const before = writes(); const second = capture();
+  await setup.run(setup.parseArgs(['--apply', '--env-file', envFile]), { fetchImpl: p1.fetchImpl, log: second.log, credFile });
+  assert.equal(writes(), before, 'no PingOne write on the third run'); assert.match(second.out.join('\n'), /grant on Agent Invoke Resource: agent:invoke already granted/); assert.ok(!/DRIFT/.test(second.out.join('\n')));
+  assertNoSecretOrId(t1 + second.out.join('\n'));
 });
 
 test('a gateway resource without the scope: names its scopes and the other resources that have it, and writes nothing', async () => {
