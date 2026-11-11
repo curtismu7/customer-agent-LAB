@@ -37,7 +37,7 @@ test('setup: the CLI refuses a bad argument with exit 2 before reading anything'
 const SECRET = 'S3cr3t-value~never.shown';
 const values = () => ({
   CAL_USER_CLIENT_ID: 'user-app-id', CAL_USER_CLIENT_SECRET: SECRET, CAL_AGENT_CLIENT_ID: 'agent-app-id', CAL_AGENT_CLIENT_SECRET: `${SECRET}2`,
-  CAL_DEMO_USERNAME: 'demouser', CAL_AGENT_GATEWAY_URL: setup.AGENT_GATEWAY_URL, CAL_GATEWAY_AUDIENCE: 'mcpgateway.ping.demo', CAL_GATEWAY_SCOPE: 'gateway:mcp:invoke',
+  CAL_DEMO_USERNAME: 'demouser', CAL_AGENT_GATEWAY_URL: setup.AGENT_GATEWAY_URL, CAL_GATEWAY_AUDIENCE: 'https://api.ping.demo:3036/mcp', CAL_GATEWAY_SCOPE: 'gateway:mcp:invoke',
 });
 
 test('env writer: replaces or appends only the listed names, keeps every other line (PINGONE_CLIENT_* too), backs up, mode 600', () => {
@@ -98,7 +98,7 @@ function fakePingOne({ apps = [], act = true, policyActions = [{ type: 'LOGIN' }
     if (method === 'GET' && p === '') return json(200, { id: IDS.env });
     if (method === 'GET' && p.startsWith('/users?filter=')) return json(200, { _embedded: { users: users.filter((u) => p.includes(`"${u.username}"`)) } });
     if (method === 'GET' && p === '/populations/pop1') return json(200, { name: 'Demo Users' });
-    if (method === 'GET' && p === '/resources') return json(200, { _embedded: { resources: [...(otherGw ? [{ id: 'r-other', name: otherGw.name, type: 'CUSTOM', audience: otherGw.audience }] : []), { id: 'r-oidc', name: 'openid', type: 'OPENID_CONNECT' }, { id: 'r-gw', name: 'Agent Gateway', type: 'CUSTOM', audience: 'mcpgateway.ping.demo' }, { id: 'r-x', name: 'Other', type: 'CUSTOM', audience: 'other.example' }] } });
+    if (method === 'GET' && p === '/resources') return json(200, { _embedded: { resources: [...(otherGw ? [{ id: 'r-other', name: otherGw.name, type: 'CUSTOM', audience: otherGw.audience }] : []), { id: 'r-oidc', name: 'openid', type: 'OPENID_CONNECT' }, { id: 'r-gw', name: 'Agent Gateway', type: 'CUSTOM', audience: 'https://api.ping.demo:3036/mcp' }, { id: 'r-x', name: 'Other', type: 'CUSTOM', audience: 'other.example' }] } });
     if (method === 'GET' && p === '/resources/r-oidc/scopes') return json(200, { _embedded: { scopes: ['openid', 'profile', 'email', 'phone'].map((n) => ({ id: `s-${n}`, name: n })) } });
     if (method === 'GET' && p === '/resources/r-gw/scopes') return json(200, { _embedded: { scopes: gwScopes.map((n, k) => ({ id: k === 0 ? 's-gw' : `s-gw${k}`, name: n })) } });
     if (method === 'GET' && p === '/resources/r-x/scopes') return json(200, { _embedded: { scopes: [] } });
@@ -163,7 +163,7 @@ test('setup run: --apply creates both apps with the right settings and grants, w
   assert.deepEqual(scopesOf(agent.id, 'r-gw'), ['s-gw']); assert.deepEqual(scopesOf(agent.id, 'r-oidc'), []);
   const env = parseEnv(fs.readFileSync(envFile, 'utf8'));
   assert.equal(env.CAL_USER_CLIENT_ID, user.id); assert.equal(env.CAL_AGENT_CLIENT_ID, agent.id); assert.equal(env.CAL_AGENT_CLIENT_SECRET, `${SECRET}-${agent.id}`);
-  assert.equal(env.CAL_AGENT_GATEWAY_URL, 'https://agent-gateway.ai-demo.ping-devops.com/mcp'); assert.equal(env.CAL_GATEWAY_AUDIENCE, 'mcpgateway.ping.demo'); assert.equal(env.CAL_GATEWAY_SCOPE, 'gateway:mcp:invoke');
+  assert.equal(env.CAL_AGENT_GATEWAY_URL, 'https://agent-gateway.ai-demo.ping-devops.com/mcp'); assert.equal(env.CAL_GATEWAY_AUDIENCE, 'https://api.ping.demo:3036/mcp'); assert.equal(env.CAL_GATEWAY_SCOPE, 'gateway:mcp:invoke');
   assert.equal(env.PINGONE_CLIENT_ID, 'old'); assert.equal(env.PINGONE_CLIENT_SECRET, 'old-secret'); assert.equal(mode(envFile), 0o600);
   const text = out.join('\n');
   assertNoSecretOrId(text);
@@ -364,7 +364,7 @@ test('ingress script: verification fails (exit 1) when /health is not ready or /
 // ---------- the docs ----------
 test('the P1AZ checklist is additive only and says to export, diff against the export (one added id), then deploy', () => {
   const md = fs.readFileSync(path.join(root, 'scripts/owner/p1az-add-actor.md'), 'utf8');
-  for (const w of ['ADDITIVE ONLY', 'HasValidActorChain', 'HasValidMcpAudience', 'mcpgateway.ping.demo', 'Export first', 'exactly one added id', 'dropped an accepted audience', '403']) assert.ok(md.includes(w), w);
+  for (const w of ['ADDITIVE ONLY', 'HasValidActorChain', 'HasValidMcpAudience', 'https://api.ping.demo:3036/mcp', 'Export first', 'exactly one added id', 'dropped an accepted audience', '403']) assert.ok(md.includes(w), w);
   assert.ok(md.indexOf('Export first') < md.indexOf('Add one clause') && md.indexOf('Add one clause') < md.indexOf('Export again') && md.indexOf('Export again') < md.indexOf('**Deploy**'));
 });
 
