@@ -15,7 +15,7 @@ const boot = async (state = {}) => {
   render(<App />);
   await screen.findByTestId("uc-UC1");
   const u = userEvent.setup();
-  await u.click(screen.getByTestId("mode-live"));
+  await u.selectOptions(screen.getByTestId("mode-select"), "real");
   await waitFor(() => expect(screen.getByTestId("mode").textContent).toMatch(/Mode: live \(real: sign-in, token exchange, Agent Gateway\)/));
   return u;
 };
@@ -26,7 +26,7 @@ describe("the Sign in modal (pi.flow only)", () => {
   test("Real shows Sign in; the modal is the standard dialog with the username filled in and read-only and a password field; it posts the password to the lab server only", async () => {
     const u = await boot();
     const href = window.location.href;
-    await u.click(screen.getByTestId("signin-open"));
+    await u.click(screen.getByTestId("sign-in"));
     const dlg = await screen.findByTestId("signin-dialog");
     expect(dlg.getAttribute("role")).toBe("dialog");
     expect(within(dlg).getByTestId("fd-titlebar").textContent).toMatch(/Sign in/);
@@ -39,7 +39,7 @@ describe("the Sign in modal (pi.flow only)", () => {
     await u.type(pw, PASSWORD);
     await u.click(within(dlg).getByTestId("signin-submit"));
     await waitFor(() => expect(screen.queryByTestId("signin-dialog")).toBeNull());
-    expect(screen.getByTestId("signed-in-user").textContent).toMatch(/Signed in: lab-demo-user/);
+    expect(screen.getByTestId("who").textContent).toMatch(/lab-demo-user/);
     const posts = api.calls.filter((c) => c.path === "/api/signin" && c.method === "POST");
     expect(posts).toHaveLength(1); expect(posts[0].body).toEqual({ password: PASSWORD });
     expect(api.calls.every((c) => c.url.startsWith("/api/")), "every call goes to this lab's own server: no redirect, no other origin").toBe(true);
@@ -49,7 +49,7 @@ describe("the Sign in modal (pi.flow only)", () => {
 
   test("a wrong password shows PingOne's refusal in the dialog and clears the field; the password is never shown back", async () => {
     const u = await boot();
-    await u.click(screen.getByTestId("signin-open"));
+    await u.click(screen.getByTestId("sign-in"));
     const pw = await screen.findByTestId("signin-password");
     await u.type(pw, "wrong-one-123");
     await u.click(screen.getByTestId("signin-submit"));
@@ -68,8 +68,8 @@ describe("the Sign in modal (pi.flow only)", () => {
     await u.click(screen.getByTestId("signin-submit"));
     await waitFor(() => expect(screen.getByTestId("outcome").textContent).toBe("REAL_PERMIT"));
     expect(api.calls.filter((c) => c.path === "/api/run/UC1")).toHaveLength(2);
-    await u.click(screen.getByTestId("signout"));
-    await screen.findByTestId("signin-open");
+    await u.click(screen.getByTestId("sign-out"));
+    await screen.findByTestId("sign-in");
   });
 });
 

@@ -42,11 +42,10 @@ describe("header, banner and side nav", () => {
   test("header: app name, Mock | Live toggle, mode chip, workspace id, theme picker, Reset, Presenter", async () => {
     await boot();
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Customer Agent LAB");
-    expect(screen.getByTestId("mode-mock").getAttribute("aria-pressed")).toBe("true");
-    expect(screen.getByTestId("mode-live").getAttribute("aria-pressed")).toBe("false");
+    expect(screen.getByTestId("mode-select").value).toBe("mock");
     expect(screen.getByTestId("mode").textContent).toMatch(/Mode: mock/);
     expect(screen.getByTestId("workspace").textContent).toMatch(/^Workspace: w-[0-9a-f]{16}$/);
-    expect(screen.getByTestId("theme").value).toBe("auto");
+    expect(screen.getByTestId("theme-select").value).toBe("auto");
     expect(screen.getByTestId("reset")).toBeTruthy();
     expect(screen.getByTestId("presenter").textContent).toBe("Presenter (P)");
   });
@@ -218,7 +217,7 @@ describe("run view", () => {
     await u.click(screen.getByTestId("uc-UC-LEARN2"));
     expect(screen.getByTestId("run-panel").textContent).toContain("AI-DEMO2 page (label only): /pingone-mcp");
     await runIt(u);
-    expect(document.querySelectorAll("a[href]")).toHaveLength(0);
+    expect(document.querySelectorAll(".agno a[href], .content a[href]")).toHaveLength(0); // the page itself renders no links (the header's Shelf/Help links are not page content)
   });
 
   test("results are kept per use case, vertical and persona", async () => {
@@ -292,7 +291,7 @@ describe("extra pages (opens)", () => {
     await runIt(u);
     await u.selectOptions(screen.getByTestId("nav-more"), "page-learning-link");
     expect(screen.getByTestId("extra-linkout").textContent).toMatch(/pingone-mcp-inspector/);
-    expect(document.querySelectorAll("a[href]")).toHaveLength(0);
+    expect(document.querySelectorAll(".agno a[href], .content a[href]")).toHaveLength(0); // the page itself renders no links (the header's Shelf/Help links are not page content)
   });
 });
 
@@ -303,30 +302,23 @@ describe("mode toggle", () => {
     vi.stubGlobal("fetch", api);
     render(<App />);
     await screen.findByTestId("uc-UC1");
-    await waitFor(() => expect(screen.getByTestId("mode-live").disabled).toBe(true));
+    await waitFor(() => expect(screen.getByTestId("mode-select").querySelector('option[value="real"]').disabled).toBe(true));
   };
   const modePosts = () => api.calls.filter((c) => c.path === "/api/mode" && c.method === "POST");
 
   test("hosted: Real is disabled with the note beside it; a click or Enter makes no /api/mode call and shows no error", async () => {
     await bootHosted();
     const u = userEvent.setup();
-    const real = screen.getByTestId("mode-live");
-    expect(real.hasAttribute("disabled")).toBe(true);
-    expect(real.getAttribute("aria-disabled")).toBe("true");
+    const real = screen.getByTestId("mode-select").querySelector('option[value="real"]');
+    expect(real.disabled).toBe(true);
     const note = screen.getByTestId("real-hosted-note");
     expect(note.textContent).toBe(NOTE);
-    expect(real.getAttribute("aria-describedby")).toBe(note.id);
-    await u.click(real);
-    fireEvent.click(real);
-    real.focus();
-    expect(document.activeElement).not.toBe(real); // a disabled button cannot take focus, so the keyboard cannot reach it
-    await u.keyboard("{Enter}");
-    fireEvent.keyDown(real, { key: "Enter" });
-    await u.tab(); await u.keyboard("{Enter}");
+    await u.click(screen.getByTestId("mode-select"));
+    fireEvent.change(screen.getByTestId("mode-select"), { target: { value: "real" } }); // a disabled option sends nothing
     expect(modePosts()).toHaveLength(0);
     expect(screen.queryByTestId("mode-msg")).toBeNull();
     expect(screen.queryByRole("dialog")).toBeNull();
-    expect(screen.getByTestId("mode-mock").getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByTestId("mode-select").value).toBe("mock");
     expect(screen.getByTestId("mode").textContent).toMatch(/Mode: mock/);
   });
 
@@ -347,11 +339,10 @@ describe("mode toggle", () => {
   test("local, Real configured: Real is enabled, no note, asks the server with POST /api/mode source real", async () => {
     await boot({ live: "allowed" });
     const u = userEvent.setup();
-    const real = screen.getByTestId("mode-live");
+    const real = screen.getByTestId("mode-select").querySelector('option[value="real"]');
     expect(real.disabled).toBe(false);
-    expect(real.hasAttribute("aria-disabled")).toBe(false);
     expect(screen.queryByTestId("real-hosted-note")).toBeNull();
-    await u.click(real);
+    await u.selectOptions(screen.getByTestId("mode-select"), "real");
     await screen.findByTestId("mode-msg");
     expect(modePosts().map((c) => c.body)).toEqual([{ source: "real" }]);
   });
@@ -359,21 +350,20 @@ describe("mode toggle", () => {
   test("Real not configured: the Real button is disabled, its tooltip is the server's how-to (what to fill in), a click asks nothing and the page stays in Mock", async () => {
     await boot();
     const u = userEvent.setup();
-    const real = screen.getByTestId("mode-live");
+    const real = screen.getByTestId("mode-select").querySelector('option[value="real"]');
     await waitFor(() => expect(real.disabled).toBe(true));
-    expect(real.getAttribute("aria-disabled")).toBe("true");
-    expect(real.getAttribute("title")).toMatch(/^Real is not configured: fill PINGONE_ENVIRONMENT_ID, PINGONE_CLIENT_ID, PINGONE_CLIENT_SECRET in this app's \.env/);
-    await u.click(real); fireEvent.click(real);
+    expect(screen.getByTestId("mode-select").querySelector('option[value="real"]').getAttribute("title")).toMatch(/^Real is not configured: fill PINGONE_ENVIRONMENT_ID, PINGONE_CLIENT_ID, PINGONE_CLIENT_SECRET in this app's \.env/);
+    await u.selectOptions(screen.getByTestId("mode-select"), "mock");
     expect(modePosts()).toHaveLength(0);
     expect(screen.queryByTestId("mode-msg")).toBeNull();
-    expect(screen.getByTestId("mode-mock").getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByTestId("mode-select").value).toBe("mock");
     expect(screen.getByTestId("banner").getAttribute("data-state")).toBe("mock");
   });
 
   test("when the guards hold, Live is selected, the banner and chip say live, and a run shows real hops, a masked token and the steps it did not run", async () => {
     await boot({ live: "allowed" });
     const u = userEvent.setup();
-    await u.click(screen.getByTestId("mode-live"));
+    await u.selectOptions(screen.getByTestId("mode-select"), "real");
     await waitFor(() => expect(screen.getByTestId("mode").textContent).toMatch(/Mode: live/));
     expect(screen.getByTestId("mode").textContent).toMatch(/identity provider only/);
     expect(screen.getByTestId("banner").textContent).toMatch(/^LIVE mode/);
@@ -396,7 +386,7 @@ describe("mode toggle", () => {
     expect(screen.getByTestId("run-announce").textContent).toBe("UC1 finished: LIVE_OK, live, identity provider only.");
     await u.click(screen.getByTestId("nav-runs"));
     expect(screen.getByTestId("history-row").textContent).toMatch(/n\/a \(live\).*LIVE_OK.*live, identity provider only/);
-    await u.click(screen.getByTestId("mode-mock"));
+    await u.selectOptions(screen.getByTestId("mode-select"), "mock");
     await waitFor(() => expect(screen.getByTestId("mode").textContent).toMatch(/Mode: mock/));
   });
 
@@ -407,7 +397,7 @@ describe("mode toggle", () => {
     await runIt(u);
     expect(screen.getByTestId("outcome").textContent).toBe("PERMIT");
     const tabsAfterMock = within(screen.getByTestId("nav")).getAllByRole("tab").length;
-    await u.click(screen.getByTestId("mode-live"));
+    await u.selectOptions(screen.getByTestId("mode-select"), "real");
     await waitFor(() => expect(screen.getByTestId("mode").textContent).toMatch(/Mode: live/));
     expect(screen.queryByTestId("result")).toBeNull();
     await runIt(u);
@@ -422,7 +412,7 @@ describe("mode toggle", () => {
   test("a live run the lab cannot make says why in the server's words (not set up: 503)", async () => {
     await boot({ live: "allowed", liveConfigured: false });
     const u = userEvent.setup();
-    await u.click(screen.getByTestId("mode-live"));
+    await u.selectOptions(screen.getByTestId("mode-select"), "real");
     await waitFor(() => expect(screen.getByTestId("mode").textContent).toMatch(/Mode: live/));
     await u.click(screen.getByTestId("uc-UC1"));
     await runIt(u);
@@ -436,14 +426,14 @@ describe("theme, presenter, reset", () => {
   test("the theme picker only sets data-theme on the root, and remembers the choice", async () => {
     await boot();
     const u = userEvent.setup();
-    await u.selectOptions(screen.getByTestId("theme"), "dark");
+    await u.selectOptions(screen.getByTestId("theme-select"), "dark");
     expect(document.documentElement.getAttribute("data-theme")).toBe("dark");
     expect(window.localStorage.getItem("cal.theme")).toBe("dark");
-    await u.selectOptions(screen.getByTestId("theme"), "light");
+    await u.selectOptions(screen.getByTestId("theme-select"), "light");
     expect(document.documentElement.getAttribute("data-theme")).toBe("light");
-    await u.selectOptions(screen.getByTestId("theme"), "auto");
+    await u.selectOptions(screen.getByTestId("theme-select"), "auto");
     expect(document.documentElement.hasAttribute("data-theme")).toBe(false);
-    expect(screen.getByTestId("theme").value).toBe("auto");
+    expect(screen.getByTestId("theme-select").value).toBe("auto");
   });
 
   test("a saved theme is applied on load", async () => {
@@ -634,8 +624,7 @@ describe("fix pass 2026-11-01", () => {
     expect(screen.getByTestId("catalog-failed")).toBeTruthy();
     expect(screen.queryByText(/Loading the use cases/)).toBeNull();
     expect(screen.getByTestId("banner").textContent).toBe(BANNER_UNKNOWN);
-    expect(screen.getByTestId("mode-mock").getAttribute("aria-pressed")).toBe("false");
-    expect(screen.getByTestId("mode-live").getAttribute("aria-pressed")).toBe("false");
+    expect(screen.getByTestId("mode-select").value).toBe("mock");
   });
 
   test("a dead server on Run says no answer, never 'HTTP 0' or 'Refused'", async () => {
@@ -652,11 +641,11 @@ describe("fix pass 2026-11-01", () => {
   test("Reset asks the server for the mode again: a Live-selected page goes back to Mock (W15)", async () => {
     await boot({ live: "allowed" });
     const u = userEvent.setup();
-    await u.click(screen.getByTestId("mode-live"));
+    await u.selectOptions(screen.getByTestId("mode-select"), "real");
     await waitFor(() => expect(screen.getByTestId("mode").textContent).toMatch(/Mode: live/));
     await u.click(screen.getByTestId("reset"));
     await waitFor(() => expect(screen.getByTestId("mode").textContent).toMatch(/Mode: mock/));
-    expect(screen.getByTestId("mode-mock").getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByTestId("mode-select").value).toBe("mock");
     expect(screen.getByTestId("banner").getAttribute("data-state")).toBe("mock");
   });
 

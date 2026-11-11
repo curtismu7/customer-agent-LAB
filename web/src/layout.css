@@ -5,7 +5,7 @@
    sidebar | agent | evidence sit side by side from a ~1090px viewport up (1100, 1280, 1440, 1600 all fit) and stack below that; one column on phones. */
 
 /* ===== shell bar (UI patterns 1): dark in both themes, Ping Red gradient rule, pill nav ===== */
-.shell-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin: 0 -16px; padding: 10px 16px; background: var(--box-dark); color: var(--on-box); border-bottom: 3px solid transparent; border-image: var(--accent-gradient) 1; }
+.shell-bar { position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin: 0 -16px; padding: 10px 16px; background: var(--box-dark); color: var(--on-box); border-bottom: 3px solid transparent; border-image: var(--accent-gradient) 1; }
 .shell-brand { display: inline-flex; align-items: center; gap: 10px; min-width: 0; }
 .shell-logo { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 4px; background: var(--accent-gradient); color: var(--on-accent); font-weight: 800; font-size: 13px; }
 .shell-name { margin: 0; font-size: 16px; color: var(--on-box); }

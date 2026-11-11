@@ -94,7 +94,7 @@ body {
   background: var(--bg-lab);
   color: var(--text-body);
   font-family: var(--font-primary);
-  font-size: 14px;
+  font-size: var(--fs, 14px);
   line-height: 1.5;
   padding-left: max(16px, env(safe-area-inset-left, 0px));
   padding-right: max(16px, env(safe-area-inset-right, 0px));

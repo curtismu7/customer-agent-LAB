@@ -78,7 +78,7 @@ describe("Agno layout: setup sidebar, agent column, evidence column", () => {
     await boot();
     const bar = document.querySelector(".shell-bar");
     expect(within(bar).getByRole("heading", { level: 1 }).textContent).toBe("Customer Agent LAB");
-    for (const id of ["nav", "mode-mock", "mode-live", "qc-open", "reset", "presenter", "theme"]) expect(within(bar).getByTestId(id)).toBeTruthy();
+    for (const id of ["nav", "top-menu", "qc-open", "reset", "presenter", "theme-select"]) expect(within(bar).getByTestId(id)).toBeTruthy();
     expect(bar.nextElementSibling).toBe(screen.getByTestId("banner"));
     expect(screen.getByTestId("banner").getAttribute("role")).toBe("note");
   });
@@ -257,7 +257,7 @@ describe("hand-off and go deeper", () => {
     expect(within(card).getByTestId("handoff-open-shelf").textContent).toMatch(/Start a2a-lab from the Shelf/);
     expect(within(card).queryByTestId("handoff-open")).toBeNull();
     expect(screen.getByTestId("handoff-summary").textContent).toMatch(/Hands off · 2/);
-    expect(document.querySelectorAll("a[href]")).toHaveLength(0);
+    expect(document.querySelectorAll(".agno a[href], .content a[href]")).toHaveLength(0); // the page itself renders no links (the header's Shelf/Help links are not page content)
     await u.click(within(card).getByTestId("handoff-preview"));
     await waitFor(() => expect(posts("UC2.6")).toHaveLength(1));
     await screen.findByTestId("turn-answer");
@@ -357,7 +357,7 @@ describe("hand-off and go deeper", () => {
     window.history.replaceState(null, "", "/");
     render(<HandoffCard uc={uc} vertical="banking" userId="alex.morgan" />);
     expect(screen.getByTestId("handoff-open-also-shelf").textContent).toMatch(/Start agent-registry-demo from the Shelf/);
-    expect(document.querySelectorAll("a[href]")).toHaveLength(0);
+    expect(document.querySelectorAll(".agno a[href], .content a[href]")).toHaveLength(0); // the page itself renders no links (the header's Shelf/Help links are not page content)
   });
 
   test("the second app is named everywhere the first one is: reasoning, route tag, and the hand-off summary lists rows sharing either app", () => {

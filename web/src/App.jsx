@@ -19,6 +19,8 @@ import { workspaceId } from "./workspace";
 import { loadResume, saveResume, takeReturn } from "./resume";
 import ShelfLink from "./components/ShelfLink.jsx";
 import SignInDialog from "./components/SignInDialog";
+import TopMenu from "./top-menu/TopMenu.jsx";
+import "./top-menu/top-menu.css";
 import "./layout.css";
 
 // The nav holds the agent's own areas only. An extra page joins the "More" menu beside it when a run of a use case that opens it succeeds, and
@@ -351,30 +353,22 @@ export default function App() {
           </nav>
         )}
         <div className="shell-right">
-          <div className="seg" role="group" aria-label="Mode">
-            <button type="button" aria-pressed={mode === "mock"} onClick={() => chooseMode("mock")} data-testid="mode-mock" data-mode="mock">Mock</button>
-            {hostedOnly
-              ? <button type="button" aria-pressed="false" disabled aria-disabled="true" aria-describedby="real-hosted-note" data-testid="mode-live" data-mode="live">Real</button>
-              : <button type="button" aria-pressed={mode === "live"} onClick={() => chooseMode("live")} disabled={Boolean(liveReason) && mode !== "live"} aria-disabled={Boolean(liveReason) && mode !== "live" ? "true" : undefined} title={liveReason || realTitle} data-testid="mode-live" data-mode="live">Real</button>}
-            {hostedOnly && <span className="seg__note" id="real-hosted-note" data-testid="real-hosted-note">{HOSTED_REAL_NOTE}</span>}
-            {/* rule 19 (2026-11-03): the conformance gate greps for a mode-real testid in the UI; this hidden marker aliases the Real button. */}
-            <span hidden aria-hidden="true" data-testid="mode-real" />
-          </div>
-          {mode === "live" && realLevel === "full" && (signedIn
-            ? <>
-                <span className="chip" data-testid="signed-in-user">Signed in: {signin?.user?.name || "demo user"}</span>
-                <button type="button" onClick={signOut} data-testid="signout">Sign out</button>
-              </>
-            : <button type="button" onClick={() => setSignOpen(true)} data-testid="signin-open">Sign in</button>)}
-          <button type="button" aria-expanded={qcOpen} aria-controls={qcOpen && current === "agent" && !page ? "quick-config" : undefined} onClick={() => { setQcOpen((v) => !v); if (page || current !== "agent") select("agent"); }} data-testid="qc-open">Quick Config</button>
-          <button type="button" onClick={reset} data-testid="reset">Reset</button>
-          <button type="button" aria-pressed={presenter} onClick={() => setPresenter((v) => !v)} data-testid="presenter">{presenter ? "Exit presenter (Esc)" : "Presenter (P)"}</button>
-          <label className="shell-theme"><span className="sr-only">Theme</span>
-            <select value={theme} onChange={(e) => setTheme(e.target.value)} data-testid="theme">
-              {THEMES.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
-            </select>
-          </label>
-          <ShelfLink url={info?.shelfUrl} headers={() => ({ "x-workspace": workspaceId() })} />
+          <TopMenu
+            mode={{ value: mode === "live" ? "real" : "mock", onChange: (m) => chooseMode(m === "real" ? "live" : "mock"), realAvailable: hostedOnly ? false : Boolean(liveReason) && mode !== "live" ? false : null, realHint: liveReason || (hostedOnly ? HOSTED_REAL_NOTE : realTitle) }}
+            theme={{ value: theme, onChange: setTheme }}
+            present={{ active: presenter, onToggle: () => setPresenter((v) => !v), label: "Presenter (P)" }}
+            help={{ href: "https://github.com/curtismu7/customer-agent-LAB#readme" }}
+            version={info?.version || null}
+            onReset={reset}
+            showSignIn={mode === "live" && realLevel === "full"}
+            signedIn={{ subject: signedIn ? (signin?.user?.name || "demo user") : null, onSignIn: () => setSignOpen(true), onSignOut: signOut }}
+            extra={<button type="button" aria-expanded={qcOpen} aria-controls={qcOpen && current === "agent" && !page ? "quick-config" : undefined} onClick={() => { setQcOpen((v) => !v); if (page || current !== "agent") select("agent"); }} data-testid="qc-open">Quick Config</button>}
+          >
+            <ShelfLink url={info?.shelfUrl} headers={() => ({ "x-workspace": workspaceId() })} />
+          </TopMenu>
+          {hostedOnly && <span className="seg__note" id="real-hosted-note" data-testid="real-hosted-note">{HOSTED_REAL_NOTE}</span>}
+          {/* rule 19 (2026-11-03): the conformance gate greps for a mode-real testid in the UI; this hidden marker aliases the Real button. */}
+          <span hidden aria-hidden="true" data-testid="mode-real" />
         </div>
       </header>
       <p className="banner" role="note" data-state={hosted ? "hosted" : mode === "live" ? "live" : "mock"} data-testid="banner">{banner}</p>
