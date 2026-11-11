@@ -466,7 +466,7 @@ try {
   // ---- Full Real against the fakes: sign in through the modal (pi.flow), run a Real use case, see REAL hops and the reply, a DENY, then Mock ----
   for (const [width, height, name, scheme] of [[1280, 900, 'desktop', 'light'], [375, 800, 'phone', 'dark']]) {
     const tag = `full-${name}-${scheme}`;
-    fullGw.seen.length = 0; fullGw.state.behaviour = 'ok';
+    fullGw.seen.length = 0; fullP1.seen.length = 0; fullGw.state.behaviour = 'ok';
     const ctx = await browser.newContext({ viewport: { width, height }, colorScheme: scheme });
     const page = await ctx.newPage();
     const external = []; const errors = []; const navs = [];
@@ -495,8 +495,14 @@ try {
     check(authz.length >= 1 && authz.every((x) => new URL(x.url, 'http://x').searchParams.get('response_mode') === 'pi.flow' && new URL(x.url, 'http://x').searchParams.get('code_challenge_method') === 'S256'), `${tag}: the sign-in was pi.flow with PKCE S256`);
     check(navs.length === 1 && navs[0].startsWith(fullBase), `${tag}: the page never navigated (no redirect login): ${navs.join(' | ')}`);
     const srcs = await t('hop-source').evaluateAll((els) => els.map((e) => e.getAttribute('data-source')));
-    check(srcs.length === 8 && srcs.every((x) => x === 'real'), `${tag}: Where each hop ran lists eight hops, every one REAL (${srcs.join(',')})`);
-    check((await t('hops').getByTestId('real-tag').count()) === 8 && (await t('hops').getByTestId('mock-tag').count()) === 0, `${tag}: the hop list tags all eight REAL, none MOCK`);
+    check(srcs.length === 9 && srcs.every((x) => x === 'real'), `${tag}: Where each hop ran lists nine hops (two token exchanges), every one REAL (${srcs.join(',')})`);
+    check((await t('hops').getByTestId('real-tag').count()) === 9 && (await t('hops').getByTestId('mock-tag').count()) === 0, `${tag}: the hop list tags all nine REAL, none MOCK`);
+    const titles = await t('hop-source').evaluateAll((els) => els.map((e) => e.textContent));
+    check(titles[2].includes('Exchange 1: act = agent') && titles[3].includes('Exchange 2: for the gateway'), `${tag}: the two exchanges are named in Where each hop ran (${titles.slice(2, 4).join(' | ')})`);
+    const tx = fullP1.seen.filter((x) => x.method === 'POST' && x.url.endsWith('/as/token')).map((x) => Object.fromEntries(new URLSearchParams(x.body))).filter((f) => f.grant_type === 'urn:ietf:params:oauth:grant-type:token-exchange');
+    check(tx.length === 2 && tx[0].actor_token && !tx[1].actor_token && tx.every((f) => f.audience === undefined) && tx[0].scope === 'agent:invoke' && tx[1].scope === 'fake:mcp:invoke', `${tag}: PingOne saw exchange 1 (user + agent actor, agent:invoke) and exchange 2 (no actor, no audience, the gateway scope)`);
+    check(fullGw.seen.every((c) => fullP1.issued.delegated.has(c.headers.authorization.slice(7))), `${tag}: every gateway call carried the exchange-2 token, which has act`);
+    check((await t('token').count()) === 4 && (await t('token-act').count()) === 2 && (await t('token-no-act').count()) === 0, `${tag}: the Tokens tab lists the user, agent, exchange-1 and delegated tokens; both exchange tokens show their act`);
     check((await t('turn-answer-text').last().innerText()).includes('balance 1200.5') && (await t('turn-who').last().textContent()) === 'Agent', `${tag}: the reply is the real tool result, in the Agent's voice`);
     check(fullGw.seen.map((c) => c.rpc.method).join(',') === 'initialize,notifications/initialized,tools/list,tools/call,tools/call', `${tag}: the gateway saw initialize, tools/list and tools/call`);
     check(fullGw.seen.every((c) => TRUSTED_HEADERS.every((h) => c.headers[h] === undefined) && c.headers['x-token-validation'] === 'jwks'), `${tag}: no trusted-caller header reached the gateway`);
@@ -505,6 +511,13 @@ try {
     check(![DEMO_PASSWORD, USER_CLIENT_SECRET, AGENT_CLIENT_SECRET, CLIENT_SECRET].some((x) => body.includes(x)) && !(await page.content()).includes(DEMO_PASSWORD), `${tag}: the page holds no password and no client secret`);
     check((await overflow()) <= 0, `${tag}: the Real result does not scroll sideways (${await overflow()} px)`);
     await page.screenshot({ path: path.join(shots, `${tag}.png`), fullPage: true });
+    // The gateway scope's resource stops passing act through: the lab stops BEFORE the gateway and says so.
+    const gwBefore = fullGw.seen.length; fullP1.state.resources.gateway.act = 'absent';
+    await t('run').click();
+    await page.waitForFunction(() => document.querySelector('[data-testid="outcome"]')?.textContent === 'REAL_NO_ACT', null, { timeout: 20000 });
+    check(fullGw.seen.length === gwBefore, `${tag}: a delegated token with no act never reached the gateway`);
+    check((await t('turn-answer-text').last().innerText()).includes("the delegated token carries no act claim: check the agent:invoke resource's act attribute") && (await t('token-no-act').count()) === 1, `${tag}: the reply says the delegated token carries no act claim and the token is flagged`);
+    fullP1.state.resources.gateway.act = 'passthrough';
     fullGw.state.behaviour = 'deny';
     await t('run').click();
     await page.waitForFunction(() => document.querySelector('[data-testid="outcome"]')?.textContent === 'REAL_DENY', null, { timeout: 20000 });

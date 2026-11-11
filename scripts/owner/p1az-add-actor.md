@@ -4,6 +4,12 @@ The Agent Gateway asks PingOne Authorize for a decision on every MCP call. The p
 condition `HasValidActorChain` (`mcp-invalid-actor`). The lab's new agent app ("Customer Agent LAB Agent", created by
 `scripts/owner/pingone-real-setup.mjs`) is not listed yet. This checklist adds it.
 
+**What the entry is.** The lab does two token exchanges (the README's "Owner setup for full Real" explains why). Exchange 1 stamps `act` from the agent
+app's own token, so the delegated token the gateway receives carries `act.sub` = the agent app's client id. That id, `CAL_AGENT_CLIENT_ID`, is the one
+clause this checklist adds to `HasValidActorChain`. Nothing about that changes with the two exchanges; but a delegated token with no `act` at all is
+denied whatever is on the list, so run `node scripts/owner/pingone-real-setup.mjs --apply` again first (it reports the `act` attribute of the
+resource that owns `agent:invoke`).
+
 **ADDITIVE ONLY.** The list never shrinks: other demos share this policy, and every id on it is a live actor somewhere. You add exactly one id and
 change nothing else.
 
@@ -29,8 +35,8 @@ An admin worker therefore cannot read or edit the condition, so no script is shi
    as `before.json` outside any git repo. This is your rollback and your diff base.
 2. Open Trust Framework, then Conditions, then **HasValidActorChain**.
 3. Read the list: it is an OR of clauses `ActClientId Equals <client id>`. If the lab's id is already there, stop: nothing to do.
-4. **Add one clause** to the existing OR: `ActClientId` `Equals` `<the full CAL_AGENT_CLIENT_ID>`. Do not edit, reorder or remove any other
-   clause, and do not touch the "absent actor" exemption.
+4. **Add one clause** to the existing OR: `ActClientId` `Equals` `<the full CAL_AGENT_CLIENT_ID>` (the `act.sub` of the delegated token). Do not
+   edit, reorder or remove any other clause, and do not touch the "absent actor" exemption.
 5. Save the condition (this edit only; never a snapshot import). Saving changes the policy draft; the decision endpoint keeps serving the
    deployed version until step 8, unless the endpoint is set to follow the latest version (check its settings first; UNVERIFIED for this
    environment). If it follows the latest, do steps 7 and 8 right away.

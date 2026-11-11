@@ -5,7 +5,7 @@ import { cleanup, render, screen, waitFor, within } from "@testing-library/react
 import userEvent from "@testing-library/user-event";
 import App from "./App";
 import { forgetWorkspace } from "./workspace";
-import { FULL_INFO, INFO, denyBody, mockApi, mockInRealBody, realBody } from "./testFixtures";
+import { FULL_INFO, INFO, denyBody, mockApi, mockInRealBody, noActBody, realBody } from "./testFixtures";
 
 const PASSWORD = ["typed", "-by-", "the-", "person-", "7"].join("");
 let api;
@@ -79,13 +79,23 @@ describe("REAL / MOCK labels and the replies", () => {
     await u.click(screen.getByTestId("uc-UC1"));
     await runIt(u);
     const hops = screen.getByTestId("hops");
-    expect(within(hops).getAllByTestId("real-tag")).toHaveLength(8);
+    expect(within(hops).getAllByTestId("real-tag")).toHaveLength(9);
     expect(within(hops).queryByTestId("mock-tag")).toBeNull();
     const src = screen.getByTestId("hop-sources");
-    expect(within(src).getAllByTestId("hop-source").map((x) => x.getAttribute("data-source"))).toEqual(Array(8).fill("real"));
-    expect(within(src).getAllByTestId("hop-source").map((x) => x.textContent)).toEqual(["Sign-in", "Agent token", "Token exchange", "Agent Gateway", "Authorize decision", "MCP tool", "API", "Agent reply"].map((t, i) => `${i + 1} ${t} REAL`));
+    expect(within(src).getAllByTestId("hop-source").map((x) => x.getAttribute("data-source"))).toEqual(Array(9).fill("real"));
+    expect(within(src).getAllByTestId("hop-source").map((x) => x.textContent)).toEqual(["Sign-in", "Agent token", "Exchange 1: act = agent", "Exchange 2: for the gateway", "Agent Gateway", "Authorize decision", "MCP tool", "API", "Agent reply"].map((t, i) => `${i + 1} ${t} REAL`));
     expect(screen.getByTestId("real-note-tag").textContent).toMatch(/Real: sign-in, token exchange, Agent Gateway/);
-    expect(screen.getAllByTestId("token-raw")[0].textContent).toBe(realBody().run.tokens[0].raw);
+    // The Tokens tab: the user, the agent (actor), exchange 1 and the delegated token, raw, in that order; the two exchange tokens show their act.
+    expect(screen.getAllByTestId("token-raw").map((x) => x.textContent)).toEqual(realBody().run.tokens.map((t) => t.raw));
+    const tokens = screen.getAllByTestId("token");
+    expect(tokens).toHaveLength(4);
+    tokens.forEach((t, k) => expect(within(t).getByRole("heading").textContent.startsWith(realBody().run.tokens[k].label)).toBe(true));
+    expect(screen.getAllByTestId("token-act").map((x) => x.textContent)).toEqual(["act.sub = agent-1", "act.sub = agent-1"]);
+    expect(within(tokens[2]).getByTestId("token-act")).toBeTruthy(); expect(within(tokens[3]).getByTestId("token-act")).toBeTruthy();
+    expect(within(tokens[0]).queryByTestId("token-act")).toBeNull(); expect(within(tokens[1]).queryByTestId("token-act")).toBeNull();
+    expect(screen.queryByTestId("token-no-act")).toBeNull();
+    expect(screen.getAllByTestId("token-act").map((x) => x.getAttribute("data-state"))).toEqual(["ok", "ok"]);
+    expect(within(tokens[3]).getAllByTestId("token-claims")[0].textContent).toMatch(/"act": \{\s*"sub": "agent-1"/);
     const turn = screen.getAllByTestId("turn").pop();
     expect(within(turn).getByTestId("turn-who").textContent).toBe("Agent");
     expect(within(turn).getByTestId("turn-answer-text").textContent).toMatch(/balance 1200\.5/);
@@ -101,11 +111,38 @@ describe("REAL / MOCK labels and the replies", () => {
     expect(within(turn).getByTestId("turn-answer-text").textContent).toMatch(/^Authorize denied this request \(HTTP 403/);
     expect(within(turn).getByTestId("turn-outcome").textContent).toBe("REAL_DENY");
     const srcs = within(screen.getByTestId("hop-sources")).getAllByTestId("hop-source").map((x) => x.getAttribute("data-source"));
-    expect(srcs).toEqual(["real", "real", "real", "real", "real", "not-run", "not-run", "not-run"]);
+    expect(srcs).toEqual(["real", "real", "real", "real", "real", "real", "not-run", "not-run", "not-run"]);
+  });
+
+  test("a delegated token with no act claim stops before the gateway: the reply says so, the exchange-2 token is flagged NO act claim, the gateway hops say NOT RUN", async () => {
+    const u = await boot({ signedIn: true, realAnswer: (id) => noActBody(id) });
+    await u.click(screen.getByTestId("uc-UC1"));
+    await runIt(u);
+    const turn = screen.getAllByTestId("turn").pop();
+    expect(within(turn).getByTestId("turn-who").textContent).toBe("PingOne");
+    expect(within(turn).getByTestId("turn-answer-text").textContent).toMatch(/the delegated token carries no act claim: check the agent:invoke resource's act attribute/);
+    expect(within(turn).getByTestId("turn-outcome").textContent).toBe("REAL_NO_ACT");
+    const srcs = within(screen.getByTestId("hop-sources")).getAllByTestId("hop-source");
+    expect(srcs.map((x) => x.getAttribute("data-source"))).toEqual(["real", "real", "real", "real", "not-run", "not-run", "not-run", "not-run", "not-run"]);
+    expect(srcs[3].textContent).toMatch(/Exchange 2: for the gateway/);
+    expect(screen.getAllByTestId("token-act")).toHaveLength(1); // exchange 1 has act
+    expect(within(screen.getAllByTestId("token")[3]).getByTestId("token-no-act").textContent).toBe("NO act claim");
+    expect(screen.getByTestId("token-no-act").getAttribute("data-state")).toBe("bad");
+  });
+
+  test("an act that names nobody (an empty object, a blank or non-text sub) is shown as NO act claim, the same rule as the server's", async () => {
+    for (const act of [{}, { sub: "" }, { sub: 5 }, [], "x"]) {
+      const u = await boot({ signedIn: true, realAnswer: (id) => { const b = noActBody(id); b.run.tokens[3] = { ...b.run.tokens[3], claims: { sub: "u-1", act } }; return b; } });
+      await u.click(screen.getByTestId("uc-UC1"));
+      await runIt(u);
+      expect(within(screen.getAllByTestId("token")[3]).getByTestId("token-no-act").textContent, JSON.stringify(act)).toBe("NO act claim");
+      expect(screen.getAllByTestId("token-act")).toHaveLength(1);
+      cleanup(); vi.unstubAllGlobals(); forgetWorkspace(); try { window.localStorage.clear(); window.sessionStorage.clear(); } catch { /* ignore */ }
+    }
   });
 
   test("a held call (428) is an approval card that says the hold is real and the approval simulated", async () => {
-    const u = await boot({ signedIn: true, realAnswer: (id) => realBody(id, { stopAt: 5, outcome: "REAL_HOLD", reply: { who: "Authorize", approval: { head: "Held for approval (REAL)", body: "The hold is real; in this lab the approval is simulated." } } }) });
+    const u = await boot({ signedIn: true, realAnswer: (id) => realBody(id, { stopAt: 6, outcome: "REAL_HOLD", reply: { who: "Authorize", approval: { head: "Held for approval (REAL)", body: "The hold is real; in this lab the approval is simulated." } } }) });
     await u.click(screen.getByTestId("uc-UC1"));
     await runIt(u);
     const card = screen.getByTestId("turn-approval");

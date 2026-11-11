@@ -69,8 +69,10 @@ test('the compose file tells the guards the publish is loopback-only, opts in to
 // settings and come from .env by ${VAR:-} substitution (empty when unset); every other name is a fixed value or a non-secret setting.
 export const COMPOSE_ENV = {
   substituted: ['SHELF_URL', 'CAL_LAB_MODE', 'CAL_BRAIN_URL', 'LAB_ALLOWED_HOSTS', 'CAL_ALLOW_LIVE', 'PINGONE_ENVIRONMENT_ID', 'PINGONE_REGION', 'PINGONE_CLIENT_ID', 'PINGONE_CLIENT_SECRET',
-    // Full Real (owner, 2026-11-10): exactly these eight names, which the owner's scripts write.
-    'CAL_USER_CLIENT_ID', 'CAL_USER_CLIENT_SECRET', 'CAL_AGENT_CLIENT_ID', 'CAL_AGENT_CLIENT_SECRET', 'CAL_DEMO_USERNAME', 'CAL_AGENT_GATEWAY_URL', 'CAL_GATEWAY_AUDIENCE', 'CAL_GATEWAY_SCOPE'],
+    // Full Real (owner, 2026-11-10): exactly these eight names, which the owner's scripts write ...
+    'CAL_USER_CLIENT_ID', 'CAL_USER_CLIENT_SECRET', 'CAL_AGENT_CLIENT_ID', 'CAL_AGENT_CLIENT_SECRET', 'CAL_DEMO_USERNAME', 'CAL_AGENT_GATEWAY_URL', 'CAL_GATEWAY_AUDIENCE', 'CAL_GATEWAY_SCOPE',
+    // ... and, optional (empty = agent:invoke), the scope of the agent token and token exchange 1 (the two-exchange pattern).
+    'CAL_AGENT_SCOPE'],
   fixed: ['PORT', 'CALAB_BIND', 'CAL_PUBLISH', 'ALLOW_MOCK_SIGNIN', 'CAL_DEPLOY_MODE', 'CAL_LIVE_FROM_ENV'],
 };
 export function environmentOf(text) {

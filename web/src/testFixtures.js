@@ -58,8 +58,14 @@ export const liveBody = (ucId = "UC1", over = {}) => ({
     traceId: "a".repeat(32), traceparent: `00-${"a".repeat(32)}-${"b".repeat(16)}-01`, narration: "Live, identity provider only: the discovery document and the token came from your PingOne environment.", ...over,
   },
 });
-// Full Real (owner, 2026-11-10): the eight hops, each REAL or NOT RUN, real tokens shown raw, and the reply the server wrote.
-const REAL_KINDS = [["sign-in", "Sign-in", "browser", "idp"], ["actor-token", "Agent token", "agent", "idp"], ["token-exchange", "Token exchange", "bff", "idp"], ["gateway-check", "Agent Gateway", "agent", "gateway"], ["authorize-decision", "Authorize decision", "gateway", "authorize"], ["tool-dispatched", "MCP tool", "gateway", "mcp"], ["api-call", "API", "mcp", "api"], ["agent-reply", "Agent reply", "agent", "page"]];
+// Full Real (owner, 2026-11-10): the nine hops (two token exchanges: act = agent, then for the gateway), each REAL or NOT RUN, real tokens shown raw, and
+// the reply the server wrote.
+const REAL_KINDS = [["sign-in", "Sign-in", "browser", "idp"], ["actor-token", "Agent token", "agent", "idp"], ["token-exchange", "Exchange 1: act = agent", "bff", "idp"], ["token-exchange", "Exchange 2: for the gateway", "bff", "idp"], ["gateway-check", "Agent Gateway", "agent", "gateway"], ["authorize-decision", "Authorize decision", "gateway", "authorize"], ["tool-dispatched", "MCP tool", "gateway", "mcp"], ["api-call", "API", "mcp", "api"], ["agent-reply", "Agent reply", "agent", "page"]];
+// JWT-shaped strings assembled at run time (no credential-shaped literal in the source; the signature segment is filler).
+const jwtOf = (claims) => ["eyJhbGciOiJSUzI1NiJ9", btoa(JSON.stringify(claims)).replace(/=+$/, ""), "c2ln"].join(".");
+export const REAL_USER_RAW = jwtOf({ sub: "u-1" });
+export const REAL_AGENT_RAW = jwtOf({ sub: "agent-1", scope: "agent:invoke" });
+export const REAL_EX1_RAW = jwtOf({ sub: "u-1", aud: "agent-aud", act: { sub: "agent-1" } });
 export const REAL_RAW = "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ1LTEiLCJhY3QiOnsic3ViIjoiYWdlbnQtMSJ9fQ.c2ln";
 export const realBody = (ucId = "UC1", { stopAt = null, outcome = "REAL_PERMIT", reply = { who: "Agent", text: "Here is what get_account_balance returned: balance 1200.5, currency USD." } } = {}) => ({
   ok: true, workspace: "w-test", seq: 1,
@@ -68,13 +74,25 @@ export const realBody = (ucId = "UC1", { stopAt = null, outcome = "REAL_PERMIT",
     real: { level: "full", tool: "get_account_balance" }, labSimulated: false, computed: false, persona: null, outcome, matchesExpected: null, reply,
     hops: REAL_KINDS.map(([kind, label, from, to], i) => {
       const ran = stopAt === null || i <= stopAt;
-      return { ...hop(i + 1, kind, { from, to }), title: label, label: `${label} [${ran ? "REAL" : "NOT RUN"}]`, mock: false, live: false, source: ran ? "real" : "not-run", verdict: !ran ? "skip" : i === stopAt ? "deny" : "ok", ...(kind === "authorize-decision" && ran ? { decision: { outcome: stopAt === 4 ? "DENY" : "PERMIT", by: "the Agent Gateway (REAL)" } } : {}) };
+      return { ...hop(i + 1, kind, { from, to }), title: label, label: `${label} [${ran ? "REAL" : "NOT RUN"}]`, mock: false, live: false, source: ran ? "real" : "not-run", verdict: !ran ? "skip" : i === stopAt ? "deny" : "ok", ...(kind === "authorize-decision" && ran ? { decision: { outcome: stopAt === 5 ? "DENY" : "PERMIT", by: "the Agent Gateway (REAL)" } } : {}) };
     }),
-    tokens: [{ label: "delegated token (REAL, RFC 8693 exchange)", mock: false, live: false, real: true, notice: "REAL delegated token, shown raw for teaching.", raw: REAL_RAW, header: { alg: "RS256" }, claims: { sub: "u-1", act: { sub: "agent-1" } } }],
+    // The user, the agent (actor), exchange 1 and the delegated (exchange 2) token; the two exchange tokens carry act.
+    tokens: [
+      { label: "user access token (REAL, from the pi.flow sign-in)", mock: false, live: false, real: true, notice: "REAL user token.", raw: REAL_USER_RAW, header: { alg: "RS256" }, claims: { sub: "u-1" } },
+      { label: "agent token (REAL, client credentials)", mock: false, live: false, real: true, notice: "REAL agent token.", raw: REAL_AGENT_RAW, header: { alg: "RS256" }, claims: { sub: "agent-1", scope: "agent:invoke" } },
+      { label: "exchange 1 token (REAL, act = agent)", mock: false, live: false, real: true, expectAct: true, notice: "REAL exchange-1 token.", raw: REAL_EX1_RAW, header: { alg: "RS256" }, claims: { sub: "u-1", aud: "agent-aud", act: { sub: "agent-1" } } },
+      { label: "delegated token (REAL, exchange 2: for the gateway)", mock: false, live: false, real: true, expectAct: true, notice: "REAL delegated token, shown raw for teaching.", raw: REAL_RAW, header: { alg: "RS256" }, claims: { sub: "u-1", aud: "gw-aud", act: { sub: "agent-1" } } },
+    ],
     traceId: "a".repeat(32), traceparent: `00-${"a".repeat(32)}-${"b".repeat(16)}-01`, narration: reply.text || "",
   },
 });
-export const denyBody = (ucId = "UC1") => realBody(ucId, { stopAt: 4, outcome: "REAL_DENY", reply: { who: "Authorize", text: "Authorize denied this request (HTTP 403 from the Agent Gateway, decision DENY). Nothing was sent to the tool." } });
+export const denyBody = (ucId = "UC1") => realBody(ucId, { stopAt: 5, outcome: "REAL_DENY", reply: { who: "Authorize", text: "Authorize denied this request (HTTP 403 from the Agent Gateway, decision DENY). Nothing was sent to the tool." } });
+// The delegated token has no act claim: the run stopped at exchange 2 (REAL_NO_ACT) and the gateway, authorize, tool, API and reply hops did not run.
+export const noActBody = (ucId = "UC1") => {
+  const b = realBody(ucId, { stopAt: 3, outcome: "REAL_NO_ACT", reply: { who: "PingOne", text: "Stopped before the gateway, nothing was sent to it: the delegated token carries no act claim: check the agent:invoke resource's act attribute." } });
+  b.run.tokens[3] = { ...b.run.tokens[3], label: "delegated token (REAL, exchange 2: for the gateway, NO act claim)", claims: { sub: "u-1", aud: "gw-aud" } };
+  return b;
+};
 export const mockInRealBody = (ucId = "UC2") => runBody(ucId, { realGate: { real: false, reason: "agent-to-agent (A2A) multi-hop runs on the agent-service, which is scaled to 0 on SE" }, hops: runBody(ucId).run.hops.map((h) => ({ ...h, source: "mock", label: `${h.label} [MOCK]` })) });
 export const FULL_INFO = { real: { level: "full", label: "Real: sign-in (pi.flow), agent token, token exchange and the Agent Gateway", missing: [], redirectUri: "https://local.example/cb", origins: [] } };
 

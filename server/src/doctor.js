@@ -14,7 +14,7 @@ import { deployModeFrom, modeFrom } from './config.js';
 import { MANIFEST, TRACKS } from './manifest.js';
 import { KNOWN_STEPS, chainOf, runUseCase } from './flow.js';
 import { signMockJwt, verifyMockJwt } from './mockjwt.js';
-import { APP_ENV_FILE, fullWanted, liveSettingsFor, missingFull, settingsPath } from './settings.js';
+import { APP_ENV_FILE, DEFAULT_AGENT_SCOPE, fullWanted, liveSettingsFor, missingFull, settingsPath } from './settings.js';
 import { realConfig } from './real.js';
 import { liveConfig } from './live.js';
 import { DIAGRAM_NAMES, buildDiagram } from './diagramData.js';
@@ -110,7 +110,7 @@ export async function runChecks({ env = process.env } = {}) {
   if (env.CAL_ALLOW_LIVE === '0') add('live', 'pass', 'Real is switched off (CAL_ALLOW_LIVE=0): this lab reaches no network');
   else if (wanted && full.problem) add('live', 'info', `full Real is not configured yet: ${missingFull(settings).length ? `missing ${missingFull(settings).join(', ')}` : full.problem}. Mock only, this lab reaches no network (the old PINGONE_CLIENT_* path is ignored)`);
   else if (wanted && refused) add('live', 'info', `full Real is configured but refused: ${refused}`);
-  else if (wanted) { liveOn = true; add('live', 'pass', `full Real is on: sign-in (pi.flow), agent token and token exchange at ${new URL(full.base).origin}, MCP to ${new URL(full.gatewayUrl).origin}; the netguard allows those two hosts`); }
+  else if (wanted) { liveOn = true; add('live', 'pass', `full Real is on: sign-in (pi.flow), agent token and two token exchanges (agent scope: ${full.agentScope === DEFAULT_AGENT_SCOPE ? 'the default' : 'set by CAL_AGENT_SCOPE'}) at ${new URL(full.base).origin}, MCP to ${new URL(full.gatewayUrl).origin}; the netguard allows those two hosts`); }
   else if (cfg.problem) add('live', 'pass', `Real is not configured (full Real needs ${missingFull(settings).join(', ')}): Mock only, this lab reaches no network`);
   else if (refused) add('live', 'info', `Real (identity provider only) is configured but refused: ${refused}`);
   else { liveOn = true; add('live', 'pass', `Real, identity provider only (the old worker client, until the full-Real settings exist; still missing ${missingFull(settings).join(', ')}): two calls, only to ${new URL(cfg.base).origin}; the netguard allows that one host`); }
