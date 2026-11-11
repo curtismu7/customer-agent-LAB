@@ -35,7 +35,7 @@ An admin worker therefore cannot read or edit the condition, so no script is shi
    deployed version until step 8, unless the endpoint is set to follow the latest version (check its settings first; UNVERIFIED for this
    environment). If it follows the latest, do steps 7 and 8 right away.
 6. **Check HasValidMcpAudience** (read only): open Trust Framework, Conditions, **HasValidMcpAudience**. Its accepted audiences must include
-   `mcpgateway.ping.demo` (the audience the lab's tokens carry). If it is missing, STOP and tell the builder: adding an audience is a separate,
+   `https://api.ping.demo:3036/mcp` (the audience the lab's tokens carry). If it is missing, STOP and tell the builder: adding an audience is a separate,
    reviewed change, not part of this checklist.
 7. **Export again** as `after.json` and diff it against `before.json`:
    `diff <(node -e 'console.log(JSON.stringify(JSON.parse(require("fs").readFileSync(process.argv[1])),null,1))' before.json) <(node -e 'console.log(JSON.stringify(JSON.parse(require("fs").readFileSync(process.argv[1])),null,1))' after.json)`

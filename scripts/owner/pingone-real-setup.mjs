@@ -21,7 +21,9 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'
 
 export const USER_APP_NAME = 'Customer Agent LAB Sign-in';
 export const AGENT_APP_NAME = 'Customer Agent LAB Agent';
-export const GATEWAY_AUDIENCE = 'mcpgateway.ping.demo';
+// The audience of the PingOne resource "Demo PingGateway MCP": the gateway's own resource id (PG_GATEWAY_RESOURCE_ID) and, on that resource, the
+// scope gateway:mcp:invoke is the gateway's inbound scope. Checked against the SE gateway's validator and its P1AZ PERMIT log, 2026-11-10.
+export const GATEWAY_AUDIENCE = 'https://api.ping.demo:3036/mcp';
 export const GATEWAY_SCOPE = 'gateway:mcp:invoke';
 export const AGENT_GATEWAY_URL = 'https://agent-gateway.ai-demo.ping-devops.com/mcp';
 export const REDIRECT_URIS = ['https://local.ping-devops.com:8443/customer-agent/callback', 'http://127.0.0.1:5603/callback'];
