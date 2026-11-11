@@ -94,6 +94,7 @@ describe("REAL / MOCK labels and the replies", () => {
     expect(within(tokens[2]).getByTestId("token-act")).toBeTruthy(); expect(within(tokens[3]).getByTestId("token-act")).toBeTruthy();
     expect(within(tokens[0]).queryByTestId("token-act")).toBeNull(); expect(within(tokens[1]).queryByTestId("token-act")).toBeNull();
     expect(screen.queryByTestId("token-no-act")).toBeNull();
+    expect(screen.getAllByTestId("token-act").map((x) => x.getAttribute("data-state"))).toEqual(["ok", "ok"]);
     expect(within(tokens[3]).getAllByTestId("token-claims")[0].textContent).toMatch(/"act": \{\s*"sub": "agent-1"/);
     const turn = screen.getAllByTestId("turn").pop();
     expect(within(turn).getByTestId("turn-who").textContent).toBe("Agent");
@@ -126,6 +127,18 @@ describe("REAL / MOCK labels and the replies", () => {
     expect(srcs[3].textContent).toMatch(/Exchange 2: for the gateway/);
     expect(screen.getAllByTestId("token-act")).toHaveLength(1); // exchange 1 has act
     expect(within(screen.getAllByTestId("token")[3]).getByTestId("token-no-act").textContent).toBe("NO act claim");
+    expect(screen.getByTestId("token-no-act").getAttribute("data-state")).toBe("bad");
+  });
+
+  test("an act that names nobody (an empty object, a blank or non-text sub) is shown as NO act claim, the same rule as the server's", async () => {
+    for (const act of [{}, { sub: "" }, { sub: 5 }, [], "x"]) {
+      const u = await boot({ signedIn: true, realAnswer: (id) => { const b = noActBody(id); b.run.tokens[3] = { ...b.run.tokens[3], claims: { sub: "u-1", act } }; return b; } });
+      await u.click(screen.getByTestId("uc-UC1"));
+      await runIt(u);
+      expect(within(screen.getAllByTestId("token")[3]).getByTestId("token-no-act").textContent, JSON.stringify(act)).toBe("NO act claim");
+      expect(screen.getAllByTestId("token-act")).toHaveLength(1);
+      cleanup(); vi.unstubAllGlobals(); forgetWorkspace(); try { window.localStorage.clear(); window.sessionStorage.clear(); } catch { /* ignore */ }
+    }
   });
 
   test("a held call (428) is an approval card that says the hold is real and the approval simulated", async () => {

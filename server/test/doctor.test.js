@@ -98,6 +98,10 @@ test('step 3 (option a): the live check is a pass when Real is not configured or
     assert.match((await live({})).detail, /Real, identity provider only \(the old worker client.*\): two calls, only to https:\/\/auth\.pingone\.com;/);
     fs.writeFileSync(f, `${Object.entries(fullSettingsFor('https://gw.lab-test.net/mcp')).map(([k, v]) => `${k}=${v}`).join('\n')}\nPINGONE_CLIENT_ID=cid\nPINGONE_CLIENT_SECRET=${secret}\n`, { mode: 0o600 });
     const fullOn = await live({}); assert.equal(fullOn.level, 'pass'); assert.match(fullOn.detail, /full Real is on: .*at https:\/\/auth\.pingone\.com, MCP to https:\/\/gw\.lab-test\.net/);
+    assert.match(fullOn.detail, /two token exchanges \(agent scope: the default\)/, 'the doctor says the agent scope is the default');
+    fs.writeFileSync(f, `${Object.entries(fullSettingsFor('https://gw.lab-test.net/mcp', { CAL_AGENT_SCOPE: 'custom:agent-xyz' })).map(([k, v]) => `${k}=${v}`).join('\n')}\nPINGONE_CLIENT_ID=cid\nPINGONE_CLIENT_SECRET=${secret}\n`, { mode: 0o600 });
+    const custom = await live({}); assert.match(custom.detail, /two token exchanges \(agent scope: set by CAL_AGENT_SCOPE\)/); assert.ok(!custom.detail.includes('custom:agent-xyz'), 'the doctor names the setting, never its value');
+    fs.writeFileSync(f, `${Object.entries(fullSettingsFor('https://gw.lab-test.net/mcp')).map(([k, v]) => `${k}=${v}`).join('\n')}\nPINGONE_CLIENT_ID=cid\nPINGONE_CLIENT_SECRET=${secret}\n`, { mode: 0o600 });
     fs.writeFileSync(f, 'CAL_USER_CLIENT_ID=u1\nPINGONE_ENVIRONMENT_ID=11111111-2222-4333-8444-555555555555\nPINGONE_CLIENT_ID=cid\nPINGONE_CLIENT_SECRET=x\n', { mode: 0o600 });
     const part = await live({}); assert.equal(part.level, 'info'); assert.match(part.detail, /full Real is not configured yet: missing CAL_USER_CLIENT_SECRET, .*the old PINGONE_CLIENT_\* path is ignored/);
     assert.ok(!JSON.stringify(await runChecks({ env: { CAL_ENV_FILE: f, CAL_ALLOW_LIVE: '1', IDP: 'pingone' } })).match(/hunter2|11111111-2222|cid/), 'no environment id, client or secret in any line');

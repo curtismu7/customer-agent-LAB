@@ -46,6 +46,9 @@ export const ENV_NAMES = ['CAL_USER_CLIENT_ID', 'CAL_USER_CLIENT_SECRET', 'CAL_A
 export const OPTIONAL_ENV_NAMES = ['CAL_AGENT_SCOPE'];
 const SECRET_NAMES = new Set(['CAL_USER_CLIENT_SECRET', 'CAL_AGENT_CLIENT_SECRET']);
 const SCOPE_NAME = /^[A-Za-z0-9:._-]{1,100}$/;
+// A resource id goes into URL paths: only a plain id is accepted (PingOne's are UUIDs), never a segment like ../ that could reach another resource.
+const RESOURCE_ID = /^[A-Za-z0-9_-]{1,128}$/;
+const plainId = (r) => RESOURCE_ID.test(String(r?.id ?? ''));
 // PingOne region codes (na, eu, ca, ap) and their domain forms (com, eu, ca, asia): the same table as server/src/live.js. The credentials file and the
 // lab .env may use either form; they must name the same region.
 const REGIONS = { na: 'com', us: 'com', com: 'com', eu: 'eu', ca: 'ca', ap: 'asia', asia: 'asia' };
@@ -246,6 +249,7 @@ export async function scopeOwners(p1, resources, scopeName) {
   const owners = [];
   for (const r of resources) {
     if (r.type !== 'CUSTOM') continue;
+    if (!plainId(r)) throw new Error(`a custom resource ("${clip(r.name)}") has an id that is not a plain id; stopping before anything is written`);
     if ((await p1.list(`/resources/${r.id}/scopes`, 'scopes')).some((sc) => sc.name === scopeName)) owners.push(r);
   }
   return owners;
@@ -276,6 +280,7 @@ async function ensureApp(p1, spec, apply, log) {
 }
 
 export async function run(opts, { fetchImpl = fetch, log = console.log, credFile, confirm } = {}) {
+  if (opts.fixAct && !opts.apply) throw new Error('--fix-act changes PingOne: it needs --apply too');
   credFile = credFile || process.env.STANDALONE_CRED_FILE || path.join(os.homedir(), '.config', 'demo-kit', 'provisioning.json');
   log(opts.apply ? 'APPLY: missing PingOne objects are created and the lab .env is updated.' : 'DRY RUN (default): PingOne is only read and nothing is written. Add --apply to make the changes.');
   const labEnv = readSettings(opts.envFile);
@@ -308,7 +313,8 @@ export async function run(opts, { fetchImpl = fetch, log = console.log, credFile
   const owners = await scopeOwners(p1, resources, agentScope);
   if (owners.length !== 1) throw new Error(explainScopeOwners(agentScope, owners, resources));
   const agentRes = owners[0];
-  if (agentRes.id === gw[0].id) throw new Error(`the scope ${agentScope} belongs to the gateway resource "${gw[0].name}" itself. Exchange 1 needs its own resource: the gateway resource is shared with other apps and this script never changes it. Nothing was changed.`);
+  if (!plainId(gw[0]) || !plainId(agentRes)) throw new Error('a resource id from PingOne is not a plain id; stopping before anything is written');
+  if (String(agentRes.id).toLowerCase() === String(gw[0].id).toLowerCase()) throw new Error(`the scope ${agentScope} belongs to the gateway resource "${gw[0].name}" itself. Exchange 1 needs its own resource: the gateway resource is shared with other apps and this script never changes it. Nothing was changed.`);
   log(`   agent scope ${agentScope}: owned by resource "${agentRes.name}" (audience ${agentRes.audience || 'none'}): found`);
 
   // c. the customer sign-in app
@@ -318,6 +324,7 @@ export async function run(opts, { fetchImpl = fetch, log = console.log, credFile
   await ensureGrant(p1, user.app?.id, oidc, OIDC_SCOPES, opts.apply && user.app, log, { reused: userReused });
   await ensureGrant(p1, user.app?.id, gw[0], [GATEWAY_SCOPE], opts.apply && user.app, log, { reused: userReused });
   const decisions = [];
+  if (labEnv.CAL_AGENT_SCOPE && String(labEnv.CAL_AGENT_SCOPE) !== agentScope) decisions.push(`The lab .env has CAL_AGENT_SCOPE=${clip(labEnv.CAL_AGENT_SCOPE)}, but this run used ${agentScope}. The lab keeps asking for the .env value: remove that line (the default is ${AGENT_SCOPE}) or run again with --agent-scope ${clip(labEnv.CAL_AGENT_SCOPE)}.`);
   const assigned = user.app ? await p1.list(`/applications/${user.app.id}/signOnPolicyAssignments`, 'signOnPolicyAssignments') : [];
   const policies = await p1.list('/signOnPolicies', 'signOnPolicies');
   const policy = assigned.length ? policies.find((p) => p.id === [...assigned].sort((a, b) => a.priority - b.priority)[0].signOnPolicy?.id) : policies.find((p) => p.default);
@@ -337,7 +344,9 @@ export async function run(opts, { fetchImpl = fetch, log = console.log, credFile
   await ensureGrant(p1, agent.app?.id, gw[0], [GATEWAY_SCOPE], opts.apply && agent.app, log, { reused: agentReused });
   await ensureGrant(p1, agent.app?.id, agentRes, [agentScope], opts.apply && agent.app, log, { reused: agentReused });
   // The agent-scope resource's act attribute: report it, and (--fix-act, typed yes) add it only when it is absent. It is never replaced.
-  const agentAct = (await p1.list(`/resources/${agentRes.id}/attributes`, 'attributes')).find((a) => a.name === 'act');
+  const agentActs = (await p1.list(`/resources/${agentRes.id}/attributes`, 'attributes')).filter((a) => a.name === 'act');
+  const agentAct = agentActs[0];
+  if (agentActs.length > 1) decisions.push(`The "${agentRes.name}" resource has ${agentActs.length} attributes named act: check them in the console (only the first is reported here).`);
   if (agentAct && same(agentAct.value, AGENT_ACT_EXPRESSION)) log(`    ${agentScope} resource act attribute: present, as expected (${clip(agentAct.value)})`);
   else if (agentAct) {
     log(`    ${agentScope} resource act attribute: present but DIFFERENT (${clip(agentAct.value)}); expected ${AGENT_ACT_EXPRESSION}. Not changed: this script never replaces an attribute.`);

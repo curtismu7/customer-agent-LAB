@@ -7,9 +7,10 @@
 //   gateway owns the gateway scope and chooses the audience; its act attribute passes the SUBJECT token's act through (act: 'passthrough'), or is missing.
 // So exchange 1 (user + agent actor, agent scope) mints act, exchange 2 (the exchange-1 token, gateway scope) keeps it, and the OLD single exchange (the
 // user's token + the agent actor + the gateway scope) or an exchange 2 on a plain user token mints NO act: the bug this fake lets the tests pin.
-// (act: 'empty' mints a useless act: {} with no sub.)
+// (act: 'empty' mints a useless act: {} with no sub; 'blank' an act with an empty sub.)
 // state.full picks a variant: { signin: 'ok' | 'resume' | 'bad-password' | 'mfa' | 'echo-pw' | 'bad-state' | 'no-state',
-//   exchange: 'ok' | 'refuse' (the exchange for the agent scope) | 'refuse-2' (the exchange for the gateway scope) }.
+//   exchange: 'ok' | 'refuse' (the exchange for the agent scope) | 'refuse-2' (the exchange for the gateway scope) | 'echo' / 'echo-2' (the same refusals, but
+//   PingOne's error text echoes the subject token and the agent's client secret, as a careless authorization server might) }.
 import http from 'node:http';
 import { createHash, randomBytes } from 'node:crypto';
 
@@ -117,6 +118,7 @@ export async function startFakePingOne({ behaviour = 'ok', delayMs = 0, agentSco
             if (!res) return send(400, { error: 'invalid_scope', error_description: 'fake: no resource owns that scope' });
             if (String(form.scope).split(' ').some((sc) => !state.agentGrants.includes(sc))) return send(400, { error: 'invalid_scope', error_description: 'fake: the agent app has no grant for that scope' });
             if ((state.full.exchange === 'refuse' && res === resources.agent) || (state.full.exchange === 'refuse-2' && res === resources.gateway)) return send(400, { error: 'invalid_request', error_description: 'fake: exchange refused' });
+            if ((state.full.exchange === 'echo' && res === resources.agent) || (state.full.exchange === 'echo-2' && res === resources.gateway)) return send(400, { error: `invalid_request ${form.subject_token}`, error_description: `fake echo: ${form.subject_token} ${AGENT_CLIENT_SECRET} ${String(form.subject_token).slice(0, 40)}` });
             const subject = [...issued.user, ...issued.exchange1, ...issued.delegated, ...issued.noAct].includes(form.subject_token) ? claimsIn(form.subject_token) : null;
             if (!subject || form.subject_token_type !== AT_TYPE) return send(400, { error: 'invalid_grant', error_description: 'fake: the subject token is not one this fake issued' });
             let actor = null;
@@ -125,7 +127,7 @@ export async function startFakePingOne({ behaviour = 'ok', delayMs = 0, agentSco
               actor = claimsIn(form.actor_token);
             }
             // The resource's act attribute decides: from the actor token (agent resource) or passed through from the subject token (gateway resource).
-            const act = res.act === 'empty' ? {} : res.act === 'actor' ? (actor ? { sub: actor.client_id } : null) : res.act === 'passthrough' ? (subject.act ?? null) : null;
+            const act = res.act === 'empty' ? {} : res.act === 'blank' ? { sub: '' } : res.act === 'actor' ? (actor ? { sub: actor.client_id } : null) : res.act === 'passthrough' ? (subject.act ?? null) : null;
             const at = jwt({ sub: subject.sub, aud: res.audience, scope: form.scope, client_id: AGENT_CLIENT_ID, ...(act ? { act } : {}) });
             (res === resources.agent ? issued.exchange1 : act ? issued.delegated : issued.noAct).add(at);
             return send(200, { access_token: at, issued_token_type: AT_TYPE, token_type: 'Bearer', expires_in: 900, scope: form.scope });
