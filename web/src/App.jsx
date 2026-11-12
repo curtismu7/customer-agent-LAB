@@ -367,8 +367,7 @@ export default function App() {
             <ShelfLink url={info?.shelfUrl} headers={() => ({ "x-workspace": workspaceId() })} />
           </TopMenu>
           {hostedOnly && <span className="seg__note" id="real-hosted-note" data-testid="real-hosted-note">{HOSTED_REAL_NOTE}</span>}
-          {/* rule 19 (2026-11-03): the conformance gate greps for a mode-real testid in the UI; this hidden marker aliases the Real button. */}
-          <span hidden aria-hidden="true" data-testid="mode-real" />
+          {/* rule 19: the Real option in the shared TopMenu carries data-testid="mode-real" itself; no alias needed. */}
         </div>
       </header>
       <p className="banner" role="note" data-state={hosted ? "hosted" : mode === "live" ? "live" : "mock"} data-testid="banner">{banner}</p>
