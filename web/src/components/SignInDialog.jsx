@@ -28,7 +28,7 @@ export default function SignInDialog({ isOpen, username, onClose, onSignedIn }) 
     pwRef.current?.focus();
   };
   return (
-    <FloatingDialog isOpen={isOpen} onClose={() => { setPassword(""); onClose?.(); }} title="Sign in" ariaLabel="Sign in" defaultWidth={420} defaultHeight={430} disablePopOut testId="signin-dialog" storageKey="cal.signin">
+    <FloatingDialog isOpen={isOpen} onClose={() => { setPassword(""); onClose?.(); }} title="Sign in" ariaLabel="Sign in" defaultWidth={420} defaultHeight={430} testId="signin-dialog" storageKey="cal.signin">
       <form className="stack" onSubmit={submit} data-testid="signin-form">
         <p className="muted" data-testid="signin-method">Real sign-in with PingOne, <strong>pi.flow</strong>: this lab's server sends your password once to PingOne's flows API. No redirect, and the password is never stored, logged or shown.</p>
         <label className="field">
