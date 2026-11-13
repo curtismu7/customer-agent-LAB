@@ -44,7 +44,9 @@ test('the settings file: absent is fine, a world-readable one is flagged, its va
 
 test('owner 2026-11-09: the doctor says which file it reads (the app\'s own .env by default) and lists missing Live settings by name, never a value', async () => {
   const dflt = (await runChecks({ env: {} })).find((x) => x.id === 'settings-file');
-  assert.match(dflt.detail, /reads \S+\/\.env \(this app's \.env beside docker-compose\.yml\)/); assert.doesNotMatch(dflt.detail, new RegExp(['Develop' + 'ment/', 'STANDALONE' + '_ENV'].join('|')));
+  assert.match(dflt.detail, /reads .*customer-agent-LAB\/.env \(this app's \.env beside docker-compose\.yml\)/); // the app's own .env, never the shared settings file
+  assert.doesNotMatch(dflt.detail, /Development\/\.env|STANDALONE_ENV/); // the shared settings file is never named
+  assert.doesNotMatch(dflt.detail, /Development\/.env|STANDALONE_ENV/); // the shared settings file is never named
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cal-doc-env-'));
   const f = path.join(dir, '.env');
   try {
