@@ -27,9 +27,17 @@ export default function SignInDialog({ isOpen, username, onClose, onSignedIn }) 
     setError(`${res.body?.message || res.body?.detail || "Sign-in failed."}${res.status ? ` (HTTP ${res.status})` : ""}`);
     pwRef.current?.focus();
   };
+  // The action row is the dialog's footer, outside the scrolling body: the fields can never slide under it, and it stays in view on a short window.
+  const actions = (
+    <>
+      <button type="button" onClick={() => { setPassword(""); onClose?.(); }} data-testid="signin-cancel">Cancel</button>
+      <button type="submit" form="signin-form" className="primary" disabled={busy || !password} data-testid="signin-submit">{busy ? "Signing in..." : "Sign in"}</button>
+    </>
+  );
+  // A fit-to-content dialog opens with its top at the middle of the window unless told otherwise, so a tall one (and the error line) ran off the bottom: open it near the top.
   return (
-    <FloatingDialog isOpen={isOpen} onClose={() => { setPassword(""); onClose?.(); }} title="Sign in" ariaLabel="Sign in" defaultWidth={420} defaultHeight={430} testId="signin-dialog" storageKey="cal.signin">
-      <form className="stack" onSubmit={submit} data-testid="signin-form">
+    <FloatingDialog isOpen={isOpen} onClose={() => { setPassword(""); onClose?.(); }} title="Sign in" ariaLabel="Sign in" defaultWidth={420} defaultHeight={null} defaultY={16} footer={actions} testId="signin-dialog" storageKey="cal.signin">
+      <form id="signin-form" className="stack" onSubmit={submit} data-testid="signin-form">
         <p className="muted" data-testid="signin-method">Real sign-in with PingOne, <strong>pi.flow</strong>: this lab's server sends your password once to PingOne's flows API. No redirect, and the password is never stored, logged or shown.</p>
         <label className="field">
           <span className="field-label">Username</span>
@@ -41,10 +49,6 @@ export default function SignInDialog({ isOpen, username, onClose, onSignedIn }) 
           <input ref={pwRef} type="password" name="password" value={password} onChange={(e) => setPassword(e.target.value.slice(0, 256))} autoComplete="current-password" required maxLength={256} data-testid="signin-password" autoFocus />
         </label>
         {error && <p className="field-error" role="alert" data-testid="signin-error">{visible(error)}</p>}
-        <div className="seg">
-          <button type="submit" className="primary" disabled={busy || !password} data-testid="signin-submit">{busy ? "Signing in..." : "Sign in"}</button>
-          <button type="button" onClick={() => { setPassword(""); onClose?.(); }} data-testid="signin-cancel">Cancel</button>
-        </div>
       </form>
     </FloatingDialog>
   );

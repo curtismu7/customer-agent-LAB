@@ -490,6 +490,13 @@ try {
     await t('signin-dialog').waitFor();
     check((await t('signin-username').inputValue()) === DEMO_USERNAME && (await t('signin-username').getAttribute('readonly')) !== null, `${tag}: a Real run before sign-in opens the Sign in modal with the username filled in, read-only`);
     check((await t('signin-password').getAttribute('type')) === 'password' && (await t('signin-dialog').getAttribute('role')) === 'dialog', `${tag}: the modal is a dialog with a password field`);
+    const geo = await page.evaluate(() => {
+      const box = (el) => { const r = el.getBoundingClientRect(); return { top: r.top, bottom: r.bottom }; };
+      const dlg = document.querySelector('[data-testid="signin-dialog"]');
+      return { body: box(dlg.querySelector('.fd-body')), panel: box(dlg), pw: box(dlg.querySelector('[data-testid="signin-password"]')), submit: box(dlg.querySelector('[data-testid="signin-submit"]')), vh: window.innerHeight };
+    });
+    check(geo.pw.top >= geo.body.top && geo.pw.bottom <= geo.body.bottom, `${tag}: the Password field is fully inside the modal body, not clipped`);
+    check(geo.pw.bottom <= geo.submit.top && geo.submit.top >= geo.body.bottom && geo.submit.bottom <= geo.panel.bottom && geo.panel.bottom <= geo.vh, `${tag}: the Sign in button sits below the Password field and the whole modal is in the window`);
     if (tag === 'full-desktop-light' || tag === 'full-phone-dark') await page.screenshot({ path: path.join(shots, `${tag}-signin.png`), fullPage: false });
     await t('signin-password').fill(DEMO_PASSWORD);
     await t('signin-submit').click();
