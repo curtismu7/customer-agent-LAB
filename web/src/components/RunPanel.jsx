@@ -1,5 +1,5 @@
 import { NEEDS_LABELS, TRACK_LABELS, outcomeState, triggerText } from "../lib";
-import { InventedTag, LiveTag, RealTag, Tag } from "./Bits";
+import { InventedTag, Json, LiveTag, RealTag, Tag } from "./Bits";
 import HopList from "./HopList";
 import TokenView from "./TokenView";
 
@@ -35,7 +35,9 @@ function Inputs({ uc }) {
       <p className="field-label">What the lab feeds the engine {entries.length ? <InventedTag /> : null}</p>
       {entries.length === 0
         ? <p className="muted">Nothing special: the lab runs the catalog's evidence chain for the everyday read tool and the persona you pick below.</p>
-        : <ul className="plain">{entries.map(([k, v]) => <li key={k}><code>{k}</code>: <code>{JSON.stringify(v)}</code> <InventedTag /></li>)}</ul>}
+        : <ul className="plain">{entries.map(([k, v]) => (v !== null && typeof v === "object"
+          ? <li key={k}><code>{k}</code>: <InventedTag /><Json value={v} label={`${k} (lab-invented input)`} hot={["maxAmount", "amount"]} /></li>
+          : <li key={k}><code>{k}</code>: <code>{JSON.stringify(v)}</code> <InventedTag /></li>))}</ul>}
     </div>
   );
 }

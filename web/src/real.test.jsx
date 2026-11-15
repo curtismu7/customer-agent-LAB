@@ -1,10 +1,11 @@
 // Full Real in the page (owner, 2026-11-10): the standard Sign in modal (pi.flow only, no redirect, the username filled in, the password typed),
 // REAL / MOCK / NOT RUN labels per hop, and the replies the real servers' answers map to.
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import App from "./App";
 import { forgetWorkspace } from "./workspace";
+import { setJsonView } from "./components/JsonPane";
 import { FULL_INFO, INFO, denyBody, mockApi, mockInRealBody, noActBody, realBody } from "./testFixtures";
 
 const PASSWORD = ["typed", "-by-", "the-", "person-", "7"].join("");
@@ -20,6 +21,7 @@ const boot = async (state = {}) => {
   return u;
 };
 const runIt = async (u) => { await u.click(screen.getByTestId("run")); await screen.findByTestId(/^(result|refusal)$/); };
+beforeEach(() => { setJsonView("raw"); }); // the Form | JSON choice is shared module state: these tests read the JSON text
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); forgetWorkspace(); try { window.localStorage.clear(); window.sessionStorage.clear(); } catch { /* ignore */ } });
 
 describe("the Sign in modal (pi.flow only)", () => {

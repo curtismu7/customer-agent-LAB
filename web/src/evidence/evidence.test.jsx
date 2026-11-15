@@ -7,6 +7,7 @@ import StepDetailPanel from "./StepDetailPanel";
 import ActorCard from "./ActorCard";
 import { actorOf, actorsIn } from "./lanes";
 import { TOKENS, UC1_DENY_RUN, UC1_RUN } from "./fixtures";
+import { setJsonView } from "../components/JsonPane";
 
 // The parent composes the screens (Step 1 does it in App.jsx); this harness does the same so a click can be followed
 // from a box to the detail it opens.
@@ -31,7 +32,7 @@ function shownStrings() {
   return out;
 }
 
-beforeEach(() => { window.localStorage.clear(); });
+beforeEach(() => { window.localStorage.clear(); setJsonView("raw"); }); // the Form | JSON choice is shared module state: the step detail tests read the JSON text unless they say Form
 afterEach(() => { cleanup(); vi.useRealTimers(); vi.restoreAllMocks(); });
 
 describe("sequence view", () => {
@@ -205,7 +206,26 @@ describe("step detail", () => {
     const items = [...screen.getByTestId("stages").querySelectorAll("li")].map((li) => li.textContent);
     expect(items[2]).toBe("failScopethe token does not carry accounts:read (stopped here)");
     expect(items.filter((t) => t.includes("stopped here"))).toHaveLength(1);
-    expect(screen.getByLabelText("Step 5 response").textContent).toMatch(/^HTTP 403/);
+    expect(screen.getByLabelText("Step 5 response").textContent).toMatch(/"status": 403/);
+  });
+
+  test("the request and response are JSON panes with the Form | JSON toggle; Form reads the status and marks it important", () => {
+    setJsonView("form");
+    render(<StepDetailPanel hops={UC1_DENY_RUN} selected={5} onSelect={() => {}} />);
+    const res = screen.getByLabelText("Step 5 response");
+    expect(res.tagName).toBe("DIV");
+    expect(res.textContent).toContain("403");
+    expect(res.querySelector('[data-hot="true"]').textContent).toContain("403"); // status is this lab's important key for a hop
+    expect(within(detail()).getAllByRole("button", { name: "JSON" })).toHaveLength(2); // request and response
+  });
+
+  test("an object claim in the diff (act) goes through the JSON pane with no toggle of its own; a plain claim stays text", () => {
+    setJsonView("form");
+    render(<StepDetailPanel hops={UC1_RUN} selected={4} onSelect={() => {}} />);
+    const row = (name) => [...screen.getByTestId("claim-diff").querySelectorAll("tbody tr")].find((tr) => tr.firstChild.textContent.startsWith(name));
+    expect(row("act").querySelector(".jsonbox")).not.toBeNull();
+    expect(row("act").querySelector(".jsonbox__toggle")).toBeNull();
+    expect(row("scope").querySelector(".jsonbox")).toBeNull();
   });
 
   test("a stage note that already says it stopped there (the engine writes that) is not doubled", () => {

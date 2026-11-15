@@ -1,6 +1,9 @@
 import { Json, LiveTag, MockTag, RealTag, Tag } from "./Bits";
 import { visible } from "../safeText";
 
+// Besides the default important claims (sub, act, aud, scope, client_id, cnf ...): who the user is in groups, how they signed in, and the intent a tampered token changes.
+const CLAIM_HOT = ["groups", "amr", "intent"];
+
 // Mock tokens are shown raw (rule 4: education), labelled MOCK, with the decoded header and claims. They are signed with a public mock key.
 // A LIVE token of the old identity-provider-only path is shown masked (first 6 and last 4 characters). A REAL token of full Real (owner, 2026-11-10) is shown
 // raw with its decoded claims (education: they expire in minutes); secrets and the password are never sent to the page.
@@ -23,9 +26,9 @@ export default function TokenView({ tokens }) {
           <p className="field-label">{t.live ? "Token (masked)" : "Raw token"}</p>
           <Json value={t.raw} label={`${t.label} raw`} testId="token-raw" />
           <p className="field-label">Decoded header</p>
-          <Json value={t.header} label={`${t.label} header`} />
+          <Json value={t.header} label={`${t.label} header`} hot={CLAIM_HOT} />
           <p className="field-label">Decoded claims</p>
-          <Json value={t.claims} label={`${t.label} claims`} testId="token-claims" />
+          <Json value={t.claims} label={`${t.label} claims`} testId="token-claims" hot={CLAIM_HOT} />
         </article>
       ))}
     </div>

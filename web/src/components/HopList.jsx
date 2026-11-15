@@ -2,6 +2,9 @@ import { useState } from "react";
 import { notRunText, ranCount, verdictState } from "../lib";
 import { Json, LiveTag, MockTag, SourceTag, Tag } from "./Bits";
 
+// What matters in a hop's request and response besides the defaults: the tool called and its arguments, the money, the pushed authorization details, the HTTP status.
+const HOP_HOT = ["tool", "arguments", "amount", "authorization_details", "status"];
+
 // The ordered hops of a run. Each hop shows the raw request and response and its own traceparent (rule 14).
 export default function HopList({ hops, traceparent, title = "Hops" }) {
   const [allOpen, setAllOpen] = useState(false);
@@ -24,9 +27,9 @@ export default function HopList({ hops, traceparent, title = "Hops" }) {
               {h.note && <p className="muted">{h.note}</p>}
               {h.traceparent && <p className="muted">traceparent: <code>{h.traceparent}</code></p>}
               <p className="field-label">Request</p>
-              <Json value={h.request} label={`hop ${h.n} request`} />
+              <Json value={h.request} label={`hop ${h.n} request`} hot={HOP_HOT} />
               <p className="field-label">Response</p>
-              <Json value={h.response} label={`hop ${h.n} response`} />
+              <Json value={h.response} label={`hop ${h.n} response`} hot={HOP_HOT} />
             </details>
           </li>
         ))}

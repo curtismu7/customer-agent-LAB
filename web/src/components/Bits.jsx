@@ -1,10 +1,7 @@
 import { useRef } from "react";
-import { visible } from "../safeText";
 
-// Raw JSON or text, rendered as text only (never markup). Control and bidirectional-format characters are shown as visible escapes.
-export function Json({ value, label, testId }) {
-  return <pre className="json" tabIndex={0} aria-label={label} data-testid={testId}>{visible(typeof value === "string" ? value : JSON.stringify(value, null, 2))}</pre>;
-}
+// Every JSON pane is the shared JsonPane (Rule 24): Form | JSON, coloured by theme tokens, important keys highlighted, full view (no scrolling).
+export { Json } from "./JsonPane.jsx";
 
 // A small word-tag. The state only colours the border; the words carry the meaning.
 export const Tag = ({ state = "info", children, title, testId }) => <span className="tag" data-state={state} title={title} data-testid={testId}>{children}</span>;
