@@ -18,6 +18,7 @@ import { chooseTab, cleanConfig, loadConfig, saveConfig, setView } from "./quick
 import { workspaceId } from "./workspace";
 import { loadResume, saveResume, takeReturn } from "./resume";
 import ShelfLink from "./components/ShelfLink.jsx";
+import VerifyMark from "./components/VerifyMark.jsx";
 import SignInDialog from "./components/SignInDialog";
 import TopMenu from "./top-menu/TopMenu.jsx";
 import "./top-menu/top-menu.css";
@@ -365,6 +366,7 @@ export default function App() {
             extra={<button type="button" aria-expanded={qcOpen} aria-controls={qcOpen && current === "agent" && !page ? "quick-config" : undefined} onClick={() => { setQcOpen((v) => !v); if (page || current !== "agent") select("agent"); }} data-testid="qc-open">Quick Config</button>}
           >
             <ShelfLink url={info?.shelfUrl} headers={() => ({ "x-workspace": workspaceId() })} />
+            <VerifyMark id="customer-agent-lab" headers={() => ({ "x-workspace": workspaceId() })} />
           </TopMenu>
           {hostedOnly && <span className="seg__note" id="real-hosted-note" data-testid="real-hosted-note">{HOSTED_REAL_NOTE}</span>}
           {/* rule 19: the Real option in the shared TopMenu carries data-testid="mode-real" itself; no alias needed. */}

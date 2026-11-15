@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Verification mark in the header: the shared `VerifyMark` (vendored byte for byte from AI-DEMO-Standalone `shared/verify-mark`, pinned) shows this lab's Verified / In progress mark from the demo shelf, inside the top menu beside the Shelf link (the top menu's pill keeps its contrast on the dark bar). It makes the same `GET /api/shelf` call as the Shelf link, with the same `x-workspace` header, so it shows through the lab-proxy and nothing when the lab is opened on its own port, when the shelf has no mark for it, or when the shelf is unreachable. Web tests: pin test and header test.
+
 ## 0.1.0 (local, not pushed)
 
 - Step 1: manifest of the 87 use cases, mock engine, Express API, workspaces, netguard, doctor, reset, talk track, content pack, Docker, CI.
