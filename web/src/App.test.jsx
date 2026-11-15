@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import userEvent from "@testing-library/user-event";
 import App, { BANNER_UNKNOWN, BASE_NAV } from "./App";
 import { forgetWorkspace } from "./workspace";
+import { setJsonView } from "./components/JsonPane";
 import { catalog, mockApi, RAW, runBody } from "./testFixtures";
 
 let api;
@@ -18,7 +19,7 @@ const pick = async (id) => { const u = userEvent.setup(); await u.click(screen.g
 const search = async (u, text) => { await u.clear(screen.getByTestId("search")); if (text) await u.type(screen.getByTestId("search"), text); };
 const runIt = async (u) => { await u.click(screen.getByTestId("run")); await screen.findByTestId(/^(result|refusal)$/); };
 
-beforeEach(() => { window.location.hash = ""; window.sessionStorage.clear(); window.localStorage.clear(); forgetWorkspace(); document.documentElement.removeAttribute("data-theme"); });
+beforeEach(() => { window.location.hash = ""; window.sessionStorage.clear(); window.localStorage.clear(); forgetWorkspace(); document.documentElement.removeAttribute("data-theme"); setJsonView("raw"); }); // the Form | JSON choice is shared module state: these tests read the JSON text unless they say Form
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 describe("header, banner and side nav", () => {
@@ -138,6 +139,26 @@ describe("run view", () => {
     expect(within(token).getByTestId("mock-tag").textContent).toBe("MOCK");
     expect(within(token).getByTestId("token-raw").textContent).toBe(RAW);
     expect(within(token).getByTestId("token-claims").textContent).toContain('"sub": "alex.morgan"');
+  });
+
+  test("every JSON pane has a Form | JSON toggle: Form lists claim and value with the important ones marked, JSON is the exact text, and one choice covers every pane", async () => {
+    setJsonView("form");
+    await boot();
+    const u = await pick("UC1");
+    await runIt(u);
+    const claims = within(screen.getByTestId("token")).getByTestId("token-claims");
+    expect(claims.tagName).toBe("DIV"); // a form, not a <pre>
+    expect(claims.textContent).toContain("alex.morgan");
+    expect(claims.textContent).not.toContain('"sub"');
+    expect(claims.querySelector('[data-hot="true"]')).not.toBeNull(); // sub (a default important claim) is marked
+    const toggles = screen.getAllByRole("button", { name: "JSON" });
+    expect(screen.getAllByRole("button", { name: "Form" }).length).toBe(toggles.length);
+    expect(toggles.every((b) => b.getAttribute("aria-pressed") === "false")).toBe(true);
+    await u.click(toggles[0]);
+    const pane = within(screen.getByTestId("token")).getByTestId("token-claims");
+    expect(pane.tagName).toBe("PRE");
+    expect(pane.textContent).toContain('"sub": "alex.morgan"');
+    expect(document.querySelectorAll("div.json--form")).toHaveLength(0); // one choice for the whole page: no pane is left on Form
   });
 
   test("each hop shows its raw request, raw response and its own traceparent", async () => {

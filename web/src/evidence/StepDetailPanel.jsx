@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Tag } from "./Tag";
+import { Json } from "../components/Bits";
 import { actorOf, readPref, STAGE_STATE, txt, verdictState, verdictWord, withSkipped, writePref } from "./lanes";
 import "./evidence.css";
 
@@ -11,23 +12,13 @@ const ZOOM_KEY = "cal.ev.sdp.zoom";
 const Z_MIN = 80, Z_MAX = 160, Z_STEP = 10, Z_DEFAULT = 120;
 const NOISE = new Set(["iat", "nbf", "exp", "jti"]);
 
-function requestText(r) {
-  if (!r || typeof r !== "object") return r ? String(r) : "";
-  const lines = [];
-  if (r.method || r.url) lines.push(`${r.method || ""} ${r.url || ""}`.trim());
-  for (const [k, v] of Object.entries(r.headers || {})) lines.push(`${k}: ${typeof v === "string" ? v : JSON.stringify(v)}`);
-  if (r.body !== undefined) lines.push("", typeof r.body === "string" ? r.body : JSON.stringify(r.body, null, 2));
-  return lines.join("\n");
-}
-function responseText(r) {
-  if (!r || typeof r !== "object") return r ? String(r) : "";
-  const lines = [];
-  if (r.status != null) lines.push(`HTTP ${r.status}`);
-  for (const [k, v] of Object.entries(r.headers || {})) lines.push(`${k}: ${typeof v === "string" ? v : JSON.stringify(v)}`);
-  if (r.body !== undefined) lines.push("", typeof r.body === "string" ? r.body : JSON.stringify(r.body, null, 2));
-  return lines.join("\n");
-}
-const cell = (v) => (v === undefined ? null : typeof v === "object" ? JSON.stringify(v) : String(v));
+// What matters in a hop's request and response besides the defaults: the tool called and its arguments, the money, the pushed authorization details, the HTTP status.
+const HOP_HOT = ["tool", "arguments", "amount", "authorization_details", "status"];
+// A hop that did not run records {}: nothing to show. Anything else goes through the shared JSON pane.
+const recorded = (r) => (r && typeof r === "object" ? Object.keys(r).length > 0 : Boolean(r));
+const isObj = (v) => v !== null && typeof v === "object";
+// A claim value in the diff: an object or array goes through the JSON pane (no toggle of its own: the page's Form | JSON choice applies), anything else is text.
+const shown = (v, label) => (v === undefined ? <span className="ev-muted">none</span> : isObj(v) ? <Json value={v} label={label} toggle={false} /> : txt(v === null ? "null" : String(v)));
 const decisionState = (o) => (/^permit/i.test(o) ? "ok" : /^deny/i.test(o) ? "bad" : "warn");
 
 function ClaimDiff({ diff }) {
@@ -42,12 +33,11 @@ function ClaimDiff({ diff }) {
         <tbody>
           {keys.map((k) => {
             const c = changed.has(k);
-            const b = cell(before[k]), a = cell(after[k]);
             return (
               <tr key={k} data-changed={c ? "true" : undefined}>
                 <td className="ev-mono">{txt(k)}{c && <span className="sdp__chg"> changed</span>}</td>
-                <td className="ev-mono">{b == null ? <span className="ev-muted">none</span> : txt(b)}</td>
-                <td className="ev-mono">{a == null ? <span className="ev-muted">none</span> : txt(a)}</td>
+                <td className="ev-mono">{shown(before[k], `${k} before`)}</td>
+                <td className="ev-mono">{shown(after[k], `${k} after`)}</td>
               </tr>
             );
           })}
@@ -97,7 +87,6 @@ export default function StepDetailPanel({ hops = [], selected = null, onSelect, 
   const kv = Array.isArray(h.kv) ? h.kv : [];
   const diff = h.claimDiff && (h.claimDiff.before || h.claimDiff.after) ? h.claimDiff : null;
   const changed = Boolean(diff) || kv.length > 0;
-  const req = requestText(h.request), res = responseText(h.response);
   const d = h.decision;
 
   return (
@@ -163,9 +152,9 @@ export default function StepDetailPanel({ hops = [], selected = null, onSelect, 
 
         <div className="sdp__col">
           <h4>Request</h4>
-          {req ? <pre className="ev-pre" tabIndex={0} aria-label={`Step ${h.n} request`}>{txt(req)}</pre> : <p className="ev-muted">No request recorded.</p>}
+          {recorded(h.request) ? <Json value={h.request} label={`Step ${h.n} request`} hot={HOP_HOT} /> : <p className="ev-muted">No request recorded.</p>}
           <h4>Response</h4>
-          {res ? <pre className="ev-pre" tabIndex={0} aria-label={`Step ${h.n} response`}>{txt(res)}</pre> : <p className="ev-muted">No response recorded.</p>}
+          {recorded(h.response) ? <Json value={h.response} label={`Step ${h.n} response`} hot={HOP_HOT} /> : <p className="ev-muted">No response recorded.</p>}
           {h.traceparent && <p className="ev-muted">traceparent <span className="ev-mono">{txt(h.traceparent)}</span></p>}
         </div>
 

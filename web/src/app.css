@@ -47,7 +47,8 @@ button[aria-disabled="true"] { opacity: 0.88; cursor: not-allowed; }
 .tag[data-state="warn"] { border-color: var(--status-warn); color: var(--status-warn); }
 .tag[data-state="bad"] { border-color: var(--danger-text); color: var(--danger-text); }
 .tag[data-state="info"] { border-color: var(--status-info); color: var(--status-info); }
-.json { margin: 4px 0; padding: 10px; background: var(--surface-2); color: var(--text); border: 1px solid var(--border); border-radius: 8px; font-size: 12px; overflow-x: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+.json { margin: 4px 0; padding: 10px; background: var(--surface-2); color: var(--text); border: 1px solid var(--border); border-radius: 8px; font-size: 12px; overflow-wrap: anywhere; }
+.jform__row { grid-template-columns: minmax(0, 1fr); } /* the JSON panes sit in narrow columns: the key stacks over its value, so nested objects never run out of width */
 .scroll { overflow-x: auto; }
 .tbl { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 13px; }
 .tbl th, .tbl td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); vertical-align: top; overflow-wrap: anywhere; }

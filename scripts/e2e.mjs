@@ -143,7 +143,7 @@ try {
         await sheet.getByRole('button', { name: 'Close Gateway details' }).click();
       }
       const token = t('token').first();
-      check((await token.getByTestId('mock-tag').innerText()) === 'MOCK' && /^eyJ/.test(await token.getByTestId('token-raw').innerText()) && (await token.getByTestId('token-claims').innerText()).includes('"sub"'), `${tag}: the token is labelled MOCK, shown raw and decoded`);
+      check((await token.getByTestId('mock-tag').innerText()) === 'MOCK' && /^eyJ/.test(await token.getByTestId('token-raw').innerText()) && (await token.getByTestId('token-claims').innerText()).includes('sub'), `${tag}: the token is labelled MOCK, shown raw and decoded`);
       check((await t('nav-page-consent').count()) === 1, `${tag}: UC1 brought in the Consent and step-up page`);
       await pick('UC7'); await t('run').click(); await t('result').waitFor();
       check((await t('outcome').innerText()) === 'STEP_UP' && (await t('nav-page-approval').count()) === 1, `${tag}: UC7 is STEP_UP and brings in Human approval`);
