@@ -2,6 +2,7 @@ import { NEEDS_LABELS, TRACK_LABELS, outcomeState, triggerText } from "../lib";
 import { InventedTag, Json, LiveTag, RealTag, Tag } from "./Bits";
 import HopList from "./HopList";
 import TokenView from "./TokenView";
+import GatewayTrace from "../gateway-trace/GatewayTrace";
 
 // The honest refusal text for each answer the API can give instead of a run. The server's own detail is shown as it is.
 const REFUSAL = {
@@ -78,6 +79,7 @@ export function RunResult({ run }) {
       {run.live?.status === "needs-flag" && <p className="muted" data-testid="live-note">{run.live.message}</p>}
       {isLive && <NotRun notRun={run.notRun} />}
       <HopList hops={run.hops} traceparent={run.traceparent} />
+      {run.gatewayTrace?.length > 0 && <GatewayTrace exchanges={run.gatewayTrace} source={isReal ? "real" : "mock"} />}
       <h3 className="panel__sub">Tokens</h3>
       <TokenView tokens={run.tokens} />
     </section>

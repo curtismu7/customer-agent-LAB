@@ -23,6 +23,7 @@ import { createGatewaySession, gatewayUrlProblem, parseAuditTrail } from './mcpC
 import { NEEDS_ACCOUNTS, toolArgs } from './realGate.js';
 import { situationOf } from './situations.js';
 import { cleanFree } from './credentials.js';
+import { realExchanges } from './gatewayExchanges.js';
 import { DEFAULT_AGENT_SCOPE, FULL_REQUIRED } from './settings.js';
 
 export const TIMEOUT_MS = 8_000;
@@ -266,7 +267,7 @@ export function createReal({ config = { problem: 'not configured' }, missing = F
       const notRun = (kind, label, from, to, why, shortTitle) => hops.push({ n: hops.length + 1, mock: false, live: false, source: 'not-run', kind, label: `${label} [NOT RUN]`, from, to, verdict: 'skip', note: why, request: {}, response: {}, ...(shortTitle ? { shortTitle } : {}) });
       // expectAct: an exchange token; the page shows its act (or that it has none) next to the label.
       const addToken = (label, raw, notice, expectAct = false) => { const d = decodeJwt(raw); tokens.push({ label, mock: false, live: false, real: true, ...(expectAct ? { expectAct: true } : {}), notice, raw, header: d?.header ?? null, claims: d?.claims ?? { note: 'the token is opaque, not a JWT: there is nothing to decode' } }); };
-      let outcome = null; let reply = null;
+      let outcome = null; let reply = null; let gatewayTrace = [];
       const finishNotRun = (from, why) => {
         const rest = [['gateway-check', 'Agent Gateway', 'agent', 'gateway'], ['authorize-decision', 'Authorize decision', 'gateway', 'authorize'], ['tool-dispatched', 'MCP tool', 'gateway', 'mcp'], ['api-call', 'API', 'mcp', 'api'], ['agent-reply', 'Agent reply', 'agent', 'page']];
         for (const [kind, label, f, t] of rest.slice(from)) notRun(kind, label, f, t, why);
@@ -333,14 +334,14 @@ export function createReal({ config = { problem: 'not configured' }, missing = F
             finishNotRun(0, 'Not run: the delegated token carries no act claim, so the gateway was not called.');
           } else {
             addToken('delegated token (REAL, exchange 2: for the gateway)', delegated, `REAL delegated token: your subject, the agent in the act claim, the gateway audience and scope. Shown raw for teaching.${audNote}`, true);
-            const gw = await gatewayLeg({ token: delegated, vertical, tool, uc, tp, push, notRun });
-            outcome = gw.outcome; reply = gw.reply;
+            const seen = [];
+            try { const gw = await gatewayLeg({ token: delegated, vertical, tool, uc, tp, push, notRun, seen }); outcome = gw.outcome; reply = gw.reply; } finally { gatewayTrace = realExchanges(seen, { url: config.gatewayUrl, token: delegated }); }
           }
         }
       }
       return {
         schema: 'customer-agent-run/1', mode: 'live', kind: 'real', useCase: { id: uc.id, track: uc.track, title: uc.title, maturity: uc.maturity, flag: uc.flag }, vertical,
-        expectedOutcome: uc.expectedOutcome, real: { level: 'full', tool }, labSimulated: false, computed: false, persona: null, outcome, matchesExpected: null, reply,
+        expectedOutcome: uc.expectedOutcome, real: { level: 'full', tool }, labSimulated: false, computed: false, persona: null, outcome, matchesExpected: null, reply, gatewayTrace,
         hops: hops.map(({ shortTitle, ...h }) => { const e = enrichHop(h, HOP_CATALOG, h.decision ? { decision: h.decision } : undefined, { tokens: 'redact' }); return shortTitle ? { ...e, title: shortTitle } : e; }), tokens, traceId: trace.traceId, traceparent: formatTraceparent(trace.traceId, rootSpan),
         narration: reply?.text ?? '',
       };
@@ -348,7 +349,7 @@ export function createReal({ config = { problem: 'not configured' }, missing = F
   }
 
   // 4-8: the Agent Gateway as an MCP client, the decision read from its answer, the tool, the API behind it and the reply.
-  async function gatewayLeg({ token, vertical, tool, uc, tp, push, notRun }) {
+  async function gatewayLeg({ token, vertical, tool, uc, tp, push, notRun, seen }) {
     const gs = createGatewaySession({ url: config.gatewayUrl, token, vertical, nextTraceparent: tp, fetchImpl: gatewayFetch ?? fetchImpl });
     const shownReq = (c, body) => ({ method: 'POST', url: config.gatewayUrl, headers: Object.fromEntries(c.sentHeaders.map((k) => [k, k === 'authorization' ? 'Bearer [the delegated token]' : k === 'traceparent' ? c.traceparent : k === 'x-active-vertical' ? vertical : k === 'x-token-validation' ? 'jwks' : k === 'mcp-session-id' ? short(gs.sessionId()) : k === 'mcp-protocol-version' ? '(from initialize)' : k === 'accept' ? 'application/json, text/event-stream' : 'application/json'])), body });
     const shownRes = (c, body) => ({ status: c.status, headers: Object.fromEntries(Object.entries(c.headers).map(([k, v]) => [k, k === 'mcp-session-id' ? short(v) : v])), body });
@@ -358,8 +359,13 @@ export function createReal({ config = { problem: 'not configured' }, missing = F
     };
     const mapped = (c) => mapAnswer(c);
     const init = await gs.initialize();
+    seen.push({ title: 'initialize', call: init });
     let list = null;
-    if (init.kind === 'ok') { await gs.initialized(); list = await gs.listTools(); }
+    if (init.kind === 'ok') {
+      const ini = await gs.initialized();
+      list = await gs.listTools();
+      seen.push({ title: 'tools/list', call: list, setup: [{ label: 'notifications/initialized', status: ini.status || null }] });
+    }
     const listed = Array.isArray(list?.rpc?.result?.tools) ? list.rpc.result.tools.filter((t) => t && typeof t.name === 'string').map((t) => t.name.slice(0, 80)).slice(0, 300) : [];
     const firstBad = init.kind !== 'ok' ? init : list && list.kind !== 'ok' ? list : null;
     push({
@@ -378,6 +384,7 @@ export function createReal({ config = { problem: 'not configured' }, missing = F
     let accounts = [];
     if (NEEDS_ACCOUNTS.has(tool)) {
       const acc = await gs.callTool('get_my_accounts', {});
+      seen.push({ title: 'tools/call get_my_accounts', call: acc });
       calls.push(acc);
       if (acc.kind === 'ok') accounts = accountIds(toolPayload(acc.rpc?.result));
     }
@@ -391,7 +398,7 @@ export function createReal({ config = { problem: 'not configured' }, missing = F
     }
     const args = toolArgs(tool, { vertical, accounts, amount: situationOf(uc.id).amount });
     const call = pre ? null : await gs.callTool(tool, args);
-    if (call) calls.push(call);
+    if (call) { calls.push(call); seen.push({ title: `tools/call ${tool}`, call }); }
     const last = call ?? pre;
     const m = mapped(last);
     const audit = parseAuditTrail(last.headers['x-gw-audit-trail']);
