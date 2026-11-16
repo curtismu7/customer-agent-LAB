@@ -14,6 +14,7 @@ import { PROBE_DENIED, proposalFor, replyFor } from './replies.js';
 import { situationOf } from './situations.js';
 import { formatTraceparent, newTrace } from './trace.js';
 import { enrichHop } from './vendor/hopDetail.mjs';
+import { mockExchanges } from './gatewayExchanges.js';
 import HOP_CATALOG from './vendor/hop-catalog.json' with { type: 'json' };
 
 export const ENGINE_OUTCOMES = new Set(['PERMIT', 'DENY', 'DENY_401', 'DENY_403', 'DENY_429', 'DENY_503', 'STEP_UP', 'HITL_REQUIRED', 'PERMIT_THEN_DENY', 'DELEGATE_AND_EXECUTE']);
@@ -520,5 +521,6 @@ export function runUseCase(uc, input) {
   else if (!ctx.pending) reply(ctx); // AI-DEMO2 cuts at the first error and a held run stops at the hold: only a finished run replies
   skipped(ctx);
   const outcome = finalOutcome(ctx);
-  return { ...base, kind: 'flow', computed: true, persona: ctx.person.key, outcome, matchesExpected: outcome === uc.expectedOutcome, hops: enrichAll(ctx), tokens: ctx.tokens, traceId: ctx.trace.traceId, traceparent: formatTraceparent(ctx.trace.traceId, ctx.rootSpan), narration: narrate(ctx, outcome) };
+  const hops = enrichAll(ctx);
+  return { ...base, kind: 'flow', computed: true, persona: ctx.person.key, outcome, matchesExpected: outcome === uc.expectedOutcome, hops, gatewayTrace: mockExchanges(hops), tokens: ctx.tokens, traceId: ctx.trace.traceId, traceparent: formatTraceparent(ctx.trace.traceId, ctx.rootSpan), narration: narrate(ctx, outcome) };
 }

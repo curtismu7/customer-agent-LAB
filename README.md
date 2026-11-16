@@ -18,6 +18,7 @@ Catalog: D24
 - **The Agent to agent page** (`#page-a2a`): UC2 runs here and opens it (owner, 2026-11-09), the other A2A use cases open it through Preview here, and it shows their delegation hops.
 - **Two brains:** **Scripted** (the default, offline) and an opt-in local **llama.cpp** model (`CAL_BRAIN_URL`) that only picks a use case id from the vertical's list; when it cannot answer, Routing falls back to Scripted (or, in LLM only, says so and runs nothing).
 - **Movable evidence cards:** the actor and step cards are the shared `FloatingDialog` (drag, resize, pop out), vendored byte for byte and pinned by a hash.
+- **What Privilege did:** every call into the gateway is shown under the Run result (the shared `GatewayTrace`, Rule 25): the exact request, the exact response and the decisions in between. In Mock they are what the simulated gateway computed (`checked`); in Real the gateway reports no per-check detail, so each is `inferred` from the outcome or `observed` in the reply.
 - **Mock and Real:** Mock (the default) is fully offline; Real (Live) is owner-only and reaches the identity provider only (see "Mock and live modes").
 
 ## What is simulated

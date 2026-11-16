@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- What Privilege did (Rule 25): the shared `GatewayTrace` panel under the Run result shows each call into the gateway (exact request, exact response, decisions marked checked / observed / inferred), in Mock and in Real. Vendored byte for byte and pinned by `gateway-trace.sha256`; the lab's builder is `server/src/gatewayExchanges.js`; `mcpClient.send` now also returns the message and headers it sent.
 - Verification mark in the header: the shared `VerifyMark` (vendored byte for byte from AI-DEMO-Standalone `shared/verify-mark`, pinned) shows this lab's Verified / In progress mark from the demo shelf, inside the top menu beside the Shelf link (the top menu's pill keeps its contrast on the dark bar). It makes the same `GET /api/shelf` call as the Shelf link, with the same `x-workspace` header, so it shows through the lab-proxy and nothing when the lab is opened on its own port, when the shelf has no mark for it, or when the shelf is unreachable. Web tests: pin test and header test.
 
 ## 0.1.0 (local, not pushed)

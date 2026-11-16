@@ -78,6 +78,8 @@ export function parseRpc(text, contentType, id) {
   try { return asObject(JSON.parse(text)); } catch { return null; }
 }
 
+// A session id is shown shortened, never whole.
+export const shortId = (v) => (typeof v === 'string' && v.length > 10 ? `${v.slice(0, 6)}...` : '[short]');
 const str = (v, n = 300) => (typeof v === 'string' ? v.slice(0, n) : null);
 // X-Gw-Audit-Trail: JSON, or base64url JSON, or plain text. Returns { raw, parsed, decision }.
 export function parseAuditTrail(value) {
@@ -118,12 +120,16 @@ export function createGatewaySession({ url, token, vertical, nextTraceparent, fe
     const traceparent = nextTraceparent();
     const id = notification ? undefined : ++seq;
     const headers = gatewayHeaders({ token, traceparent, vertical, sessionId, protocol });
-    const body = JSON.stringify(notification ? { jsonrpc: '2.0', method, ...(params ? { params } : {}) } : { jsonrpc: '2.0', id, method, ...(params ? { params } : {}) });
+    const message = notification ? { jsonrpc: '2.0', method, ...(params ? { params } : {}) } : { jsonrpc: '2.0', id, method, ...(params ? { params } : {}) };
+    const body = JSON.stringify(message);
+    // What the "What Privilege did" panel shows of this request: the exact JSON-RPC message and the headers except the bearer (the panel states its length only).
+    const { authorization: _bearer, ...headerView } = headers;
+    const sent = { message, headers: { ...headerView, ...(headerView['mcp-session-id'] ? { 'mcp-session-id': shortId(headerView['mcp-session-id']) } : {}) } };
     let response; let read = { text: '', truncated: false };
     try {
       response = await fetchImpl(target, { method: 'POST', headers, body, redirect: 'manual', signal: AbortSignal.timeout(timeoutMs) });
       read = await readCapped(response, maxBytes);
-    } catch { return { method, traceparent, status: 0, kind: 'unreachable', headers: {}, rpc: null, sentHeaders: Object.keys(headers) }; }
+    } catch { return { method, traceparent, status: 0, kind: 'unreachable', headers: {}, rpc: null, sentHeaders: Object.keys(headers), sent }; }
     const sid = response.headers.get('mcp-session-id');
     if (method === 'initialize' && sid && /^[\x21-\x7e]{1,200}$/.test(sid)) sessionId = sid;
     const shown = {};
@@ -131,7 +137,7 @@ export function createGatewaySession({ url, token, vertical, nextTraceparent, fe
     const rpc = read.truncated ? null : parseRpc(read.text, response.headers.get('content-type'), id);
     if (method === 'initialize' && rpc?.result && typeof rpc.result.protocolVersion === 'string' && /^[0-9-]{4,20}$/.test(rpc.result.protocolVersion)) protocol = rpc.result.protocolVersion;
     // A redirect is never followed: it is shown as an answer of its own ("other").
-    return { method, traceparent, status: response.status, kind: response.status >= 300 && response.status < 400 ? 'other' : classify(response.status), headers: shown, rpc, truncated: read.truncated, sentHeaders: Object.keys(headers) };
+    return { method, traceparent, status: response.status, kind: response.status >= 300 && response.status < 400 ? 'other' : classify(response.status), headers: shown, rpc, truncated: read.truncated, sentHeaders: Object.keys(headers), sent };
   }
 
   return {
