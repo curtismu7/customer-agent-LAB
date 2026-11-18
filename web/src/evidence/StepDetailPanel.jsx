@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Tag } from "./Tag";
 import { Json } from "../components/Bits";
 import { actorOf, readPref, STAGE_STATE, txt, verdictState, verdictWord, withSkipped, writePref } from "./lanes";
+import { DecodedTokens } from "../components/JsonPane.jsx";
 import "./evidence.css";
 
 // One hop's full detail, ported from AI-DEMO2's StepDetailPanel and ordered claim before evidence: what happened, the
@@ -154,7 +155,8 @@ export default function StepDetailPanel({ hops = [], selected = null, onSelect, 
           <h4>Request</h4>
           {recorded(h.request) ? <Json value={h.request} label={`Step ${h.n} request`} hot={HOP_HOT} /> : <p className="ev-muted">No request recorded.</p>}
           <h4>Response</h4>
-          {recorded(h.response) ? <Json value={h.response} label={`Step ${h.n} response`} hot={HOP_HOT} /> : <p className="ev-muted">No response recorded.</p>}
+          {recorded(h.response) ? <Json value={h.response} label={`Step ${h.n} response`} hot={HOP_HOT} decode={false} /> : <p className="ev-muted">No response recorded.</p>}
+          <DecodedTokens value={[h.request, h.response]} label={`Step ${h.n}`} />
           {h.traceparent && <p className="ev-muted">traceparent <span className="ev-mono">{txt(h.traceparent)}</span></p>}
         </div>
 
