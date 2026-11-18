@@ -21,6 +21,7 @@ import ShelfLink from "./components/ShelfLink.jsx";
 import VerifyMark from "./components/VerifyMark.jsx";
 import SignInDialog from "./components/SignInDialog";
 import TopMenu from "./top-menu/TopMenu.jsx";
+import TalkTrackDialog from "./talk-track/TalkTrackDialog.jsx";
 import "./top-menu/top-menu.css";
 import "./layout.css";
 
@@ -98,6 +99,7 @@ export default function App() {
   }, [back]);
 
   const presenter = cfg.presenter;
+  const [talkOpen, setTalkOpen] = useState(false);
   const setPresenter = useCallback((f) => setCfg((c) => ({ ...c, presenter: typeof f === "function" ? f(c.presenter) : f })), []);
   useEffect(() => { saveConfig(workspaceId(), cfg); }, [cfg]);
   useEffect(() => { applyTheme(theme); }, [theme]);
@@ -358,6 +360,7 @@ export default function App() {
             mode={{ value: mode === "live" ? "real" : "mock", onChange: (m) => chooseMode(m === "real" ? "live" : "mock"), realAvailable: hostedOnly ? false : Boolean(liveReason) && mode !== "live" ? false : null, realHint: liveReason || (hostedOnly ? HOSTED_REAL_NOTE : realTitle) }}
             theme={{ value: theme, onChange: setTheme }}
             present={{ active: presenter, onToggle: () => setPresenter((v) => !v), label: "Presenter (P)" }}
+            talkTrack={{ active: talkOpen, onToggle: () => setTalkOpen((v) => !v) }}
             help={{ href: "https://github.com/curtismu7/customer-agent-LAB#readme" }}
             version={info?.version || null}
             onReset={reset}
@@ -430,6 +433,7 @@ export default function App() {
         </div>
       </main>
       <SignInDialog isOpen={signOpen} username={signin?.username} onClose={() => { setSignOpen(false); pendingRun.current = null; }} onSignedIn={afterSignIn} />
+      <TalkTrackDialog isOpen={talkOpen} onClose={() => setTalkOpen(false)} talk={story?.talkTrack ?? []} />
     </div>
   );
 }
