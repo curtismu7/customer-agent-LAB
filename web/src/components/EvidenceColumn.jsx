@@ -85,7 +85,7 @@ export default function EvidenceColumn({ run, selHop, onSelect, config, onTab, o
   return (
     <section className="evcol" aria-label="Evidence" data-testid="evidence-column">
       <header className="evcol__head">
-        <h2 className="evcol__title">Evidence</h2>
+        <h2 className="evcol__title"><span className="step-num" aria-hidden="true">2</span>Evidence</h2>
         <span className="muted" data-testid="evidence-count">{run ? `${run.useCase?.id} · ${ranCount(hops)} hops${notRunText(hops)}${run.kind === "real" ? " · REAL" : run.mode === "mock" ? " · MOCK engine" : run.mode === "live" ? " · LIVE, identity provider only" : ""}` : "nothing run yet"}</span>
         <span className="spacer" />
         <button type="button" onClick={() => onFull("sequence")} data-testid="full-sequence" title="The sequence view on a page of its own">Full page</button>
