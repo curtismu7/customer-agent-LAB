@@ -13,8 +13,8 @@ const ZOOM_KEY = "cal.ev.sdp.zoom";
 const Z_MIN = 80, Z_MAX = 160, Z_STEP = 10, Z_DEFAULT = 120;
 const NOISE = new Set(["iat", "nbf", "exp", "jti"]);
 
-// What matters in a hop's request and response besides the defaults: the tool called and its arguments, the money, the pushed authorization details, the HTTP status.
-const HOP_HOT = ["tool", "arguments", "amount", "authorization_details", "status"];
+// What matters in a hop's request and response besides the defaults: the tool called, its arguments (the amount sits inside them) and the HTTP status.
+const HOP_HOT = ["tool", "arguments", "status"];
 // A hop that did not run records {}: nothing to show. Anything else goes through the shared JSON pane.
 const recorded = (r) => (r && typeof r === "object" ? Object.keys(r).length > 0 : Boolean(r));
 const isObj = (v) => v !== null && typeof v === "object";
