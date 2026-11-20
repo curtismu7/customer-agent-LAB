@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Background, BackgroundVariant, BaseEdge, Controls, EdgeLabelRenderer, getBezierPath, Handle, MarkerType, Position, ReactFlow, ReactFlowProvider } from "@xyflow/react";
+import { Background, BackgroundVariant, Controls, Handle, MarkerType, Position, ReactFlow, ReactFlowProvider } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { useDiagramStepper, STEP_TIME_OPTIONS } from "../hooks/useDiagramStepper";
 import { REFIT_EVENT, useFitOnResize } from "../hooks/useFitOnResize";
 import { verdictState } from "../lib";
 import { Tag } from "./Bits";
+import { ArrowNoLabel, EdgeLabels, FitOpen, Passport, PassportActions } from "../diagram-kit/DiagramKit.jsx";
+import { boxPassport, sidePoint } from "../diagram-kit/diagramKit.js";
+import "../diagram-kit/diagram-kit.css";
 
 const FIT = { padding: 0.08 };
 // At phone width fitting the whole wide diagram makes the text unreadable, so the first view fits the first two boxes whole (zoom 0.3 to 0.55; node text is
@@ -14,7 +17,7 @@ const HANDLES = [["t", Position.Top], ["b", Position.Bottom], ["l", Position.Lef
 
 function Box({ data }) {
   return (
-    <div className="dnode" data-color={data.color} data-on={data.on ? "true" : "false"}>
+    <div className="dnode" data-color={data.color} data-on={data.on ? "true" : "false"} data-testid={`dnode-${data.id}`}>
       {HANDLES.map(([k, pos]) => (
         <span key={k}>
           <Handle id={`s-${k}`} type="source" position={pos} className="dnode__handle" />
@@ -22,35 +25,14 @@ function Box({ data }) {
         </span>
       ))}
       {data.label}
+      {data.passport && <Passport p={data.passport} />}
     </div>
   );
 }
 const nodeTypes = { box: Box };
 
-// An edge that draws its own label, so steps along the same pair of boxes can sit apart instead of on top of each other.
-function LabelEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, markerEnd, data }) {
-  const [path, lx, ly] = getBezierPath({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition });
-  return (
-    <>
-      <BaseEdge id={id} path={path} markerEnd={markerEnd} />
-      <EdgeLabelRenderer>
-        <div className="dlabel" data-now={data.now ? "true" : "false"} data-dim={data.dim ? "true" : "false"} data-testid="edge-label"
-          style={{ transform: `translate(-50%, -50%) translate(${lx}px, ${ly + data.dy}px)` }}>{data.text}</div>
-      </EdgeLabelRenderer>
-    </>
-  );
-}
-const edgeTypes = { label: LabelEdge };
-
-const samePair = (a, b) => (a.from === b.from && a.to === b.to) || (a.from === b.to && a.to === b.from);
-// Steps along the same pair of boxes (either direction) are spread out: the label of the k-th of n steps sits (k - (n-1)/2) * 30 px from the middle.
-export function labelOffsets(steps) {
-  return steps.map((s, i) => {
-    const group = steps.map((o, j) => [o, j]).filter(([o]) => samePair(o, s));
-    const k = group.findIndex(([, j]) => j === i);
-    return Math.round((k - (group.length - 1) / 2) * 30);
-  });
-}
+// The arrow draws the curve only: every label is drawn by EdgeLabels, above the boxes, placed clear of the other labels and the boxes.
+const edgeTypes = { arrow: ArrowNoLabel };
 
 // Pick the sides of the two boxes that face each other, so an arrow leaves toward its target. A later step on a pair that already has an arrow loops out of
 // another side so the two arrows are not drawn over each other.
@@ -61,41 +43,55 @@ function sides(a, b) {
 export function edgeSides(steps, i, positions) {
   const s = steps[i];
   const [a, b] = sides(positions[s.from], positions[s.to]);
-  const earlier = steps.slice(0, i).filter((o) => samePair(o, s)).length;
+  const earlier = steps.slice(0, i).filter((o) => (o.from === s.from && o.to === s.to) || (o.from === s.to && o.to === s.from)).length;
   if (earlier === 0) return [a, b];
   const horizontal = a === "l" || a === "r";
   const loop = earlier % 2 === 1 ? (horizontal ? "b" : "r") : (horizontal ? "t" : "l");
   return [loop, loop];
 }
 
-function Canvas({ diagram, positions, onMove, stepper }) {
+function Canvas({ diagram, graph, positions, onMove, stepper, open, setOpen }) {
   const ref = useRef(null);
   const fit = useMemo(() => (narrow() ? { padding: 0.1, minZoom: 0.3, maxZoom: 0.55, nodes: diagram.nodes.slice(0, 2).map((n) => ({ id: n.id })) } : FIT), [diagram]);
   useFitOnResize(ref, fit);
   const active = stepper.step >= 0 ? diagram.steps[stepper.step] : null;
   const nodes = diagram.nodes.map((n) => ({
-    id: n.id, type: "box", position: positions[n.id], draggable: true,
-    data: { label: n.label, color: diagram.groups?.[n.kind]?.color || "dark", on: !!active && (active.from === n.id || active.to === n.id) },
+    id: n.id, type: "box", position: positions[n.id], draggable: true, zIndex: n.id === open ? 10 : undefined, // an expanded box sits above its neighbours
+    data: { id: n.id, label: n.label, color: diagram.groups?.[n.kind]?.color || "dark", on: !!active && (active.from === n.id || active.to === n.id), passport: n.id === open ? boxPassport(graph, n.id) : null },
   }));
-  const offs = labelOffsets(diagram.steps);
   const edges = diagram.steps.map((s, i) => {
     const [a, b] = edgeSides(diagram.steps, i, positions);
     const now = stepper.step === i;
     const seen = stepper.step >= 0 && i <= stepper.step;
     return {
-      id: `e${i}`, source: s.from, target: s.to, sourceHandle: `s-${a}`, targetHandle: `t-${b}`, type: "label",
-      animated: now, data: { text: `${i + 1}. ${s.label}`, dy: offs[i], now, dim: stepper.step >= 0 && !seen },
+      id: `e${i}`, source: s.from, target: s.to, sourceHandle: `s-${a}`, targetHandle: `t-${b}`, type: "arrow",
+      animated: now,
       className: `dedge${now ? " dedge--now" : ""}${stepper.step >= 0 && !seen ? " dedge--dim" : ""}`,
       markerEnd: { type: MarkerType.ArrowClosed },
     };
   });
+  // One label per arrow, in a layer above the boxes, placed clear of the other labels and the boxes.
+  const labels = diagram.steps.map((s, i) => ({
+    id: `e${i}`, text: `${i + 1}. ${s.label}`, source: s.from, target: s.to, sourceHandle: edges[i].sourceHandle, targetHandle: edges[i].targetHandle,
+    active: stepper.step === i, dim: stepper.step >= 0 && !(i <= stepper.step),
+  }));
+  // What an expanded box can do: open the box at the far end of an arrow, close itself, and make a link that opens this page with the box expanded.
+  const actions = useMemo(() => ({
+    open: (id) => setOpen(id), close: () => setOpen(null),
+    link: (id) => { const u = new URL(window.location.href); u.searchParams.set("box", id); return u.toString(); },
+  }), [setOpen]);
   return (
     <div ref={ref} className="diagram__canvas" data-testid="diagram-canvas">
-      <ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} edgeTypes={edgeTypes} fitView fitViewOptions={fit} nodesConnectable={false} minZoom={0.3}
-        onNodeDragStop={(_, n) => onMove(n.id, n.position)} onNodeDrag={(_, n) => onMove(n.id, n.position)} proOptions={{ hideAttribution: true }}>
-        <Background variant={BackgroundVariant.Dots} gap={18} />
-        <Controls showInteractive={false} />
-      </ReactFlow>
+      <PassportActions.Provider value={actions}>
+        <ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} edgeTypes={edgeTypes} fitView fitViewOptions={fit} nodesConnectable={false} minZoom={0.3}
+          onNodeClick={(_, n) => setOpen((o) => (o === n.id ? null : n.id))} onPaneClick={() => setOpen(null)}
+          onNodeDragStop={(_, n) => onMove(n.id, n.position)} onNodeDrag={(_, n) => onMove(n.id, n.position)} proOptions={{ hideAttribution: true }}>
+          <Background variant={BackgroundVariant.Dots} gap={18} />
+          <Controls showInteractive={false} />
+          <EdgeLabels items={labels} pointFor={(box, handle) => sidePoint(box, String(handle).split("-")[1])} fallback={{ w: 150, h: 56 }} />
+          <FitOpen open={open} closePadding={FIT.padding} />
+        </ReactFlow>
+      </PassportActions.Provider>
     </div>
   );
 }
@@ -130,11 +126,14 @@ export default function PatternDiagram({ diagram, resetSignal = 0, lastRun = nul
   const initial = useMemo(() => Object.fromEntries(diagram.nodes.map((n) => [n.id, { x: n.x, y: n.y }])), [diagram]);
   const [positions, setPositions] = useState(initial);
   const stepper = useDiagramStepper(diagram.steps.length);
+  // The pattern as a graph (boxes and arrows) for the box details; a box's kind is its group.
+  const graph = useMemo(() => ({ nodes: diagram.nodes.map((n) => ({ id: n.id, label: n.label, group: n.kind })), edges: diagram.steps.map((st, i) => ({ source: st.from, target: st.to, label: `${i + 1}. ${st.label}` })), groups: diagram.groups }), [diagram]);
+  const [open, setOpen] = useState(() => { const box = new URLSearchParams(window.location.search).get("box"); return box && diagram.nodes.some((n) => n.id === box) ? box : null; }); // a shared link's box
   const onMove = useCallback((id, p) => setPositions((cur) => ({ ...cur, [id]: { x: p.x, y: p.y } })), []);
   const step = stepper.step >= 0 ? diagram.steps[stepper.step] : null;
   const hop = step && lastRun ? lastRun.run.hops.find((h) => h.kind === step.hop) : null;
   // Reset restores box positions as well as the walkthrough and the view. The page-level Reset raises resetSignal.
-  const reset = useCallback(() => { stepper.stop(); setPositions(initial); setTimeout(() => window.dispatchEvent(new Event(REFIT_EVENT)), 0); }, [stepper.stop, initial]); // eslint-disable-line react-hooks/exhaustive-deps
+  const reset = useCallback(() => { stepper.stop(); setPositions(initial); setOpen(null); setTimeout(() => window.dispatchEvent(new Event(REFIT_EVENT)), 0); }, [stepper.stop, initial]); // eslint-disable-line react-hooks/exhaustive-deps
   const seen = useRef(resetSignal);
   useEffect(() => { if (seen.current !== resetSignal) { seen.current = resetSignal; reset(); } }, [resetSignal, reset]);
   const moved = Object.keys(positions).filter((k) => positions[k].x !== initial[k].x || positions[k].y !== initial[k].y).length;
@@ -150,9 +149,9 @@ export default function PatternDiagram({ diagram, resetSignal = 0, lastRun = nul
           {hop && <p className="muted" data-testid="diagram-hop">In your last run ({lastRun.run.useCase.id}): hop {hop.n}, {hop.label} <Tag state={verdictState(hop.verdict)}>{hop.verdict}</Tag></p>}
         </article>
       )}
-      <p className="muted dhint" data-testid="diagram-hint">This diagram is wider than the screen: drag the background to pan, and use the + and - buttons to zoom.</p>
+      <p className="muted dhint" data-testid="diagram-hint">This diagram is wider than the screen: drag the background to pan, and use the + and - buttons to zoom. Click a box to see its details.</p>
       <ReactFlowProvider>
-        <Canvas diagram={diagram} positions={positions} onMove={onMove} stepper={stepper} />
+        <Canvas diagram={diagram} graph={graph} positions={positions} onMove={onMove} stepper={stepper} open={open} setOpen={setOpen} />
       </ReactFlowProvider>
       <p className="muted" data-testid="diagram-moved">Drag any box; drag the background to pan. Simulated. Moved: {moved} box(es).</p>
     </section>

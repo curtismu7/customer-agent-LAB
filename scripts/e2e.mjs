@@ -42,7 +42,7 @@ if (!up) { server.kill(); console.error('server did not start'); process.exit(2)
 fs.mkdirSync(shots, { recursive: true });
 
 const overlapScript = `(() => {
-  const labels = [...document.querySelectorAll('.react-flow__edgelabel-renderer > *')].map((el) => ({ t: el.textContent.trim(), r: el.getBoundingClientRect() })).filter((l) => l.t && l.r.width > 1);
+  const labels = [...document.querySelectorAll('.dk-label')].map((el) => ({ t: el.textContent.trim(), r: el.getBoundingClientRect() })).filter((l) => l.t && l.r.width > 1);
   let overlaps = 0;
   for (let a = 0; a < labels.length; a++) for (let b = a + 1; b < labels.length; b++) {
     const w = Math.min(labels[a].r.right, labels[b].r.right) - Math.max(labels[a].r.left, labels[b].r.left);

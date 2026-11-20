@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import DiagramView from "./components/DiagramView";
-import PatternDiagram, { edgeSides, labelOffsets } from "./components/PatternDiagram";
+import PatternDiagram, { edgeSides } from "./components/PatternDiagram";
 import { DIAGRAM, mockApi, runBody } from "./testFixtures";
 import { forgetWorkspace } from "./workspace";
 
@@ -83,15 +83,10 @@ describe("Simulate, speed, Reset", () => {
 
 describe("label and arrow placement (no overlap)", () => {
   const steps = DIAGRAM.diagram.steps;
-  test("steps along the same pair of boxes get different label offsets; a lone step stays in the middle", () => {
-    const offs = labelOffsets(steps);
-    expect(offs[0]).not.toBe(offs[1]);
-    expect(offs[0] + offs[1]).toBe(0);
-    expect(offs[2]).toBe(0);
-  });
-  test("opposite directions on one pair are spread too", () => {
-    const o = labelOffsets([{ from: "a", to: "b" }, { from: "b", to: "a" }, { from: "a", to: "b" }]);
-    expect(new Set(o).size).toBe(3);
+  test("each arrow has a label item, and the expanded box carries its details", () => {
+    render(<PatternDiagram diagram={DIAGRAM.diagram} />);
+    const labels = [...document.querySelectorAll(".dk-label")].map((l) => l.textContent);
+    steps.forEach((s, i) => expect(labels).toContain(`${i + 1}. ${s.label}`));
   });
   test("the second arrow along a pair leaves from another side so the two are not drawn on top of each other", () => {
     const pos = Object.fromEntries(DIAGRAM.diagram.nodes.map((n) => [n.id, { x: n.x, y: n.y }]));
