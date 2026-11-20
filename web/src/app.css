@@ -89,6 +89,9 @@ summary { cursor: pointer; font-weight: 700; font-size: 14px; }
 .dnode[data-color="grey"] { background: var(--box-grey); }
 .dnode[data-on="true"] { box-shadow: 0 0 0 4px var(--focus); }
 .dnode__handle { opacity: 0; pointer-events: none; }
+/* An expanded box (the kit's .dk-open) is wider so its details fit. */
+.dnode.dk-open { min-width: 18rem; max-width: 22rem; text-align: left; font-weight: 400; }
+.react-flow__node.dk-open { width: 320px; }
 .dedge path { stroke: var(--muted); stroke-width: 1.8; }
 .dedge--now path { stroke: var(--focus); stroke-width: 3.4; }
 .dedge--dim { opacity: 0.35; }
