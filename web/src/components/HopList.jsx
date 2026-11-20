@@ -2,8 +2,8 @@ import { useState } from "react";
 import { notRunText, ranCount, verdictState } from "../lib";
 import { Json, LiveTag, MockTag, SourceTag, Tag } from "./Bits";
 
-// What matters in a hop's request and response besides the defaults: the tool called and its arguments, the money, the pushed authorization details, the HTTP status.
-const HOP_HOT = ["tool", "arguments", "amount", "authorization_details", "status"];
+// What matters in a hop's request and response besides the defaults: the tool called, its arguments (the amount sits inside them) and the HTTP status.
+const HOP_HOT = ["tool", "arguments", "status"];
 
 // The ordered hops of a run. Each hop shows the raw request and response and its own traceparent (rule 14).
 export default function HopList({ hops, traceparent, title = "Hops" }) {
