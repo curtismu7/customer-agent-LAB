@@ -50,6 +50,30 @@ const resultKey = (id, vertical, persona, mode) => `${id}|${vertical}|${persona}
 const focusHop = (run) => (run?.hops || []).find((h) => h.decision || (h.verdict && h.verdict !== "ok" && h.verdict !== "skip"))?.n ?? null;
 
 export default function App() {
+  // Drag the divider before the work area to resize the setup sidebar; the width persists.
+  const onSetupHandleDown = useCallback((e) => {
+    e.preventDefault();
+    const grid = e.target.closest(".agno");
+    if (!grid) return;
+    const rect = grid.getBoundingClientRect();
+    const move = (ev) => {
+      ev.preventDefault();
+      const w = Math.min(Math.max(ev.clientX - rect.left, 200), rect.width * 0.4);
+      grid.style.setProperty("--setup-w", `${w}px`);
+    };
+    const up = () => {
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      try {
+        const w = parseFloat(getComputedStyle(grid).getPropertyValue("--setup-w"));
+        if (w) localStorage.setItem("ca.setupW", String(w));
+      } catch { /* none */ }
+    };
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up, { once: true });
+  }, []);
   // Resume (sessionStorage per workspace, ids and shown text only; see resume.js), read once before the first render, and ONLY when the page
   // loads with a valid ?returned=<known app>&uc=<id> (Back from a hand-off). A plain load or reload starts fresh, as before.
   const [back] = useState(() => takeReturn());
@@ -161,6 +185,13 @@ export default function App() {
   const page = FULL_PAGES.includes(view) ? view : null;
   const current = page ? "agent" : nav.some((n) => n.id === view) ? view : "agent"; // a hash for a page that is not open falls back to the agent
   const select = (id) => { setView_(id); try { window.history.replaceState(null, "", `#${id}`); } catch { /* ignore */ } };
+  // The saved sidebar width re-applies when the agent page mounts (view or presenter changed).
+  useEffect(() => {
+    try {
+      const w = parseFloat(localStorage.getItem("ca.setupW"));
+      if (w) document.querySelector(".agno")?.style.setProperty("--setup-w", `${w}px`);
+    } catch { /* none */ }
+  }, [current, page, presenter]);
 
   const allUc = catalog?.tracks.flatMap((t) => t.usecases) || [];
   // A restored turn holds a use case id only; it gets the use case back from this vertical's catalog (another vertical's turn stays text only).
@@ -404,6 +435,7 @@ export default function App() {
                   <UseCasePicker catalog={catalog} selectedId={selectedId} onPick={pick} failed={!catalog && !!error} keep={several ? isHandoff : null} />
                 </SetupSidebar>
               )}
+              {!presenter && <div className="col-handle" role="separator" aria-orientation="vertical" aria-label="Resize setup sidebar" onPointerDown={onSetupHandleDown} />}
               <div className="work">
                 <AgentColumn agent={cast.castAgent} brand={cast.castBrand} userId={userId} vertical={vertical} verticalLabel={verticalLabel} stub={stub} prompts={prompts} turns={shownTurns}
                   status={busy ? "running" : statusOf(lastTurn)} onSay={say} onHop={onHop} onPreview={preview} running={busy} />

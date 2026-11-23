@@ -72,7 +72,9 @@
 .sessions { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
 .sessions__item { width: 100%; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: space-between; padding: 4px 8px; min-height: 36px; font-size: 12px; text-align: left; }
 @media (min-width: 900px) {
-  .agno { grid-template-columns: 270px minmax(0, 1fr); }
+  .agno { grid-template-columns: var(--setup-w, 270px) 6px minmax(0, 1fr); }
+  .col-handle { width: 6px; min-height: 4rem; border-radius: 3px; background: var(--border); cursor: col-resize; touch-action: none; }
+  .col-handle:hover { background: var(--muted); }
   .setup { position: sticky; top: 8px; max-height: max(420px, calc(100vh - 196px)); overflow-y: auto; }
 }
 .app[data-presenter] .agno { grid-template-columns: minmax(0, 1fr); }
