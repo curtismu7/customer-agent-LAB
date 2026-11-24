@@ -32,10 +32,21 @@ function mockOutcome(hop) {
   return 'info';
 }
 
+// The row's words are the lab's own, short and fixed per kind (the hop labels carry request detail the masker would cut).
+const MOCK_TEXT = {
+  'sign-in': 'Sign-in', 'user-token': 'User token', 'actor-token': 'Agent token (client credentials)', 'token-exchange': 'Token exchange (RFC 8693)',
+  'id-jag-issued': 'ID-JAG issued', 'id-jag-redeemed': 'MCP access token redeemed from the ID-JAG', 'verified-trust-issuance': 'Agent assertion issued',
+  'enterprise-managed-mode': 'Group policy check', 'authorize-decision': 'Authorize decision', 'intent-binding-verified': 'Intent binding checked by Authorize',
+  'privilege-gateway-leg': 'Call handed to the Privilege gateway', 'credential-swap': 'Caller credential swapped for the operator credential',
+  'gateway-check': 'Agent Gateway check', 'exchange-skipped': 'Lab stop: the BFF will not forward the user token',
+  'tools-list-challenge': 'Agent Gateway challenge for tools/list', 'tools-call-challenge': 'Agent Gateway challenge for tools/call', 'tools-list': 'Agent Gateway tools/list',
+  'api-call': 'API call behind the tool', 'tool-dispatched': 'Tool dispatched to the MCP server',
+};
+
 const mockRow = (hop) => ({
   layer: MOCK_LAYER[hop.kind],
   outcome: mockOutcome(hop),
-  message: `${hop.label}${Number.isInteger(hop.response?.status) ? ` (HTTP ${hop.response.status})` : ''}`,
+  message: `${MOCK_TEXT[hop.kind] ?? hop.kind}${Number.isInteger(hop.response?.status) ? ` (HTTP ${hop.response.status})` : ''}`,
 });
 
 // Real: a policy point comes from the gateway's own answer (the gateway-check hop) and the Authorize decision read from that same answer.
@@ -48,6 +59,12 @@ function realOutcome(hop) {
   }
   return 'info';
 }
+
+const REAL_TEXT = {
+  'sign-in': 'PingOne sign-in answered (pi.flow)', 'actor-token': 'PingOne answered the agent token request', 'token-exchange': 'PingOne answered a token exchange',
+  'authorize-decision': 'Authorize decision, read from the gateway answer', 'gateway-check': 'Agent Gateway answered the MCP session and tools/list',
+  'tool-refused': 'Lab stop: the lab did not call the tool', 'api-call': 'The SE MCP server answered the tool call',
+};
 
 const REAL_LAYER = {
   'sign-in': 'person', 'actor-token': 'agent', 'token-exchange': 'agent',
@@ -78,7 +95,7 @@ export function realLayers(run, at) {
     const outcome = realOutcome(hop);
     const layer = REAL_LAYER[hop.kind];
     // The Authorize decision is read from the gateway's answer: the same reply as the gateway row, so it is info, never a second decision.
-    add(layer, { at, outcome: layer === 'authorize' ? 'info' : outcome, message: hop.label });
+    add(layer, { at, outcome: layer === 'authorize' ? 'info' : outcome, message: REAL_TEXT[hop.kind] ?? hop.kind });
   }
   const audit = (run.gatewayTrace || []).flatMap((e) => (e.trace?.decisions || []).filter((d) => d.id === 'audit-trail'));
   const privilege = audit.length
