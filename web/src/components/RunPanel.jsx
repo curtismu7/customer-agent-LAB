@@ -3,6 +3,10 @@ import { InventedTag, Json, LiveTag, RealTag, Tag } from "./Bits";
 import HopList from "./HopList";
 import TokenView from "./TokenView";
 import GatewayTrace from "../gateway-trace/GatewayTrace";
+import RunObservability from "../run-observability/RunObservability";
+
+// Where this lab's run records come from (rule 27). The lab reads no logs: each row is a Mock step or a Real answer the lab received.
+const STREAMS = [{ product: "customer-agent-lab", lives: "Not read from any log: this lab keeps the run record in memory for the workspace.", streams: "Each allowed, refused or blocked decision is one line on the lab's stdout (decision step=... result=...). Rows are timed when the lab computed or received them; a Mock run has one time for all its rows." }];
 
 // The honest refusal text for each answer the API can give instead of a run. The server's own detail is shown as it is.
 const REFUSAL = {
@@ -80,6 +84,7 @@ export function RunResult({ run }) {
       {isLive && <NotRun notRun={run.notRun} />}
       <HopList hops={run.hops} traceparent={run.traceparent} />
       {run.gatewayTrace?.length > 0 && <GatewayTrace exchanges={run.gatewayTrace} source={isReal ? "real" : "mock"} />}
+      {run.observability && <RunObservability record={run.observability} source={isReal ? "real" : "mock"} streams={STREAMS} />}
       <h3 className="panel__sub">Tokens</h3>
       <TokenView tokens={run.tokens} />
     </section>
