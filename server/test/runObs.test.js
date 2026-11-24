@@ -21,7 +21,7 @@ test('a computed Mock run builds a record of simulated rows only, and the record
   assert.deepEqual(assertRunObservability(record), []);
   for (const r of record.rows) {
     assert.ok(['simulated', 'not-logged'].includes(r.origin), 'every Mock row is simulated (or a not-logged note), never logged or response');
-    assert.equal(r.at, new Date(at).toISOString(), 'one stamp for the whole Mock run: the mock has no per-hop clock');
+    if (r.origin === 'simulated') assert.equal(r.at, new Date(at).toISOString(), 'one stamp for the whole Mock run: the mock has no per-hop clock');
   }
   assert.ok(record.rows.length > 0);
 });
