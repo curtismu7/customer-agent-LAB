@@ -91,7 +91,7 @@ test('a Real run is response rows only, the gateway row carries the one decision
       { kind: 'sign-in', verdict: 'ok', label: 'Sign-in [REAL]' },
       { kind: 'actor-token', verdict: 'ok', label: 'Agent token [REAL]' },
       { kind: 'token-exchange', verdict: 'ok', label: 'Token exchange 1 [REAL]' },
-      { kind: 'gateway-check', verdict: 'deny', label: 'Agent Gateway [REAL]' },
+      { kind: 'gateway-check', verdict: 'ok', label: 'Agent Gateway [REAL]' },
       { kind: 'authorize-decision', verdict: 'deny', label: 'Authorize decision [REAL]' },
       { kind: 'api-call', verdict: 'skip', source: 'not-run', label: 'API' },
     ],
@@ -103,7 +103,7 @@ test('a Real run is response rows only, the gateway row carries the one decision
   assert.equal(record.source, 'real');
   for (const r of record.rows) assert.ok(['response', 'not-logged'].includes(r.origin), 'no row is logged: this lab reads no logs');
   const gw = record.rows.filter((r) => r.layer === 'gateway');
-  assert.deepEqual(gw.map((r) => r.outcome), ['refused'], 'one policy decision for the gateway');
+  assert.deepEqual(gw.map((r) => r.outcome), ['info', 'refused'], 'the listing is information; the tool-call answer is the one policy decision');
   assert.equal(record.rows.find((r) => r.layer === 'authorize').outcome, 'info', 'the Authorize row is read from the gateway reply, so it is information');
   assert.equal(record.rows.find((r) => r.layer === 'privilege').outcome, 'info');
   assert.equal(record.coverage.resource, 'not-logged', 'a not-run hop is not a row');

@@ -49,14 +49,12 @@ const mockRow = (hop) => ({
   message: `${MOCK_TEXT[hop.kind] ?? hop.kind}${Number.isInteger(hop.response?.status) ? ` (HTTP ${hop.response.status})` : ''}`,
 });
 
-// Real: a policy point comes from the gateway's own answer (the gateway-check hop) and the Authorize decision read from that same answer.
-// The Authorize row is derived from the gateway's reply, so it is info; the gateway row carries the one decision.
+// Real: the gateway's decision is its answer to the tool call (the authorize-decision hop, read from that answer). The Authorize row is read from
+// the same reply, so it is info. The gateway-check (initialize and tools/list) is a listing: refused only if the gateway refused it outright.
+const VERDICT = { ok: 'allowed', deny: 'refused', held: 'info' };
 function realOutcome(hop) {
   if (hop.kind === 'tool-refused') return 'blocked'; // the lab's own stop: it did not call the tool
-  if (hop.kind === 'gateway-check') {
-    if (hop.verdict === 'ok') return 'allowed';
-    if (hop.verdict === 'deny') return 'refused';
-  }
+  if (hop.kind === 'gateway-check') return hop.verdict === 'deny' ? 'refused' : 'info';
   return 'info';
 }
 
@@ -92,10 +90,13 @@ export function realLayers(run, at) {
   const add = (layer, row) => { if (!rows.has(layer)) rows.set(layer, []); rows.get(layer).push(row); };
   for (const hop of run.hops || []) {
     if (hop.verdict === 'skip' || hop.source === 'not-run' || !REAL_LAYER[hop.kind]) continue;
-    const outcome = realOutcome(hop);
-    const layer = REAL_LAYER[hop.kind];
-    // The Authorize decision is read from the gateway's answer: the same reply as the gateway row, so it is info, never a second decision.
-    add(layer, { at, outcome: layer === 'authorize' ? 'info' : outcome, message: REAL_TEXT[hop.kind] ?? hop.kind });
+    if (hop.kind === 'authorize-decision') {
+      // One reply, two readings: the Authorize row is information; the gateway's decision for the tool call is the policy point.
+      add('authorize', { at, outcome: 'info', message: REAL_TEXT[hop.kind] });
+      add('gateway', { at, outcome: VERDICT[hop.verdict] ?? 'info', message: 'Agent Gateway answer to the tool call' });
+      continue;
+    }
+    add(REAL_LAYER[hop.kind], { at, outcome: realOutcome(hop), message: REAL_TEXT[hop.kind] ?? hop.kind });
   }
   const audit = (run.gatewayTrace || []).flatMap((e) => (e.trace?.decisions || []).filter((d) => d.id === 'audit-trail'));
   const privilege = audit.length
