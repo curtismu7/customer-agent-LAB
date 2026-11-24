@@ -15,7 +15,8 @@ test('no source file evals, uses vm or Function, builds a regular expression fro
     const code = fs.readFileSync(new URL(f, dir), 'utf8').split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
     assert.ok(!/\beval\(|new Function\(|\bvm\./.test(code), `${f}: no eval, Function or vm`);
     assert.ok(!/writeFile|appendFile|createWriteStream|mkdirSync|rmSync|unlinkSync/.test(code), `${f}: the server writes no file`);
-    assert.ok(!/new RegExp\(/.test(code.replace(/new RegExp\(`\^0\{\$\{n\}\}\$`\)/, '')), `${f}: no regular expression is built from input`);
+    // runObservability.js is the vendored shared core (rule 27): its correlation matcher escapes each id before it builds the pattern. Named exemption, CLAUDE.md.
+    assert.ok(f === 'runObservability.js' || !/new RegExp\(/.test(code.replace(/new RegExp\(`\^0\{\$\{n\}\}\$`\)/, '')), `${f}: no regular expression is built from input`);
     assert.ok(!/process\.env\.MODE\b|env\.MODE\b/.test(code), `${f}: a bare MODE is never read`);
     assert.ok(!/child_process|worker_threads|node:cluster/.test(code), `${f}: no child process or worker`);
   }

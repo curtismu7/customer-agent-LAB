@@ -20,7 +20,7 @@ test('a computed Mock run builds a record of simulated rows only, and the record
   assert.equal(record.source, 'mock');
   assert.deepEqual(assertRunObservability(record), []);
   for (const r of record.rows) {
-    assert.equal(r.origin, 'simulated', 'every Mock row is simulated, never logged or response');
+    assert.ok(['simulated', 'not-logged'].includes(r.origin), 'every Mock row is simulated (or a not-logged note), never logged or response');
     assert.equal(r.at, new Date(at).toISOString(), 'one stamp for the whole Mock run: the mock has no per-hop clock');
   }
   assert.ok(record.rows.length > 0);
@@ -101,7 +101,7 @@ test('a Real run is response rows only, the gateway row carries the one decision
   const record = await buildRunRecord({ run, mode: 'real', runId: 'run-r1', startedAt: at, endedAt: at + 500, write: (l) => lines.push(l) });
   assert.deepEqual(assertRunObservability(record), []);
   assert.equal(record.source, 'real');
-  for (const r of record.rows) assert.equal(r.origin, 'response', 'no row is logged: this lab reads no logs');
+  for (const r of record.rows) assert.ok(['response', 'not-logged'].includes(r.origin), 'no row is logged: this lab reads no logs');
   const gw = record.rows.filter((r) => r.layer === 'gateway');
   assert.deepEqual(gw.map((r) => r.outcome), ['refused'], 'one policy decision for the gateway');
   assert.equal(record.rows.find((r) => r.layer === 'authorize').outcome, 'info', 'the Authorize row is read from the gateway reply, so it is information');

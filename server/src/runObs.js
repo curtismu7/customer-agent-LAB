@@ -109,7 +109,7 @@ export function decisionLines(record, { runId, write, error = () => {} }) {
     if (r.outcome !== 'allowed' && r.outcome !== 'refused' && r.outcome !== 'blocked') continue;
     const result = r.outcome === 'allowed' ? 'passed' : 'stopped';
     const line = `${r.atExact} ${LAB} decision step=${clean(r.layer)} actor=${clean(r.origin)} result=${result} run=${clean(runId, 80)}`;
-    try { write(line); lines += 1; } catch (e) { error(`stdout write failed: ${e?.name || 'error'}`); }
+    try { write(line); lines += 1; } catch (e) { error(e?.name || 'error'); }
   }
   return lines;
 }
