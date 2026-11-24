@@ -147,6 +147,17 @@ Owner only (agents never run these: they change a real PingOne environment and t
 
 API: `GET /api/health`, `GET /api/info`, `GET /api/story?vertical=`, `GET /api/diagram?name=` (two diagram-studio/1 diagrams: delegation-chain, gateway-refusals; the web app draws them), `GET /api/usecases?vertical=&track=`, `GET /api/usecases/:id`, `GET`/`PUT /api/mode`, `GET /api/brain[?check=1]`, `POST /api/brain/pick` (`{vertical, text}` -> `{ok, uc}` or `{ok:false, reason, message}`), `POST /api/run/:id` (`{vertical, persona, mode}`; `GET /api/info` adds `liveSettings`: whether the PingOne settings are present and the one origin, never the environment id or client), `GET /api/runs`, `POST /api/reset`. The workspace id goes in the `X-Workspace` header (default `default`).
 
+## What each layer logged for this run
+
+The run panel under a Run result shows, for the six layers (person, agent, Authorize, Privilege, agent gateway, resource server), what the lab recorded for that run, in time order, with an origin tag. The shared panel is vendored byte for byte from `shared/run-observability` (pinned, see `CLAUDE.md`).
+
+- **Mock:** every row is `simulated`: a step the mock computed. The mock has no clock per step, so every row of a Mock run carries the one time the mock computed the run.
+- **Real:** every row is `response`: an answer the lab received from PingOne or the Agent Gateway during the run. Rows are timed when the lab received the answer. Nothing is read from a log, because this lab reads none.
+- **Where the logs live:** this lab reads no logs. Each allowed, refused or blocked decision is also one line on the lab's stdout, `decision step=<layer> actor=<origin> result=passed|stopped run=<id>`, with the row's own time.
+- **Not logged, and why:** PingOne sign-in and PingOne Authorize have no log reader here (their events are in the PingOne audit API, which the panel does not read yet). The Privilege row shows only the `X-Gw-Audit-Trail` header of the gateway answer, and only when the gateway sent one.
+- **Only policy points are decisions:** the gateway's check and the Authorize decision read from its answer. The Authorize and Privilege rows come from the same reply as the gateway row, so they are information. A lab stop (the BFF refusing to forward the user token; the lab not calling a tool it could not use) is `blocked`. Issuance, the agent token and any fault are information.
+- **Not verified:** nothing here was run against a real gateway by the builder. The Real rows are as the lab read them from PingOne and the Agent Gateway, unverified against the owner's tenant.
+
 ## Health, doctor and reset
 
 - `GET /api/health` returns `demo-health/1` (public, GET only, no detail).

@@ -25,6 +25,7 @@ import { parseTraceparent, randomTraceparent } from './trace.js';
 import { createLive, LiveRefused } from './live.js';
 import { createReal, RealRefused, REDIRECT_URI } from './real.js';
 import { realGate } from './realGate.js';
+import { buildRunRecord, newRunId } from './runObs.js';
 import { shelfInfo } from './shelfLink.js';
 import { promptsFor, routeOf } from './routes.js';
 import { createBrain, REASONS } from './brain.js';
@@ -56,8 +57,11 @@ const mockInReal = (run, reason) => ({
 
 export function createApp({
   health = createHealth(), configFile = CONFIG, env = process.env, bind = '127.0.0.1', workspaces = createWorkspaces({ defaultMode: defaultMode() }), webDist = WEB_DIST, live = createLive(), brain = createBrain(), real = createReal(),
+  runWrite = (line) => process.stdout.write(`${line}\n`),
 } = {}) {
   const app = express();
+  // The run record's stdout lines and its failures: a failure is named by code only, never by its message (rule 6).
+  const runError = (code) => process.stderr.write(`[customer-agent-lab] run record not built: ${String(code).slice(0, 40)}\n`);
   app.disable('x-powered-by');
   app.use((req, res, next) => hostCheck(req, res, next, allowedExtraHosts(env)));
   // The shared lab-proxy's origin is the shelf's (SHELF_URL); null when unset or not a URL.
@@ -338,11 +342,13 @@ export function createApp({
           }
           const session = real.session(id);
           if (!session) return res.status(401).json({ error: 'sign_in_required', detail: 'Sign in first: Real runs as you. Use Sign in (pi.flow, the username is filled in for you).' });
+          const startedAt = Date.now();
           let run;
           try { run = await real.run(uc, { vertical, tool: gate.tool, traceparent, session }); } catch (e) {
             if (e instanceof RealRefused) return res.status(e.code === 'busy' ? 429 : e.status).json({ error: e.code === 'busy' ? 'live_busy' : e.code, detail: e.message });
             throw e;
           }
+          run.observability = await buildRunRecord({ run, mode: 'real', runId: newRunId(), startedAt, endedAt: Date.now(), write: runWrite, error: runError });
           return recordLive(id, uc, vertical, run, res);
         }
         let run;
@@ -359,11 +365,13 @@ export function createApp({
       if (why) return res.status(403).json({ error: 'mock_signin_refused', detail: why });
       const out = await workspaces.write(id, (s) => {
         if (s.runs.length >= MAX_RUNS) throw refuse('workspace_full', `this workspace already holds ${MAX_RUNS} runs; Reset it to continue`, 409);
+        const at = Date.now();
         const run = withSource(runUseCase(uc, { cast: loadCast(configFile, vertical), vertical, persona: body.persona, brain: body.brain, said: body.said === undefined ? undefined : cleanFree(body.said, 400), traceparent: parseTraceparent(req.headers.traceparent) ? req.headers.traceparent : randomTraceparent(), seed: 'run' }));
         s.seq += 1;
         s.runs.push({ seq: s.seq, id: uc.id, vertical, persona: run.persona, outcome: run.outcome, matchesExpected: run.matchesExpected, traceId: run.traceId });
-        return { seq: s.seq, run };
+        return { seq: s.seq, run, at };
       });
+      out.run.observability = await buildRunRecord({ run: out.run, mode: 'mock', runId: newRunId(), startedAt: out.at, endedAt: out.at, write: runWrite, error: runError });
       res.set('traceparent', out.run.traceparent);
       return res.json({ ok: true, workspace: id, seq: out.seq, run: out.run });
     } catch (e) { return next(e); }
