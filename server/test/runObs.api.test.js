@@ -62,5 +62,25 @@ test('a Real gateway refusal is a refused gateway row, and a lab-side stop is no
     assert.ok(gw.some((x) => x.outcome === 'refused'), 'the gateway refusal is a refused row');
     assert.ok(!gw.some((x) => x.outcome === 'allowed'));
     assert.ok(lines.every((l) => !/result=passed/.test(l) || !/step=gateway/.test(l)), 'no gateway allow line');
+    assert.equal(lines.length, 1, 'the gateway refusal is the one stopped line; the tool row the gateway answered is information');
+    assert.match(lines[0], / step=gateway actor=response result=stopped run=run-[0-9a-f]{12}$/);
   });
+});
+
+test('a gateway fault or a token check on the call is information: no refused row and no stdout decision line', async () => {
+  for (const behaviour of ['down', 'token', 'call-down']) {
+    await withReal(behaviour, async (url, lines) => {
+      const ws = `obs-fault-${behaviour}`;
+      await post(url, '/api/mode', { source: 'real' }, { 'x-workspace': ws });
+      await post(url, '/api/signin', { password: DEMO_PASSWORD }, { 'x-workspace': ws });
+      const r = await run(url, 'UC1', { vertical: 'banking' }, { 'x-workspace': ws });
+      assert.equal(r.status, 200, `${behaviour}: ${JSON.stringify(r.body)}`);
+      const o = r.body.run.observability;
+      assert.deepEqual(assertRunObservability(o), [], behaviour);
+      assert.ok(!o.rows.some((x) => x.outcome === 'refused' || x.outcome === 'blocked'), `${behaviour}: no refused or blocked row`);
+      // a failed listing (down, token) is not described as an answer to it; call-down lists fine, so its listing row keeps the listing words
+      if (behaviour !== 'call-down') for (const x of o.rows.filter((y) => y.layer === 'gateway')) assert.doesNotMatch(x.message, /answered the MCP session/, behaviour);
+      assert.deepEqual(lines, [], `${behaviour}: no decision line`);
+    });
+  }
 });

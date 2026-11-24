@@ -2,7 +2,7 @@
 // initialize, notifications/initialized, tools/list and tools/call, records every request (method, headers, body), and checks that the bearer is
 // a token the fake PingOne issued by exchange (with act). state.behaviour picks a variant:
 //   'ok' | 'sse' (answers as an event stream) | 'deny' (403 + X-Gw-Audit-Trail on tools/call) | 'token' (401 + WWW-Authenticate on initialize)
-//   | 'hold' (428 on tools/call) | 'down' (503 on initialize) | 'tool-error' (isError result) | 'no-tool' (tools/list without the tool)
+//   | 'hold' (428 on tools/call) | 'down' (503 on initialize) | 'call-down' (503 on tools/call) | 'tool-error' (isError result) | 'no-tool' (tools/list without the tool)
 //   | 'redirect' (307 on initialize to /elsewhere, counted in state.elsewhere) | 'one-account' (get_my_accounts lists one account)
 //   | 'audit-ctl' (403 with control characters in the audit trail's decision)
 import http from 'node:http';
@@ -36,6 +36,7 @@ export async function startFakeGateway({ behaviour = 'ok', isDelegated = () => t
       if (req.method !== 'POST' || req.url !== '/mcp' || !rpc) return reply(404, { error: 'not_found' });
       const token = /^Bearer (.+)$/.exec(String(req.headers.authorization || ''))?.[1];
       if (b === 'down' && rpc.method === 'initialize') return reply(503, { error: 'unavailable' });
+      if (b === 'call-down' && rpc.method === 'tools/call' && rpc.params?.name !== 'get_my_accounts') return reply(503, { error: 'unavailable' });
       if (b === 'token' || !token || !isDelegated(token)) return reply(401, { error: 'invalid_token' }, { 'www-authenticate': 'Bearer error="invalid_token", error_description="fake: not a delegated token"' });
       if (rpc.method !== 'initialize' && req.headers['mcp-session-id'] !== SESSION_ID) return reply(400, { jsonrpc: '2.0', id: rpc.id ?? null, error: { code: -32600, message: 'fake: no session' } });
       if (rpc.method === 'initialize') return reply(200, { jsonrpc: '2.0', id: rpc.id, result: { protocolVersion: '2025-06-18', capabilities: { tools: {} }, serverInfo: { name: 'fake-gateway', version: '0' } } }, { 'mcp-session-id': SESSION_ID });

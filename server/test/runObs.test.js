@@ -4,6 +4,7 @@ import { findUseCase } from '../src/manifest.js';
 import { VERTICALS } from '../src/cast.js';
 import { runUseCase } from '../src/flow.js';
 import { assertRunObservability, classify } from '../src/runObservability.js';
+import fs from 'node:fs';
 import { buildRunRecord, decisionLines, clean, newRunId, mockLayers, realLayers } from '../src/runObs.js';
 
 const mockRun = (id = 'UC1', extra = {}) => runUseCase(findUseCase(id), { cast: VERTICALS.banking, vertical: 'banking', seed: 'run', ...extra });
@@ -88,11 +89,11 @@ test('a Real run is response rows only, the gateway row carries the one decision
   const run = {
     kind: 'real', persona: null,
     hops: [
-      { kind: 'sign-in', verdict: 'ok', label: 'Sign-in [REAL]' },
-      { kind: 'actor-token', verdict: 'ok', label: 'Agent token [REAL]' },
-      { kind: 'token-exchange', verdict: 'ok', label: 'Token exchange 1 [REAL]' },
-      { kind: 'gateway-check', verdict: 'ok', label: 'Agent Gateway [REAL]' },
-      { kind: 'authorize-decision', verdict: 'deny', label: 'Authorize decision [REAL]' },
+      { kind: 'sign-in', verdict: 'ok', label: 'Sign-in [REAL]', receivedAt: at + 10 },
+      { kind: 'actor-token', verdict: 'ok', label: 'Agent token [REAL]', receivedAt: at + 20 },
+      { kind: 'token-exchange', verdict: 'ok', label: 'Token exchange 1 [REAL]', receivedAt: at + 30 },
+      { kind: 'gateway-check', verdict: 'ok', label: 'Agent Gateway [REAL]', receivedAt: at + 40, response: gwCalls(200, 200) },
+      { kind: 'authorize-decision', verdict: 'deny', label: 'Authorize decision [REAL]', receivedAt: at + 50, response: { status: 403 } },
       { kind: 'api-call', verdict: 'skip', source: 'not-run', label: 'API' },
     ],
     gatewayTrace: [{ step: 1, title: 'tools/call', status: 403, trace: { decisions: [{ id: 'audit-trail', evidence: 'the X-Gw-Audit-Trail header says DENY' }] } }],
@@ -128,4 +129,73 @@ test('run ids are fresh and carry no counter or name', () => {
   const ids = new Set(Array.from({ length: 50 }, () => newRunId()));
   assert.equal(ids.size, 50);
   for (const id of ids) assert.match(id, /^run-[0-9a-f]{12}$/);
+});
+
+// A Real run as real.js writes its hops: each reply carries its status and the time the lab received it.
+const AT = Date.parse('2026-11-24T10:00:00.000Z');
+const realRun = (hops, gatewayTrace = []) => ({ kind: 'real', persona: null, hops, gatewayTrace });
+const gwCalls = (...statuses) => ({ calls: statuses.map((status) => ({ status, headers: {}, body: null })) });
+
+test('a gateway fault or a 401 on the tool call is information, never a refused policy decision', async () => {
+  for (const status of [503, 504, 0, 401]) {
+    const lines = [];
+    const record = await buildRunRecord({ run: realRun([
+      { kind: 'gateway-check', verdict: 'ok', receivedAt: AT, response: gwCalls(200, 200) },
+      { kind: 'authorize-decision', verdict: 'deny', receivedAt: AT + 10, response: { status } },
+    ]), mode: 'real', runId: `run-f${status}`, startedAt: AT, endedAt: AT + 500, write: (l) => lines.push(l) });
+    assert.deepEqual(record.rows.filter((r) => r.layer === 'gateway').map((r) => r.outcome), ['info', 'info'], `HTTP ${status}`);
+    assert.equal(lines.length, 0, `HTTP ${status}: no decision line`);
+  }
+});
+
+test('a listing that got no usable reply is information, and its row does not say the gateway answered', async () => {
+  for (const status of [503, 401]) {
+    const lines = [];
+    const record = await buildRunRecord({ run: realRun([
+      { kind: 'gateway-check', verdict: 'deny', receivedAt: AT, response: gwCalls(status) },
+    ]), mode: 'real', runId: `run-g${status}`, startedAt: AT, endedAt: AT + 5, write: (l) => lines.push(l) });
+    const gw = record.rows.filter((r) => r.layer === 'gateway');
+    assert.deepEqual(gw.map((r) => r.outcome), ['info'], `HTTP ${status}`);
+    assert.doesNotMatch(gw[0].message, /answered the MCP session/, `HTTP ${status}`);
+    assert.equal(lines.length, 0);
+  }
+});
+
+test('each Real row is stamped when the lab received its reply, not at the end of the run', async () => {
+  const record = await buildRunRecord({ run: realRun([
+    { kind: 'sign-in', verdict: 'ok', receivedAt: AT + 100 },
+    { kind: 'actor-token', verdict: 'ok', receivedAt: AT + 1200 },
+    { kind: 'gateway-check', verdict: 'ok', receivedAt: AT + 3400, response: gwCalls(200, 200) },
+  ]), mode: 'real', runId: 'run-s1', startedAt: AT, endedAt: AT + 5000, write: () => {} });
+  const at = Object.fromEntries(record.rows.filter((r) => r.origin === 'response').map((r) => [r.layer, r.at]));
+  assert.deepEqual(at, {
+    person: new Date(AT + 100).toISOString(), agent: new Date(AT + 1200).toISOString(), gateway: new Date(AT + 3400).toISOString(),
+  });
+});
+
+test('a tool-call answer that the gateway gave (not a lab stop) is information, not a blocked resource line', async () => {
+  const lines = [];
+  const record = await buildRunRecord({ run: realRun([
+    { kind: 'gateway-check', verdict: 'ok', receivedAt: AT, response: gwCalls(200, 200) },
+    { kind: 'authorize-decision', verdict: 'deny', receivedAt: AT + 10, response: { status: 403 } },
+    { kind: 'tool-refused', verdict: 'deny', receivedAt: AT + 10, response: gwCalls(403), note: 'refused by the gateway' },
+  ]), mode: 'real', runId: 'run-t1', startedAt: AT, endedAt: AT + 50, write: (l) => lines.push(l) });
+  assert.equal(record.rows.find((r) => r.layer === 'resource').outcome, 'info');
+  assert.deepEqual(lines.map((l) => l.split(' ')[2]), ['decision']);
+  assert.equal(lines.filter((l) => /step=resource/.test(l)).length, 0, 'the gateway refusal is one line (the gateway row), not two');
+});
+
+test('a lab stop before the tool call stays a blocked resource line', async () => {
+  const lines = [];
+  const record = await buildRunRecord({ run: realRun([
+    { kind: 'tool-refused', verdict: 'deny', receivedAt: AT, response: gwCalls(200), note: 'the account list had no usable account' },
+  ]), mode: 'real', runId: 'run-t2', startedAt: AT, endedAt: AT + 50, write: (l) => lines.push(l) });
+  assert.equal(record.rows.find((r) => r.layer === 'resource').outcome, 'blocked');
+  assert.match(lines[0], /step=resource actor=response result=stopped run=run-t2$/);
+});
+
+test('the README says the stdout actor is the row origin, not the name of an agent or a person', () => {
+  const readme = fs.readFileSync(new URL('../../README.md', import.meta.url), 'utf8');
+  assert.match(readme, /actor=<origin>/);
+  assert.match(readme, /not the name of an agent or a person/);
 });

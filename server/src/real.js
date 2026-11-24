@@ -262,7 +262,8 @@ export function createReal({ config = { problem: 'not configured' }, missing = F
       const rootSpan = trace.span();
       const tp = () => formatTraceparent(trace.traceId, trace.span());
       const hops = []; const tokens = [];
-      const push = (h) => hops.push({ n: hops.length + 1, mock: false, live: false, source: 'real', ...h });
+      // receivedAt: when the lab received this reply (the run record stamps its row with it, rule 27).
+      const push = (h) => hops.push({ n: hops.length + 1, mock: false, live: false, source: 'real', receivedAt: Date.now(), ...h });
       // shortTitle: the name "Where each hop ran" shows (the two exchanges share one catalog kind, so the catalog title cannot tell them apart).
       const notRun = (kind, label, from, to, why, shortTitle) => hops.push({ n: hops.length + 1, mock: false, live: false, source: 'not-run', kind, label: `${label} [NOT RUN]`, from, to, verdict: 'skip', note: why, request: {}, response: {}, ...(shortTitle ? { shortTitle } : {}) });
       // expectAct: an exchange token; the page shows its act (or that it has none) next to the label.

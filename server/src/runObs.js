@@ -49,12 +49,16 @@ const mockRow = (hop) => ({
   message: `${MOCK_TEXT[hop.kind] ?? hop.kind}${Number.isInteger(hop.response?.status) ? ` (HTTP ${hop.response.status})` : ''}`,
 });
 
-// Real: the gateway's decision is its answer to the tool call (the authorize-decision hop, read from that answer). The Authorize row is read from
-// the same reply, so it is info. The gateway-check (initialize and tools/list) is a listing: refused only if the gateway refused it outright.
-const VERDICT = { ok: 'allowed', deny: 'refused', held: 'info' };
+// Real: the gateway's decision is its answer to the tool call: a 403 is the policy DENY, a 200 is an allow. A fault (502, 503, 504, no connection),
+// a 401 token check and a 428 hold are not decisions: they are information. The gateway-check (initialize and tools/list) is a listing: refused
+// only when the gateway refused the listing outright with a 403.
+const POLICY_DENY = 403;
+const answeredDeny = (hop) => hop.verdict === 'deny' && [hop.response?.status, ...(hop.response?.calls || []).map((c) => c?.status)].includes(POLICY_DENY);
+// A tool-refused hop is the lab's own stop only when no gateway answer refused it: the lab did not call the tool (every reply it made was a 2xx).
+const labStop = (hop) => (hop.response?.calls || []).every((c) => c?.status >= 200 && c?.status < 300);
 function realOutcome(hop) {
-  if (hop.kind === 'tool-refused') return 'blocked'; // the lab's own stop: it did not call the tool
-  if (hop.kind === 'gateway-check') return hop.verdict === 'deny' ? 'refused' : 'info';
+  if (hop.kind === 'tool-refused') return labStop(hop) ? 'blocked' : 'info';
+  if (hop.kind === 'gateway-check') return answeredDeny(hop) ? 'refused' : 'info';
   return 'info';
 }
 
@@ -63,6 +67,12 @@ const REAL_TEXT = {
   'authorize-decision': 'Authorize decision, read from the gateway answer', 'gateway-check': 'Agent Gateway answered the MCP session and tools/list',
   'tool-refused': 'Lab stop: the lab did not call the tool', 'api-call': 'The SE MCP server answered the tool call',
 };
+// The words of a row: a listing that got no usable reply is not described as an answer to the listing (the lab may have been on any of its calls).
+function realText(hop) {
+  if (hop.kind === 'gateway-check' && hop.verdict !== 'ok') return 'Agent Gateway reply while the lab was opening or making the MCP session or tools/list call (not a listing)';
+  if (hop.kind === 'tool-refused' && !labStop(hop)) return 'Agent Gateway answer to the tools/call request: the tool did not run';
+  return REAL_TEXT[hop.kind] ?? hop.kind;
+}
 
 const REAL_LAYER = {
   'sign-in': 'person', 'actor-token': 'agent', 'token-exchange': 'agent',
@@ -84,23 +94,31 @@ export function mockLayers(run, at) {
   }));
 }
 
-// Real: the answers the lab received. `exchanges` is run.gatewayTrace; its audit-trail decision is the Privilege row (the same reply as the gateway).
-export function realLayers(run, at) {
+// Real: the answers the lab received. Each row is stamped with the time the lab received its reply (hop.receivedAt, set by real.js when the reply
+// comes in); a hop with no receive time gets no row, because a row must not be stamped with a time the lab did not have the reply. `run.gatewayTrace`
+// is the gateway trace; its audit-trail decision is the Privilege row (the same reply as the gateway).
+export function realLayers(run) {
   const rows = new Map();
   const add = (layer, row) => { if (!rows.has(layer)) rows.set(layer, []); rows.get(layer).push(row); };
   for (const hop of run.hops || []) {
     if (hop.verdict === 'skip' || hop.source === 'not-run' || !REAL_LAYER[hop.kind]) continue;
+    if (!Number.isFinite(hop.receivedAt)) continue;
+    const at = hop.receivedAt;
     if (hop.kind === 'authorize-decision') {
       // One reply, two readings: the Authorize row is information; the gateway's decision for the tool call is the policy point.
       add('authorize', { at, outcome: 'info', message: REAL_TEXT[hop.kind] });
-      add('gateway', { at, outcome: VERDICT[hop.verdict] ?? 'info', message: 'Agent Gateway answer to the tool call' });
+      const outcome = hop.verdict === 'ok' ? 'allowed' : answeredDeny(hop) ? 'refused' : 'info';
+      const message = outcome === 'info' ? 'Agent Gateway reply to the tools/call request: not an allow and not a 403, so not a policy decision' : 'Agent Gateway answer to the tool call';
+      add('gateway', { at, outcome, message });
       continue;
     }
-    add(REAL_LAYER[hop.kind], { at, outcome: realOutcome(hop), message: REAL_TEXT[hop.kind] ?? hop.kind });
+    add(REAL_LAYER[hop.kind], { at, outcome: realOutcome(hop), message: realText(hop) });
   }
   const audit = (run.gatewayTrace || []).flatMap((e) => (e.trace?.decisions || []).filter((d) => d.id === 'audit-trail'));
-  const privilege = audit.length
-    ? audit.map((d) => ({ at, outcome: 'info', message: `The Agent Gateway's X-Gw-Audit-Trail header: ${d.evidence} (the same reply as the gateway row)` }))
+  // The audit trail is in the gateway's answer to the tool call: its time is that reply's time (the Authorize hop's receive time).
+  const answeredAt = (run.hops || []).find((h) => h.kind === 'authorize-decision' && Number.isFinite(h.receivedAt))?.receivedAt;
+  const privilege = audit.length && Number.isFinite(answeredAt)
+    ? audit.map((d) => ({ at: answeredAt, outcome: 'info', message: `The Agent Gateway's X-Gw-Audit-Trail header: ${d.evidence} (the same reply as the gateway row)` }))
     : [];
   const reason = {
     person: 'PingOne sign-in is not logged: this lab shows the sign-in answer it received.',
@@ -143,7 +161,7 @@ export async function buildRunRecord({ run, mode, runId, startedAt, endedAt, wri
   const wanted = (mode === 'mock' && run.kind === 'flow') || (mode === 'real' && run.kind === 'real');
   if (!wanted) return null;
   try {
-    const layers = mode === 'mock' ? mockLayers(run, startedAt) : realLayers(run, endedAt);
+    const layers = mode === 'mock' ? mockLayers(run, startedAt) : realLayers(run);
     const record = await createRunObservability({ readers: [] }).collectRun({ runId, startedAt, endedAt, layers, source: mode, correlation: {} });
     decisionLines(record, { runId, write, error });
     return record;

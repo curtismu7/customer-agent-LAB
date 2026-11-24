@@ -51,10 +51,32 @@ test('compose, the example settings and the Dockerfile never mount the Docker so
   }
 });
 
+// The RUN_OBS_ scan: every lab file under web/src and server/src except the vendored folder and the vendored core, matched by exact path.
+const VENDORED_WEB = path.join('web', 'src', 'run-observability');
+const VENDORED_CORE = path.join('server', 'src', 'runObservability.js');
+function runObsNameFiles(lab) {
+  const walk = (dir) => fs.readdirSync(dir, { withFileTypes: true }).flatMap((d) => {
+    const p = path.join(dir, d.name);
+    if (d.isDirectory()) return d.name === 'node_modules' || path.relative(lab, p) === VENDORED_WEB ? [] : walk(p);
+    return [p];
+  });
+  const files = [...walk(path.join(lab, 'web/src')), ...walk(path.join(lab, 'server/src'))].filter((f) => path.relative(lab, f) !== VENDORED_CORE);
+  return files.filter((f) => /RUN_OBS_/.test(fs.readFileSync(f, 'utf8'))).map((f) => path.relative(lab, f));
+}
+
 test('no lab file outside the vendored files carries the RUN_OBS_ prefix (the web code included), and the README says what is not verified', () => {
-  const walk = (dir) => fs.readdirSync(dir, { withFileTypes: true }).flatMap((d) => (d.isDirectory() ? (d.name === 'node_modules' || d.name === 'run-observability' ? [] : walk(path.join(dir, d.name))) : [path.join(dir, d.name)]));
-  for (const f of [...walk(path.join(root, 'web/src')), ...walk(path.join(root, 'server/src')).filter((x) => !x.endsWith('runObservability.js'))]) {
-    assert.ok(!/RUN_OBS_/.test(fs.readFileSync(f, 'utf8')), `${path.relative(root, f)} carries a RUN_OBS_ name`);
-  }
+  assert.deepEqual(runObsNameFiles(root), []);
   assert.match(read('README.md'), /Not verified/, 'the README says what is not verified');
+});
+
+test('the RUN_OBS_ scan exempts only the vendored web folder and the vendored core, not a folder or file that only shares their name', () => {
+  const lab = fs.mkdtempSync(path.join(os.tmpdir(), 'cal-obs-scan-'));
+  try {
+    const put = (rel, body) => { fs.mkdirSync(path.dirname(path.join(lab, rel)), { recursive: true }); fs.writeFileSync(path.join(lab, rel), body); };
+    put('web/src/other/run-observability/Lab.jsx', 'export const x = "RUN_OBS_LEAK";\n');
+    put('server/src/other/runObservability.js', 'export const y = "RUN_OBS_LEAK";\n');
+    put('web/src/run-observability/RunObservability.jsx', 'export const v = "RUN_OBS_VENDORED";\n');
+    put('server/src/runObservability.js', 'export const c = "RUN_OBS_VENDORED";\n');
+    assert.deepEqual(runObsNameFiles(lab).sort(), [path.join('server', 'src', 'other', 'runObservability.js'), path.join('web', 'src', 'other', 'run-observability', 'Lab.jsx')].sort());
+  } finally { fs.rmSync(lab, { recursive: true, force: true }); }
 });
