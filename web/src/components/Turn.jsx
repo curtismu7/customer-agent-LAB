@@ -3,6 +3,7 @@ import { isHandoff, routeOf } from "../handoff";
 import { outcomeState } from "../lib";
 import { visible } from "../safeText";
 import { Tag } from "./Bits";
+import PingSpinner from "./PingSpinner";
 import { HandoffCard } from "./HandoffCard";
 
 // One exchange: what the visitor typed (or picked), then ONE reply: the agent's answer, or the refusal or hold as the system that answered gave it,
@@ -41,7 +42,7 @@ export default function Turn({ turn, onHop, onPreview, userId, running }) {
               {" "}The evidence is not kept: run it again to see it.
             </p>
           )}
-          {turn.status === "running" && <p className="muted" data-testid="turn-running">Working on it...</p>}
+          {turn.status === "running" && <div data-testid="turn-running"><PingSpinner size={28} label="Working on it…" /></div>}
           {res && !res.ok && <p className="turn__refused" data-testid="turn-refused">The server refused this run{res.status ? ` (HTTP ${res.status})` : " (no answer)"}: {visible(res.body?.detail || res.body?.message || "no reason given")}</p>}
           {run && guide && <p data-testid="turn-guide-say">This one is a guide: the learning pages and scripts cover it, and there is no lab for it yet.</p>}
           {reply?.approval && (

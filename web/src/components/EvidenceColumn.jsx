@@ -4,6 +4,8 @@ import MovieReel from "../evidence/MovieReel";
 import StepDetailPanel from "../evidence/StepDetailPanel";
 import DiagramView from "./DiagramView";
 import TokenView from "./TokenView";
+import PingSpinner from "./PingSpinner";
+import useRevealedHops from "./useRevealedHops";
 import { DIAGRAMS, VIEWS, VIEW_LABEL } from "../quickConfig";
 import { appsOf, handoffCarry, routeOf } from "../handoff";
 import { SourceTag, Tag } from "./Bits";
@@ -79,7 +81,11 @@ export function HopSources({ run }) {
 
 // `children`: the selected use case's panel (inputs, persona, Run and the raw result), at the bottom of the column (owner, 2026-11-09).
 export default function EvidenceColumn({ run, selHop, onSelect, config, onTab, onFull, vertical, resetSignal, lastRun, uc, catalog, userId, showHandoff, why, children }) {
-  const hops = run?.hops || [];
+  const allHops = run?.hops || [];
+  // Live reveal (owner, 2026-11-28): the existing views draw the hops revealed so far; the run key
+  // restarts playback per run. Additive — the views, tabs and everything else are unchanged.
+  const live = useRevealedHops(allHops, run?.traceId || allHops.map((h) => `${h.n}:${h.kind}`).join("|"));
+  const hops = live.shown;
   const tabs = VIEWS.filter((v) => DIAGRAMS.includes(v) || config.views.tokens === "embedded");
   const tab = tabs.includes(config.tab) && (config.tab === "tokens" || config.views[config.tab] === "embedded") ? config.tab : null;
   return (
@@ -87,6 +93,12 @@ export default function EvidenceColumn({ run, selHop, onSelect, config, onTab, o
       <header className="evcol__head">
         <h2 className="evcol__title"><span className="step-num" aria-hidden="true">2</span>Evidence</h2>
         <span className="muted" data-testid="evidence-count">{run ? `${run.useCase?.id} · ${ranCount(hops)} hops${notRunText(hops)}${run.kind === "real" ? " · REAL" : run.mode === "mock" ? " · MOCK engine" : run.mode === "live" ? " · LIVE, identity provider only" : ""}` : "nothing run yet"}</span>
+        {run && !live.done && <PingSpinner size={22} label={`${live.revealed}/${live.total}`} className="evcol__spinner" />}
+        {run && (
+          <button type="button" className="evcol__live" aria-pressed={live.playing} onClick={live.toggle} data-testid="evidence-live">
+            {live.playing ? "Pause" : live.revealed < live.total ? "Play" : "Replay"}
+          </button>
+        )}
         <span className="spacer" />
         <button type="button" onClick={() => onFull("sequence")} data-testid="full-sequence" title="The sequence view on a page of its own">Full page</button>
       </header>

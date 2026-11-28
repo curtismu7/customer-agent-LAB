@@ -143,7 +143,9 @@
 .evcol, .qc { flex: 999 1 360px; min-width: 0; max-width: 100%; display: grid; gap: 10px; align-content: start; padding: 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
 .evcol__head, .qc__head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .evcol__title { margin: 0; font-size: 16px; }
-.evtabs { display: flex; flex-wrap: wrap; gap: 6px; }
+.evtabs { display: flex; flex-wrap: wrap; gap: 4px; }
+/* The four evidence view buttons are small: they name a view, they are not actions (owner, 2026-11-28). */
+.evtabs button { min-height: 22px; padding: 1px 8px; font-size: 11px; }
 .evcol__panel { display: grid; gap: 10px; min-width: 0; }
 .evsum { display: grid; gap: 10px; }
 .evwhy .kicker { margin-top: 0; }
@@ -178,3 +180,7 @@
 .app[data-presenter] { font-size: 18px; }
 .app[data-presenter] .muted { font-size: 16px; }
 .turn--note { display: block; font-size: 13px; padding: 4px 0 4px 10px; border-left: 3px solid var(--focus); overflow-wrap: anywhere; }
+
+/* ===== live evidence (owner, 2026-11-28): tiny playback control + spinner in the evidence header ===== */
+.evcol__live { min-height: 22px; padding: 1px 8px; font-size: 11px; }
+.evcol__spinner .ping-spinner__label { font-size: 11px; color: var(--muted); }
