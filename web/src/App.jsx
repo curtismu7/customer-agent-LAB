@@ -6,6 +6,7 @@ import ExtraPage from "./components/ExtraPage";
 import RunHistory from "./components/RunHistory";
 import TalkTrack from "./components/TalkTrack";
 import AgentColumn, { statusOf } from "./components/AgentColumn";
+import AgentRunView from "./components/AgentRunView";
 import EvidenceColumn from "./components/EvidenceColumn";
 import FullPageEvidence from "./components/FullPageEvidence";
 import QuickConfig from "./components/QuickConfig";
@@ -29,6 +30,7 @@ import "./layout.css";
 // Reset removes it (one menu, so the shell bar stays one row however many extra pages are open).
 export const BASE_NAV = [
   { id: "agent", label: "Agent" },
+  { id: "agentrun", label: "Agent run" },
   { id: "runs", label: "Run history" },
   { id: "diagram", label: "Diagram" },
   { id: "talk", label: "Talk track" },
@@ -458,6 +460,7 @@ export default function App() {
               </div>
             </div>
           )}
+          {current === "agentrun" && <AgentRunView run={evRun} uc={uc} persona={persona} mode={mode} />}
           {current === "runs" && <RunHistory refresh={runCount} />}
           {current === "diagram" && <DiagramView vertical={vertical} resetSignal={resetSignal} lastRun={last} />}
           {current === "talk" && (story ? <TalkTrack talk={story.talkTrack} /> : <p className="muted">{error ? "The talk track could not be loaded." : "Loading..."}</p>)}

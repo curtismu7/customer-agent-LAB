@@ -55,7 +55,7 @@ describe("header, banner and side nav", () => {
     await boot();
     const tabs = within(screen.getByTestId("nav")).getAllByRole("tab").map((t) => t.textContent);
     expect(tabs).toEqual(BASE_NAV.map((n) => n.label));
-    expect(tabs).toEqual(["Agent", "Run history", "Diagram", "Talk track"]);
+    expect(tabs).toEqual(["Agent", "Agent run", "Run history", "Diagram", "Talk track"]);
     const id = screen.getByTestId("workspace").textContent.replace("Workspace: ", "");
     expect(api.calls.length).toBeGreaterThan(2);
     for (const c of api.calls) expect(c.headers["x-workspace"]).toBe(id);
@@ -66,8 +66,10 @@ describe("header, banner and side nav", () => {
     const u = userEvent.setup();
     screen.getByTestId("nav-agent").focus();
     await u.keyboard("{ArrowDown}");
+    expect(screen.getByTestId("nav-agentrun").getAttribute("aria-selected")).toBe("true");
+    await u.keyboard("{ArrowDown}");
     expect(screen.getByTestId("nav-runs").getAttribute("aria-selected")).toBe("true");
-    await u.keyboard("{ArrowUp}");
+    await u.keyboard("{ArrowUp}{ArrowUp}");
     expect(screen.getByTestId("nav-agent").getAttribute("aria-selected")).toBe("true");
   });
 });
@@ -266,13 +268,13 @@ describe("extra pages (opens)", () => {
     await search(u, "scope");
     await u.click(screen.getByTestId("uc-UC5"));
     await runIt(u);
-    expect(within(screen.getByTestId("nav")).getAllByRole("tab")).toHaveLength(4);
+    expect(within(screen.getByTestId("nav")).getAllByRole("tab")).toHaveLength(5);
     expect(screen.queryByTestId("nav-more")).toBeNull();
     await search(u, "");
     await u.click(screen.getByTestId("uc-UC1"));
     await runIt(u);
     // the tabs stay the agent's four areas; the extra page joins the one More menu beside them (the shell bar stays one row)
-    expect(within(screen.getByTestId("nav")).getAllByRole("tab").map((t) => t.textContent)).toEqual(["Agent", "Run history", "Diagram", "Talk track"]);
+    expect(within(screen.getByTestId("nav")).getAllByRole("tab").map((t) => t.textContent)).toEqual(["Agent", "Agent run", "Run history", "Diagram", "Talk track"]);
     const more = screen.getByTestId("nav-more");
     expect([...more.options].map((o) => o.textContent)).toEqual(["More (1)", "Consent and step-up"]);
     expect(screen.getByTestId("nav-page-consent").value).toBe("page-consent");
@@ -691,5 +693,26 @@ describe("fix pass 2026-11-01", () => {
     await new Promise((r) => { setTimeout(r, 50); });
     await screen.findByTestId("uc-UC1");
     expect(await screen.findByTestId("uc-UC21")).toBeTruthy();
+  });
+});
+
+describe("agent run tab", () => {
+  test("the tab shows the empty state by default, and a run plays its hops one at a time then shows the reply", async () => {
+    const u = userEvent.setup();
+    await boot();
+    await u.click(screen.getByRole("tab", { name: "Agent run" }));
+    expect(screen.getByTestId("agent-run-empty")).toBeTruthy();
+    // run a use case on the Agent tab, then come back
+    await u.click(screen.getAllByRole("tab")[0]);
+    await pick("UC1");
+    await runIt(u);
+    await u.click(screen.getByRole("tab", { name: "Agent run" }));
+    // the run plays: progress increases, then the reply arrives
+    await waitFor(() => expect(screen.getByTestId("agent-run-progress").textContent).toMatch(/\d+ \/ \d+ hops/));
+    await waitFor(() => expect(screen.getByTestId("agent-run-outcome")).toBeTruthy(), { timeout: 30000 });
+    expect(screen.getByTestId("agent-run-reply").textContent).toMatch(/balance|refused|could not|engine computed/i);
+    // and the sequence view is live in this tab
+    expect(screen.getByTestId("sequence-view")).toBeTruthy();
+    expect(screen.getByTestId("movie-reel")).toBeTruthy();
   });
 });

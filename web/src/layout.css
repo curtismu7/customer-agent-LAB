@@ -178,3 +178,14 @@
 .app[data-presenter] { font-size: 18px; }
 .app[data-presenter] .muted { font-size: 16px; }
 .turn--note { display: block; font-size: 13px; padding: 4px 0 4px 10px; border-left: 3px solid var(--focus); overflow-wrap: anywhere; }
+
+/* ===== Agent run tab (owner, 2026-11-28): one live view of a run; additive, the other views untouched ===== */
+.agentrun { display: grid; gap: 12px; min-width: 0; }
+.agentrun__head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.agentrun__head select { min-height: 32px; border-radius: 8px; }
+.agentrun__grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(240px, 300px); gap: 12px; align-items: start; }
+.agentrun__main { display: grid; gap: 12px; min-width: 0; }
+.agentrun__side { min-width: 0; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); border-top: 4px solid var(--status-info); padding: 10px; }
+.agentrun__reel .rl { grid-auto-flow: row; grid-auto-columns: unset; grid-template-columns: 1fr; overflow-x: visible; max-height: 560px; overflow-y: auto; }
+.agentrun__reel .rl-f { min-height: 0; }
+@media (max-width: 900px) { .agentrun__grid { grid-template-columns: minmax(0, 1fr); } }
