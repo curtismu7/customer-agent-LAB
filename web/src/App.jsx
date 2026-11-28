@@ -22,6 +22,8 @@ import VerifyMark from "./components/VerifyMark.jsx";
 import SignInDialog from "./components/SignInDialog";
 import TopMenu from "./top-menu/TopMenu.jsx";
 import TalkTrackDialog from "./talk-track/TalkTrackDialog.jsx";
+import HelpDialog from "./help-dialog/HelpDialog.jsx";
+import { HELP_SECTIONS } from "./helpContent";
 import "./top-menu/top-menu.css";
 import "./layout.css";
 
@@ -124,6 +126,7 @@ export default function App() {
 
   const presenter = cfg.presenter;
   const [talkOpen, setTalkOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
   const setPresenter = useCallback((f) => setCfg((c) => ({ ...c, presenter: typeof f === "function" ? f(c.presenter) : f })), []);
   useEffect(() => { saveConfig(workspaceId(), cfg); }, [cfg]);
   useEffect(() => { applyTheme(theme); }, [theme]);
@@ -392,7 +395,7 @@ export default function App() {
             theme={{ value: theme, onChange: setTheme }}
             present={{ active: presenter, onToggle: () => setPresenter((v) => !v), label: "Presenter (P)" }}
             talkTrack={{ active: talkOpen, onToggle: () => setTalkOpen((v) => !v) }}
-            help={{ href: "https://github.com/curtismu7/customer-agent-LAB#readme" }}
+            help={{ onClick: () => setHelpOpen(true), title: "What this lab is, and what is simulated" }}
             version={info?.version || null}
             onReset={reset}
             showSignIn={mode === "live" && realLevel === "full"}
@@ -466,6 +469,7 @@ export default function App() {
       </main>
       <SignInDialog isOpen={signOpen} username={signin?.username} onClose={() => { setSignOpen(false); pendingRun.current = null; }} onSignedIn={afterSignIn} />
       <TalkTrackDialog isOpen={talkOpen} onClose={() => setTalkOpen(false)} talk={story?.talkTrack ?? []} />
+      <HelpDialog isOpen={helpOpen} onClose={() => setHelpOpen(false)} sections={HELP_SECTIONS} docsUrl="https://github.com/curtismu7/customer-agent-LAB#readme" />
     </div>
   );
 }
